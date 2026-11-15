@@ -8,7 +8,7 @@ This repository is the **independent BCH BLAZE build**. It is not a copy, mirror
 
 - Mainnet-first architecture for Bitcoin Cash.
 - WizardConnect wallet connection for compatible BCH wallets, including Selene.
-- BCH contributions and PUSD/CashToken support once token metadata, wallet behavior and transaction handling are verified.
+- BCH contributions are the current covenant prototype; PUSD CashToken metadata and exact amount handling are implemented as a local draft foundation, while token-aware covenant transfers remain blocked.
 - Transparent circle schedules, member payment records, and per-member credit accounting.
 - Mobile-first, accessible fintech UX.
 - Clear transaction previews, fee visibility, and confirmation states.
@@ -56,7 +56,7 @@ The GitHub Actions workflow runs the same checks on pushes to `main` and pull re
 
 A separate workflow builds and deploys the static app to GitHub Pages on pushes to `main`. The Pages build uses the `/ajochain-blaze/` base path; local development and root-hosted deployments use `/`. The public Pages URL becomes available after the first successful deployment run.
 
-See [WizardConnect and Selene integration](docs/WIZARDCONNECT_SELENE_PORT.md) for the mobile reconnect behaviour and signing safeguards. See [member accounting and circle completion](docs/MEMBER_ACCOUNTING_AND_CIRCLE_COMPLETION.md) for the rule that members must continue contributing after receiving a payout, and the V2 covenant design that blocks a round when any member is short.
+See [PUSD CashToken integration status](docs/PUSD_CASHTOKEN_INTEGRATION.md) for the verified ParyonUSD category, two-decimal base-unit rules, and the still-blocked token-aware covenant work. See [WizardConnect and Selene integration](docs/WIZARDCONNECT_SELENE_PORT.md) for the mobile reconnect behaviour and signing safeguards. See [member accounting and circle completion](docs/MEMBER_ACCOUNTING_AND_CIRCLE_COMPLETION.md) for the rule that members must continue contributing after receiving a payout, and the V2 covenant design that blocks a round when any member is short.
 
 ## Network and safety policy
 
