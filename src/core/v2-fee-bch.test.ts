@@ -89,15 +89,23 @@ async function currentCircle(contract: Contract) {
   return { state, receipts };
 }
 
-async function payout(provider: MockNetworkProvider, contract: Contract, treasuryPkh = treasury.pkh) {
+async function payout(
+  provider: MockNetworkProvider,
+  contract: Contract,
+  treasuryPkh = treasury.pkh,
+  recipientAmountAdjustment = 0n,
+) {
   const { state, receipts } = await currentCircle(contract);
   const gross = BigInt(members.length) * CONTRIBUTION;
   const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
   const projectFee = gross / 100n;
   const minerFee = 8_000n;
+  const feeAddress = pkhToAddress(initiator.pkh, 'chipnet');
+  const feeFunding = provider.addUtxo(feeAddress, randomUtxo({ satoshis: 20_000n }));
   const builder = new TransactionBuilder({ provider })
     .addInput(state, contract.unlock.payout())
     .addInputs(receipts, contract.unlock.payout())
+    .addInput(feeFunding, initiator.sig.unlockP2PKH())
     .addOutput({
       to: contract.tokenAddress,
       amount: state.satoshis - gross,
@@ -113,8 +121,9 @@ async function payout(provider: MockNetworkProvider, contract: Contract, treasur
   builder.addOutput({ to: pkhToAddress(treasuryPkh, 'chipnet'), amount: projectFee });
   builder.addOutput({
     to: pkhToAddress(members[round].pkh, 'chipnet'),
-    amount: gross - projectFee - minerFee,
+    amount: gross - projectFee - recipientAmountAdjustment,
   });
+  builder.addOutput({ to: feeAddress, amount: feeFunding.satoshis - minerFee });
   await builder.send();
 }
 
@@ -157,6 +166,16 @@ describe('AjoCircleV2Fee versioned covenant', () => {
     await deposit(provider, contract, 1);
 
     await expect(payout(provider, contract, wrongTreasury.pkh)).rejects.toThrow();
+  });
+
+  it('does not deduct the miner fee from the member payout', async () => {
+    const provider = new MockNetworkProvider();
+    const contract = makeContract(provider);
+    addGenesis(provider, contract);
+    await deposit(provider, contract, 0);
+    await deposit(provider, contract, 1);
+
+    await expect(payout(provider, contract, treasury.pkh, 8_000n)).rejects.toThrow();
   });
 
   it('allows initiator cancellation before the first payout and refunds exact member credit', async () => {
