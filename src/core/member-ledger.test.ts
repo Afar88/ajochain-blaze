@@ -45,6 +45,15 @@ describe("member contribution and payout accounting", () => {
     if (retry.ok) expect(retry.balances[0].creditedBaseUnits).toBe(150n);
   });
 
+  it("does not credit the same transaction again under a different period label", () => {
+    const first = applyMemberPayment([], payment, 100n);
+    if (!first.ok) throw new Error(first.reason);
+    const retry = applyMemberPayment(first.balances, {
+      ...payment, periodId: "round-2",
+    }, 100n);
+    expect(retry).toMatchObject({ ok: true, duplicate: true });
+  });
+
   it("treats upper- and lower-case CashAddress forms as the same wallet", () => {
     const first = applyMemberPayment([], payment, 100n);
     if (!first.ok) throw new Error(first.reason);
@@ -57,6 +66,14 @@ describe("member contribution and payout accounting", () => {
       .toMatchObject({ ok: false, reason: "Missing payment identity" });
     expect(applyMemberPayment([], { ...payment, amountBaseUnits: 0n }, 100n))
       .toMatchObject({ ok: false, reason: "Amounts must be positive" });
+  });
+
+  it("rejects duplicate registered member identities in a payout", () => {
+    const first = applyMemberPayment([], payment, 100n);
+    if (!first.ok) throw new Error(first.reason);
+    const duplicateMembers = [members[0], { ...members[0] }];
+    expect(applyMemberPayout(first.balances, duplicateMembers, "BCH", 100n))
+      .toMatchObject({ ok: false, reason: "Registered members must have unique identities and wallets" });
   });
 
   it("blocks payout when even one member has not funded their own round", () => {
