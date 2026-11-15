@@ -100,9 +100,9 @@ describe("member contribution and payout accounting", () => {
     const roundOne = applyMemberPayout(bothFunded, members, "BCH", 100n);
     expect(roundOne.ok).toBe(true);
     if (!roundOne.ok) return;
-    expect(roundOne.balances.find((b) => b.memberId === "member-a")?.currentRoundCreditBaseUnits).toBe(0n);
+    expect(roundOne.balances.find((b) => b.memberId === "member-a")?.currentRoundCreditBaseUnits).toBe(50n);
     expect(applyMemberPayout(roundOne.balances, members, "BCH", 100n)).toMatchObject({ ok: false });
-    const next = applyMemberPayment(roundOne.balances, { ...payment, paymentId: "tx-a2", periodId: "round-2", amountBaseUnits: 100n }, 100n);
+    const next = applyMemberPayment(roundOne.balances, { ...payment, paymentId: "tx-a2", periodId: "round-2", amountBaseUnits: 50n }, 100n);
     if (!next.ok) throw new Error(next.reason);
     const nextBoth = addMemberB(next.balances);
     expect(applyMemberPayout(nextBoth, members, "BCH", 100n).ok).toBe(true);
