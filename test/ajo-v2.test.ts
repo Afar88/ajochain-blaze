@@ -25,11 +25,11 @@ const members = [1, 2].map((n) => {
   return { priv, pub, pkh: hash160(pub), sig: new SignatureTemplate(priv) };
 });
 
-function makeContract(provider: MockNetworkProvider) {
+function makeContract(provider: MockNetworkProvider, maxFee = MAX_FEE) {
   return new Contract(artifact, [
     members[0].pkh, members[1].pkh,
     new Uint8Array(20), new Uint8Array(20), new Uint8Array(20),
-    2n, CONTRIBUTION, MAX_FEE, hexToBin(CATEGORY).reverse(),
+    2n, CONTRIBUTION, maxFee, hexToBin(CATEGORY).reverse(),
   ], { provider, contractType: 'p2sh32' });
 }
 
@@ -250,6 +250,34 @@ describe('AjoCircleV2 member-credit covenant prototype', () => {
       .addOutput({ to: contract.tokenAddress, amount: DUST, token: { category: CATEGORY, amount: 0n, nft: { capability: 'none', commitment: creditCommitment(0, 0n) } } })
       .addOutput({ to: contract.tokenAddress, amount: DUST, token: { category: CATEGORY, amount: 0n, nft: { capability: 'none', commitment: creditCommitment(1, 0n) } } })
       .addOutput({ to: pkhToAddress(members[0].pkh, 'chipnet'), amount: 2n * CONTRIBUTION - MAX_FEE - 1n });
+    await expect(tx.send()).rejects.toThrow();
+  });
+
+  it('rejects a fee cap that would leave the recipient below dust', async () => {
+    const provider = new MockNetworkProvider();
+    const pot = 2n * CONTRIBUTION;
+    const excessiveMaxFee = pot - DUST + 1n;
+    const contract = makeContract(provider, excessiveMaxFee);
+    addGenesis(provider, contract);
+    await deposit(provider, contract, 0);
+    await deposit(provider, contract, 1);
+
+    const all = await contract.getUtxos();
+    const state = all.find((u) => u.token?.nft?.capability === 'minting') as SpendableUtxo;
+    const receipts = members.map((_, i) => all.find((u) =>
+      u.token?.nft?.commitment?.startsWith('52' + i.toString(16).padStart(2, '0')),
+    ) as SpendableUtxo);
+    const tx = new TransactionBuilder({ provider })
+      .addInput(state, contract.unlock.payout())
+      .addInputs(receipts, contract.unlock.payout())
+      .addOutput({
+        to: contract.tokenAddress,
+        amount: state.satoshis - pot,
+        token: { category: CATEGORY, amount: 0n, nft: { capability: 'minting', commitment: '5301' } },
+      })
+      .addOutput({ to: contract.tokenAddress, amount: DUST, token: { category: CATEGORY, amount: 0n, nft: { capability: 'none', commitment: creditCommitment(0, 0n) } } })
+      .addOutput({ to: contract.tokenAddress, amount: DUST, token: { category: CATEGORY, amount: 0n, nft: { capability: 'none', commitment: creditCommitment(1, 0n) } } })
+      .addOutput({ to: pkhToAddress(members[0].pkh, 'chipnet'), amount: DUST });
     await expect(tx.send()).rejects.toThrow();
   });
 
