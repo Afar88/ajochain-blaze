@@ -214,7 +214,12 @@ export function verifySignedTransaction(
       throw new Error('Wallet signing input indexes are invalid or duplicated.');
     }
     seenWalletInputs.add(index);
-    assertRequiredWalletSighash(decoded.inputs[index].unlockingBytecode);
+    const sourceScript = binToHex(expectedSourceOutputs[index]?.lockingBytecode ?? new Uint8Array()).toLowerCase();
+    // P2PKH funding inputs must carry the WizardConnect 0x61 signature. Contract
+    // inputs can have custom unlocker arguments; their validity is checked by the BCH VM below.
+    if (/^76a914[0-9a-f]{40}88ac$/.test(sourceScript)) {
+      assertRequiredWalletSighash(decoded.inputs[index].unlockingBytecode);
+    }
   }
 
   const vmResult = createVirtualMachineBCH2023().verify({
