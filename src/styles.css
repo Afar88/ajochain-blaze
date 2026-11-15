@@ -472,3 +472,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     flex-direction: column;
   }
 }
+
+.fee-exact-amount-button {
+  display: inline;
+  border: 0;
+  padding: 0 2px;
+  color: var(--accent, #2463eb);
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
