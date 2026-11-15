@@ -24,3 +24,9 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
     broadcastEnabled: false,
   },
 };
+
+
+/** Production builds open on BCH Mainnet; local/dev builds stay on Chipnet. */
+export function getDefaultNetwork(isProduction: boolean): NetworkId {
+  return isProduction ? "mainnet" : "chipnet";
+}
