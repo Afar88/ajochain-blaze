@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "npm run compile && vitest run --testTimeout=20000",
     "typecheck": "tsc -b",
-    "compile": "cashc contracts/AjoCircleV2.cash -o contracts/AjoCircleV2.json"
+    "compile": "cashc contracts/AjoCircleV2.cash -o contracts/AjoCircleV2.json && cashc contracts/AjoCirclePusdV1.cash -o contracts/AjoCirclePusdV1.json"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
