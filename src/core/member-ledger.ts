@@ -33,7 +33,8 @@ export function applyMemberPayment(
   payment: MemberPayment,
   contributionDueBaseUnits: bigint,
 ): LedgerResult {
-  if (!payment.paymentId || !payment.memberId || !payment.walletAddress || !payment.periodId) {
+  const walletAddress = payment.walletAddress.trim().toLowerCase();
+  if (!payment.paymentId.trim() || !payment.memberId.trim() || !walletAddress || !payment.periodId.trim()) {
     return { ok: false, reason: "Missing payment identity" };
   }
   if (payment.amountBaseUnits <= 0n || contributionDueBaseUnits <= 0n) {
@@ -43,7 +44,7 @@ export function applyMemberPayment(
   const paymentKey = `${payment.periodId}:${payment.paymentId}`;
   const existing = current.find(
     (entry) => entry.memberId === payment.memberId &&
-      entry.walletAddress === payment.walletAddress &&
+      entry.walletAddress.trim().toLowerCase() === walletAddress &&
       entry.asset === payment.asset,
   );
 
@@ -70,7 +71,7 @@ export function applyMemberPayment(
 
   const next: MemberBalance = {
     memberId: payment.memberId,
-    walletAddress: payment.walletAddress,
+    walletAddress,
     asset: payment.asset,
     creditedBaseUnits: (existing?.creditedBaseUnits ?? 0n) + payment.amountBaseUnits,
     contributedBaseUnits: (existing?.contributedBaseUnits ?? 0n) + contributed,
