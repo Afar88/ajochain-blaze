@@ -68,6 +68,7 @@ export function buildWizardSignRequest(
   walletInputs: number[],
   receiveIndex: number,
   prompt: string,
+  sequence: number,
 ) {
   const transaction = wcObject?.transaction;
   const sourceOutputs = wcObject?.sourceOutputs;
@@ -92,7 +93,7 @@ export function buildWizardSignRequest(
 
   return {
     action: "sign_transaction_request",
-    sequence: Math.floor(Math.random() * 1_000_000_000),
+    sequence,
     time: Math.floor(Date.now() / 1000),
     transaction: {
       transaction: {
@@ -384,8 +385,8 @@ class WizardWallet {
     if (!this.mgr || this.state !== 'connected') throw new Error('Connect a wallet first');
     const mgr = this.mgr;
     const generation = this.generation;
-    const request = buildWizardSignRequest(wcObject, walletInputs, this.receiveIndex, prompt);
-    const res = await mgr.sendSignRequest({ ...request, sequence: mgr.nextSequence() });
+    const request = buildWizardSignRequest(wcObject, walletInputs, this.receiveIndex, prompt, mgr.nextSequence());
+    const res = await mgr.sendSignRequest(request);
     if (!this.isCurrent(mgr, generation) || this.state !== 'connected') {
       throw new Error('Wallet connection changed before signing completed. Please reconnect and try again.');
     }
