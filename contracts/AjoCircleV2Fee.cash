@@ -147,7 +147,7 @@ contract AjoCircleV2Fee(
         if (round == 4) { recipient = m4; }
         int projectFee = pot / 100;
         require(projectFee >= 546);
-        require(pot - projectFee - maxFee >= 546);
+        require(pot - projectFee >= 546);
         require(tx.outputs[memberCount + 1].lockingBytecode == new LockingBytecodeP2PKH(treasury));
         require(tx.outputs[memberCount + 1].tokenCategory == 0x);
         require(tx.outputs[memberCount + 1].value == projectFee);
