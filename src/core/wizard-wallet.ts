@@ -3,7 +3,7 @@
 // derives receive addresses locally and asks the wallet to sign transactions.
 import { initiateDappRelay, type DappRelayResult } from '@wizardconnect/core';
 import { DappConnectionManager, loadSession } from '@wizardconnect/dapp';
-import { binToHex, decodeTransactionBCH, encodeTransaction, encodeTransactionOutputs, hash160, hexToBin } from '@bitauth/libauth';
+import { binToHex, decodeTransactionBCH, encodeTransactionOutputs, hash160, hexToBin } from '@bitauth/libauth';
 import { sourceOutputToRelay } from '@wizardconnect/core/hdwalletv1-serialize';
 import { pkhToAddress, type Net } from './bch-address';
 
@@ -91,8 +91,16 @@ export function buildWizardSignRequest(
   );
 
   return {
+    action: "sign_transaction_request",
+    sequence: Math.floor(Math.random() * 1_000_000_000),
+    time: Math.floor(Date.now() / 1000),
     transaction: {
-      transaction: binToHex(encodeTransaction(transaction)),
+      transaction: {
+        inputs: transaction.inputs,
+        outputs: transaction.outputs,
+        version: transaction.version,
+        locktime: transaction.locktime,
+      },
       sourceOutputs: relaySourceOutputs,
       broadcast: false,
       userPrompt: prompt,
@@ -377,7 +385,7 @@ class WizardWallet {
     const mgr = this.mgr;
     const generation = this.generation;
     const request = buildWizardSignRequest(wcObject, walletInputs, this.receiveIndex, prompt);
-    const res = await mgr.signTransaction(request);
+    const res = await mgr.sendSignRequest({ ...request, sequence: mgr.nextSequence() });
     if (!this.isCurrent(mgr, generation) || this.state !== 'connected') {
       throw new Error('Wallet connection changed before signing completed. Please reconnect and try again.');
     }
