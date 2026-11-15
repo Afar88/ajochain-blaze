@@ -95,6 +95,12 @@ export function verifyDecodedPusdTransfer(
   let changePusd = 0n;
   for (const output of decoded.outputs) {
     if (!output.address || output.satoshis < 0n) return fail("Output address or BCH value is invalid.");
+    // This narrow intent has no independent BCH-change destination field. Until
+    // the wallet planner supplies one, constrain every BCH output to the two
+    // explicitly approved destinations rather than permitting silent BCH theft.
+    if (output.address !== intent.recipient && output.address !== intent.changeAddress) {
+      return fail("BCH output is directed to an unapproved address.");
+    }
     outputSatoshis += output.satoshis;
     if (!output.token) continue;
     if (!isPusdCategoryId(output.token.category)) return fail("Unexpected non-PUSD token category in outputs.");
