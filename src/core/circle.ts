@@ -1,4 +1,5 @@
 import { CIRCLE_ASSETS, MIN_CIRCLE_MEMBERS, type CircleAsset } from "./member-ledger";
+import { parseAssetAmount } from "./assets";
 
 export type ContributionFrequency = "daily" | "weekly" | "monthly";
 
