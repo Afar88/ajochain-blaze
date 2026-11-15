@@ -1,0 +1,254 @@
+import {
+  binToHex,
+  createVirtualMachineBCH2023,
+  decodeTransactionBCH,
+  hashTransaction,
+  hexToBin,
+} from "@bitauth/libauth";
+import { PUSD_ASSET, isPusdCategoryId } from "./assets";
+
+export interface PusdInputOutpoint {
+  txid: string;
+  vout: number;
+}
+
+export interface PusdSignedTransactionUnspentEvidence {
+  /** Re-query chain state immediately before validation/broadcast. */
+  isUnspent(outpoint: PusdInputOutpoint): Promise<boolean>;
+}
+
+export interface VerifySignedPusdTransactionOptions {
+  signedTransactionHex: string;
+  /** Raw previous transactions keyed by displayed (big-endian) txid. */
+  rawPreviousTransactions: Readonly<Record<string, string>>;
+  /** Scripts derived locally from the connected wallet's receive/change paths. */
+  walletLockingBytecodes: readonly string[];
+  recipientLockingBytecode: string;
+  changeLockingBytecode: string;
+  requiredPusdAmount: bigint;
+  maxFeeSatoshis: bigint;
+  unspentEvidence: PusdSignedTransactionUnspentEvidence;
+}
+
+export interface VerifiedPusdTransaction {
+  txid: string;
+  feeSatoshis: bigint;
+  inputPusdAmount: bigint;
+  recipientPusdAmount: bigint;
+  changePusdAmount: bigint;
+  inputCount: number;
+  outputCount: number;
+}
+
+const isHex = (value: string) => /^(?:[0-9a-f]{2})+$/i.test(value);
+const reverseHex = (value: string) => value.match(/../g)!.reverse().join("").toLowerCase();
+
+/**
+ * Validate the exact signed BCH transaction against raw previous transactions.
+ *
+ * This executes the BCH 2023 authentication VM (including CashTokens consensus
+ * checks) after independently resolving each input. It also enforces a narrow
+ * PUSD transfer policy: only the requested recipient and this wallet's change
+ * script may receive PUSD, no foreign token category/NFT is permitted, and BCH
+ * change may only return to a wallet-derived script.
+ *
+ * The VM is stateless. The supplied unspent-state adapter must independently
+ * query live chain state; this function fails closed if any check is unavailable.
+ */
+export async function verifySignedPusdTransaction(
+  options: VerifySignedPusdTransactionOptions,
+): Promise<VerifiedPusdTransaction> {
+  const {
+    signedTransactionHex,
+    rawPreviousTransactions,
+    walletLockingBytecodes,
+    recipientLockingBytecode,
+    changeLockingBytecode,
+    requiredPusdAmount,
+    maxFeeSatoshis,
+    unspentEvidence,
+  } = options;
+
+  if (!isHex(signedTransactionHex)) {
+    throw new Error("Signed transaction must be complete hexadecimal bytes.");
+  }
+  if (requiredPusdAmount <= 0n) {
+    throw new Error("Requested PUSD amount must be greater than zero.");
+  }
+  if (maxFeeSatoshis < 0n) {
+    throw new Error("Maximum transaction fee cannot be negative.");
+  }
+  if (!isHex(recipientLockingBytecode) || !isHex(changeLockingBytecode)) {
+    throw new Error("Recipient and change locking bytecodes must be non-empty hexadecimal scripts.");
+  }
+  const walletScripts = new Set(
+    walletLockingBytecodes.map((script) => script.toLowerCase()).filter(isHex),
+  );
+  if (walletScripts.size === 0 || !walletScripts.has(changeLockingBytecode.toLowerCase())) {
+    throw new Error("Wallet-derived locking scripts are missing or do not include the change script.");
+  }
+
+  const transactionBytes = hexToBin(signedTransactionHex);
+  const transaction = decodeTransactionBCH(transactionBytes);
+  if (typeof transaction === "string") {
+    throw new Error("Signed transaction failed CashTokens-aware BCH decoding: " + transaction);
+  }
+  if (transaction.inputs.length === 0 || transaction.outputs.length === 0) {
+    throw new Error("Signed transaction must contain at least one input and one output.");
+  }
+
+  const sourceOutputs: typeof transaction.outputs = [];
+  const seenOutpoints = new Set<string>();
+  let inputSatoshis = 0n;
+  let inputPusdAmount = 0n;
+
+  for (const [inputIndex, input] of transaction.inputs.entries()) {
+    // BCH serializes outpoint hashes in little-endian order; API txids use display order.
+    const outpointBytes = binToHex(input.outpointTransactionHash).toLowerCase();
+    const txid = reverseHex(outpointBytes);
+    const outpoint = { txid, vout: input.outpointIndex };
+    if (!/^[0-9a-f]{64}$/.test(txid) ||
+        !Number.isSafeInteger(outpoint.vout) || outpoint.vout < 0) {
+      throw new Error("Signed transaction input " + inputIndex + " has an invalid outpoint.");
+    }
+    const outpointKey = txid + ":" + outpoint.vout;
+    if (seenOutpoints.has(outpointKey)) {
+      throw new Error("Signed transaction contains a duplicate input outpoint.");
+    }
+    seenOutpoints.add(outpointKey);
+
+    const rawHex = rawPreviousTransactions[txid] ??
+      rawPreviousTransactions[outpointBytes] ??
+      rawPreviousTransactions[txid.toUpperCase()] ??
+      rawPreviousTransactions[outpointBytes.toUpperCase()];
+    if (!rawHex || !isHex(rawHex)) {
+      throw new Error("Raw previous transaction is missing or malformed for input " + inputIndex + ".");
+    }
+    const previousBytes = hexToBin(rawHex);
+    const previousTransaction = decodeTransactionBCH(previousBytes);
+    if (typeof previousTransaction === "string") {
+      throw new Error("Previous transaction for input " + inputIndex + " failed BCH/CashTokens decoding: " + previousTransaction);
+    }
+
+    const actualPreviousTxid = hashTransaction(previousBytes).toLowerCase();
+    if (actualPreviousTxid !== txid) {
+      throw new Error("Previous transaction hash does not match input " + inputIndex + ".");
+    }
+    const sourceOutput = previousTransaction.outputs[outpoint.vout];
+    if (!sourceOutput) {
+      throw new Error("Previous transaction output index does not exist for input " + inputIndex + ".");
+    }
+    const sourceScript = binToHex(sourceOutput.lockingBytecode).toLowerCase();
+    if (!walletScripts.has(sourceScript)) {
+      throw new Error("Input " + inputIndex + " is not locked to a locally derived wallet script.");
+    }
+
+    if (sourceOutput.token) {
+      const category = binToHex(sourceOutput.token.category).toLowerCase();
+      if (!isPusdCategoryId(category) || category !== PUSD_ASSET.categoryId) {
+        throw new Error("Input " + inputIndex + " contains an unsupported CashToken category.");
+      }
+      if (sourceOutput.token.nft) {
+        throw new Error("NFT-bearing inputs are not supported by this fungible PUSD transfer.");
+      }
+      if (sourceOutput.token.amount <= 0n) {
+        throw new Error("Input " + inputIndex + " has an invalid PUSD amount.");
+      }
+      inputPusdAmount += sourceOutput.token.amount;
+    }
+
+    if (sourceOutput.valueSatoshis <= 0n) {
+      throw new Error("Input " + inputIndex + " has no BCH carrier value.");
+    }
+    inputSatoshis += sourceOutput.valueSatoshis;
+    sourceOutputs.push(sourceOutput);
+
+    // This is a separate stateful check. A raw previous transaction does not
+    // prove that the referenced output remains unspent.
+    const unspent = await unspentEvidence.isUnspent(outpoint);
+    if (unspent !== true) {
+      throw new Error("Input " + inputIndex + " is spent or its unspent state is unavailable.");
+    }
+  }
+
+  if (inputPusdAmount < requiredPusdAmount) {
+    throw new Error("Verified PUSD inputs do not cover the requested amount.");
+  }
+
+  const expectedChangeAmount = inputPusdAmount - requiredPusdAmount;
+  let recipientPusdAmount = 0n;
+  let changePusdAmount = 0n;
+  let recipientPusdOutputs = 0;
+  let changePusdOutputs = 0;
+  let outputSatoshis = 0n;
+
+  for (const [outputIndex, output] of transaction.outputs.entries()) {
+    outputSatoshis += output.valueSatoshis;
+    const script = binToHex(output.lockingBytecode).toLowerCase();
+
+    if (output.token) {
+      const category = binToHex(output.token.category).toLowerCase();
+      if (!isPusdCategoryId(category) || category !== PUSD_ASSET.categoryId) {
+        throw new Error("Output " + outputIndex + " creates or transfers an unsupported CashToken category.");
+      }
+      if (output.token.nft) {
+        throw new Error("Output " + outputIndex + " contains an unsupported NFT.");
+      }
+      if (output.token.amount <= 0n) {
+        throw new Error("Output " + outputIndex + " has an invalid PUSD amount.");
+      }
+
+      if (script === recipientLockingBytecode.toLowerCase()) {
+        recipientPusdAmount += output.token.amount;
+        recipientPusdOutputs += 1;
+      } else if (script === changeLockingBytecode.toLowerCase()) {
+        changePusdAmount += output.token.amount;
+        changePusdOutputs += 1;
+      } else {
+        throw new Error("PUSD output " + outputIndex + " is not directed to the approved recipient or wallet change script.");
+      }
+    } else if (!walletScripts.has(script)) {
+      throw new Error("BCH-only output " + outputIndex + " is not directed to a wallet-derived change script.");
+    }
+  }
+
+  if (recipientPusdAmount !== requiredPusdAmount || recipientPusdOutputs !== 1) {
+    throw new Error("Signed transaction does not pay the exact requested PUSD amount to the approved recipient.");
+  }
+  if (changePusdAmount !== expectedChangeAmount ||
+      changePusdOutputs !== (expectedChangeAmount > 0n ? 1 : 0)) {
+    throw new Error("Signed transaction does not return the exact PUSD remainder to the wallet change script.");
+  }
+  if (recipientPusdOutputs + changePusdOutputs !==
+      transaction.outputs.filter((output) => output.token !== undefined).length) {
+    throw new Error("Signed transaction contains an unaccounted token output.");
+  }
+
+  const feeSatoshis = inputSatoshis - outputSatoshis;
+  if (feeSatoshis < 0n) {
+    throw new Error("Signed transaction creates BCH value.");
+  }
+  if (feeSatoshis > maxFeeSatoshis) {
+    throw new Error("Signed transaction fee exceeds the approved maximum.");
+  }
+
+  // Libauth's BCH 2023 VM performs transaction-level CashTokens conservation,
+  // consensus checks and every input's unlocking/locking script evaluation.
+  const vmResult = createVirtualMachineBCH2023().verify({
+    transaction,
+    sourceOutputs,
+  });
+  if (vmResult !== true) {
+    throw new Error("Signed BCH/CashTokens transaction failed virtual-machine validation: " + vmResult);
+  }
+
+  return {
+    txid: hashTransaction(transactionBytes),
+    feeSatoshis,
+    inputPusdAmount,
+    recipientPusdAmount,
+    changePusdAmount,
+    inputCount: transaction.inputs.length,
+    outputCount: transaction.outputs.length,
+  };
+}
