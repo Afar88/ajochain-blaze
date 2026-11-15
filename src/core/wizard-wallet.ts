@@ -92,7 +92,7 @@ export function buildWizardSignRequest(
   );
 
   return {
-    action: "sign_transaction_request",
+    action: "sign_transaction_request" as const,
     sequence,
     time: Math.floor(Date.now() / 1000),
     transaction: {
