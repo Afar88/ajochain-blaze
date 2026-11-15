@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
+  assertPreviousTransactionsAgree,
   assertUnspentSnapshotsAgree,
   cashAddressToLockingBytecode,
   hashBlockHeader,
@@ -114,4 +115,12 @@ test("PUSD Mainnet broadcast stays locked even if a runtime override is set", as
     if (original === undefined) delete process.env.ENABLE_MAINNET_BROADCAST;
     else process.env.ENABLE_MAINNET_BROADCAST = original;
   }
+});
+
+test("raw previous transaction bytes must agree across the Electrum quorum", () => {
+  const raw = "01000000" + "00".repeat(10);
+  assert.equal(assertPreviousTransactionsAgree([{ hex: raw }, { hex: raw.toUpperCase() }]), raw);
+  assert.throws(() => assertPreviousTransactionsAgree([{ hex: raw }, { hex: "02000000" + "00".repeat(10) }]), /disagree/);
+  assert.throws(() => assertPreviousTransactionsAgree([{ hex: raw }]), /at least two/);
+  assert.throws(() => assertPreviousTransactionsAgree([{ hex: "not-hex" }, { hex: raw }]), /malformed/);
 });
