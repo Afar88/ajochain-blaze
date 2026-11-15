@@ -112,7 +112,7 @@ async function deposit(provider: MockNetworkProvider, contract: Contract, escrow
 }
 
 async function payout(provider: MockNetworkProvider, contract: Contract, escrows: Contract[], recipientIndex = 0) {
-  const { state, receipts } = await current(provider, contract, escrows);
+  const { state, receipts } = await current(contract, escrows);
   const escrowUtxos = await Promise.all(escrows.map(async escrow => {
     const utxos = await escrow.getUtxos();
     return (utxos.find(u => u.token?.category === PUSD) ?? utxos[0]) as SpendableUtxo;
@@ -176,7 +176,7 @@ describe('AjoCirclePUSDV2 member escrow covenant', () => {
 
     await payout(provider, contract, escrows);
 
-    const { state, receipts } = await current(provider, contract, escrows);
+    const { state, receipts } = await current(contract, escrows);
     expect(state.token!.nft!.commitment).toBe('540101');
     expect(receipts.map(u => u.token!.nft!.commitment)).toEqual([
       creditCommitment(0, 0n), creditCommitment(1, 0n),
@@ -195,7 +195,7 @@ describe('AjoCirclePUSDV2 member escrow covenant', () => {
     addGenesis(provider, contract, escrows);
 
     await deposit(provider, contract, escrows, 0);
-    const { receipts } = await current(provider, contract, escrows);
+    const { receipts } = await current(contract, escrows);
     const fundedEscrow = (await escrows[0].getUtxos()).find(u => u.token?.category === PUSD);
     expect(receipts[0].token!.nft!.commitment).toBe(creditCommitment(0, CONTRIBUTION));
     expect(fundedEscrow?.token?.amount).toBe(CONTRIBUTION);
