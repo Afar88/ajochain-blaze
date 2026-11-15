@@ -28,7 +28,7 @@ test("CashAddress decoding accepts token-aware P2PKH addresses", () => {
 });
 
 test("CashAddress decoding rejects Chipnet and malformed addresses", () => {
-  assert.throws(() => cashAddressToLockingBytecode(testnetP2pkh), /only Bitcoin Cash mainnet/);
+  assert.throws(() => cashAddressToLockingBytecode(testnetP2pkh), /only Bitcoin Cash mainnet/i);
   assert.throws(() => cashAddressToLockingBytecode("not-an-address"), /Invalid CashAddress/);
 });
 
