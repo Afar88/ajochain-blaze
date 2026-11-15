@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   Activity, ArrowRight, ArrowUpRight, CalendarDays, Check, ChevronDown,
   CircleDollarSign, Clock3, CreditCard, LockKeyhole, Plus, ShieldCheck,
@@ -34,7 +34,29 @@ export default function App() {
   const [amount, setAmount] = useState("0.01");
   const [frequency, setFrequency] = useState<ContributionFrequency>("weekly");
   const [membersText, setMembersText] = useState("You\nMember 2");
-  const [draft, setDraft] = useState<CircleDraftView | null>(null);
+  const [draft, setDraft] = useState<CircleDraftView | null>(() => {
+    try {
+      const saved = window.localStorage.getItem("ajochain-circle-draft-v1");
+      if (!saved) return null;
+      const parsed = JSON.parse(saved) as CircleDraftView;
+      if (typeof parsed.name !== "string" || !["BCH", "PUSD"].includes(parsed.asset) ||
+          typeof parsed.amount !== "string" || !["daily", "weekly", "monthly"].includes(parsed.frequency) ||
+          !Array.isArray(parsed.members) || parsed.members.length < 2 ||
+          !parsed.members.every((member) => typeof member === "string")) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      if (draft) window.localStorage.setItem("ajochain-circle-draft-v1", JSON.stringify(draft));
+      else window.localStorage.removeItem("ajochain-circle-draft-v1");
+    } catch {
+      // Storage may be unavailable in private browsing; the current session still works.
+    }
+  }, [draft]);
 
   const wc = useWizardConnect({
     dappName: "AjoChain",
@@ -54,8 +76,24 @@ export default function App() {
   }), [circleName, asset, amount, frequency, members]);
 
   const openCreate = () => {
+    if (draft) {
+      setCircleName(draft.name);
+      setAsset(draft.asset);
+      setAmount(draft.amount);
+      setFrequency(draft.frequency);
+      setMembersText(draft.members.join("\n"));
+    }
     setAttemptedSubmit(false);
     setShowCreate(true);
+  };
+
+  const removeDraft = () => {
+    setDraft(null);
+    setCircleName("");
+    setAsset("BCH");
+    setAmount("0.01");
+    setFrequency("weekly");
+    setMembersText("You\nMember 2");
   };
 
   const handleDraftSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -209,7 +247,10 @@ export default function App() {
                   <div className="draft-amount"><strong>{draft.amount}</strong><span>{draft.asset} per member</span></div>
                   <div className="draft-members">{draft.members.slice(0, 4).map((member, index) => <span key={`${member}-${index}`}>{member.slice(0, 1).toUpperCase()}</span>)}<small>{draft.members.length} people listed</small></div>
                   <div className="draft-warning"><LockKeyhole size={14} /> This is a page-only preview. It has not been saved on-chain or sent to a wallet.</div>
-                  <button className="text-action" onClick={openCreate}>Edit draft <ArrowRight size={14} /></button>
+                  <div className="draft-actions">
+                    <button className="text-action" onClick={openCreate}>Edit draft <ArrowRight size={14} /></button>
+                    <button className="draft-delete" onClick={removeDraft}>Delete draft</button>
+                  </div>
                 </div>
               ) : (
                 <div className="empty-state">
