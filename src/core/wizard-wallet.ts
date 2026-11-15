@@ -1,7 +1,7 @@
 // WizardConnect wallet integration (dapp side).
 // Pairing is handled by WizardConnect. The wallet supplies xpubs; AjoChain
 // derives receive addresses locally and asks the wallet to sign transactions.
-import { initiateDappRelay, type DappRelayResult } from '@wizardconnect/core';
+import { initiateDappRelay, RelayMsgAction, type DappRelayResult } from '@wizardconnect/core';
 import { DappConnectionManager, loadSession } from '@wizardconnect/dapp';
 import { binToHex, decodeTransactionBCH, encodeTransactionOutputs, hash160, hexToBin } from '@bitauth/libauth';
 import { sourceOutputToRelay } from '@wizardconnect/core/hdwalletv1-serialize';
@@ -92,7 +92,7 @@ export function buildWizardSignRequest(
   );
 
   return {
-    action: "sign_transaction_request" as const,
+    action: RelayMsgAction.SignTransactionRequest,
     sequence,
     time: Math.floor(Date.now() / 1000),
     transaction: {
