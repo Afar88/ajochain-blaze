@@ -58,6 +58,13 @@ describe('member contribution ledger', () => {
     expect(result.carryForwardCredit).toBe(60n);
     expect(result.dueForCurrentRound).toBe(40n);
   });
+
+  it('keeps the payout recipient obligated for the next round', () => {
+    const result = summary([receipt({ amount: 100n })], 1);
+    expect(result.allocatedToCompletedRounds).toBe(100n);
+    expect(result.carryForwardCredit).toBe(0n);
+    expect(result.dueForCurrentRound).toBe(100n);
+  });
   it('keeps underpayment from completed rounds visible as arrears', () => {
     const result = summary([receipt({ amount: 60n })], 1);
     expect(result.outstandingFromCompletedRounds).toBe(40n);
