@@ -123,7 +123,7 @@ async function triggerPayout(provider: MockNetworkProvider, contract: Contract) 
 }
 
 describe("AjoChain V3 automatic future-contribution reserve covenant", () => {
-  it("retains every future installment from the recipient's payout and funds their receipt", async () => {
+  it("retains one next installment from the recipient's payout and funds their receipt", async () => {
     const provider = new MockNetworkProvider();
     const contract = makeContract(provider);
     addGenesis(provider, contract);
@@ -141,7 +141,7 @@ describe("AjoChain V3 automatic future-contribution reserve covenant", () => {
     expect(circle.state.token!.nft!.commitment).toBe("540101");
 
     // The unpaid member funds only the current installment. The first recipient
-    // already has the full remaining installment reserved from their payout.
+    // already has one next installment reserved from their payout.
     await depositCurrentRound(provider, contract, 1);
     const second = await triggerPayout(provider, contract);
     expect(second.reserve).toBe(0n);
@@ -197,7 +197,7 @@ describe("AjoChain V3 automatic future-contribution reserve covenant", () => {
     )).toBe(true);
   });
 
-  it("reports only current-round funding for unpaid members and all future reserves for recipients", () => {
+  it("reports one next installment for prior recipients and one current contribution for unpaid members", () => {
     const params = {
       version: 2 as const,
       covenant: "fee-v3-auto-reserve" as const,
