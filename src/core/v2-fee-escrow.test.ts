@@ -205,3 +205,112 @@ describe('AjoChain full-cycle escrow covenant', () => {
     expect(ledger[1].shortfallForNextPayout).toBe(0n);
   });
 });
+
+
+describe('AjoChain full-cycle escrow five-member rotation', () => {
+  const fiveMembers = [21, 22, 23, 24, 25].map(key);
+  const fiveCategory = '9a'.repeat(32);
+
+  function fiveContract(provider: MockNetworkProvider) {
+    return new Contract(artifact, [
+      fiveMembers[0].pkh, fiveMembers[1].pkh, fiveMembers[2].pkh,
+      fiveMembers[3].pkh, fiveMembers[4].pkh,
+      5n, CONTRIBUTION, MAX_FEE, hexToBin(fiveCategory).reverse(),
+      initiator.pkh, treasury.pkh,
+    ], { provider, contractType: 'p2sh32' });
+  }
+
+  function fiveGenesis(provider: MockNetworkProvider, contract: Contract) {
+    provider.addUtxo(contract.address, randomUtxo({
+      satoshis: DUST,
+      token: { category: fiveCategory, amount: 0n, nft: { capability: 'minting', commitment: '540000' } },
+    }));
+    for (let index = 0; index < fiveMembers.length; index++) {
+      provider.addUtxo(contract.address, randomUtxo({
+        satoshis: DUST,
+        token: { category: fiveCategory, amount: 0n, nft: { capability: 'none', commitment: receiptCommitment(index, 0n) } },
+      }));
+    }
+  }
+
+  async function depositFive(provider: MockNetworkProvider, contract: Contract, index: number) {
+    const all = await contract.getUtxos();
+    const state = all.find((utxo) => utxo.token?.nft?.capability === 'minting') as SpendableUtxo;
+    const receipt = all.find((utxo) => utxo.token?.nft?.commitment?.startsWith('52' + index.toString(16).padStart(2, '0'))) as SpendableUtxo;
+    const address = pkhToAddress(fiveMembers[index].pkh, 'chipnet');
+    const amount = BigInt(fiveMembers.length) * CONTRIBUTION;
+    const funding = provider.addUtxo(address, randomUtxo({ satoshis: amount + 20_000n }));
+    const builder = new TransactionBuilder({ provider })
+      .addInput(state, contract.unlock.addCredit(BigInt(index), amount))
+      .addInput(receipt, contract.unlock.addCredit(BigInt(index), amount))
+      .addInput(funding, fiveMembers[index].signature.unlockP2PKH())
+      .addOutput({
+        to: contract.tokenAddress,
+        amount: state.satoshis + amount,
+        token: { category: fiveCategory, amount: 0n, nft: { capability: 'minting', commitment: state.token!.nft!.commitment } },
+      })
+      .addOutput({
+        to: contract.tokenAddress,
+        amount: DUST,
+        token: { category: fiveCategory, amount: 0n, nft: { capability: 'none', commitment: receiptCommitment(index, amount) } },
+      })
+      .addOutput({ to: address, amount: 10_000n });
+    await builder.send();
+  }
+
+  async function payoutFive(provider: MockNetworkProvider, contract: Contract) {
+    const all = await contract.getUtxos();
+    const state = all.find((utxo) => utxo.token?.nft?.capability === 'minting') as SpendableUtxo;
+    const receipts = fiveMembers.map((_, index) => all.find((utxo) =>
+      utxo.token?.nft?.commitment?.startsWith('52' + index.toString(16).padStart(2, '0')),
+    ) as SpendableUtxo);
+    const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
+    const gross = BigInt(fiveMembers.length) * CONTRIBUTION;
+    const feeAddress = pkhToAddress(initiator.pkh, 'chipnet');
+    const funding = provider.addUtxo(feeAddress, randomUtxo({ satoshis: 20_000n }));
+    const nextRound = round + 1;
+    const builder = new TransactionBuilder({ provider })
+      .addInput(state, contract.unlock.payout())
+      .addInputs(receipts, contract.unlock.payout())
+      .addInput(funding, initiator.signature.unlockP2PKH())
+      .addOutput({
+        to: contract.tokenAddress,
+        amount: state.satoshis - gross,
+        token: { category: fiveCategory, amount: 0n, nft: { capability: 'minting', commitment: '54' + nextRound.toString(16).padStart(2, '0') + '01' } },
+      });
+    for (let index = 0; index < receipts.length; index++) {
+      const previousCredit = BigInt('0x' + receipts[index].token!.nft!.commitment.slice(4).match(/../g)!.reverse().join(''));
+      builder.addOutput({
+        to: contract.tokenAddress,
+        amount: receipts[index].satoshis,
+        token: { category: fiveCategory, amount: 0n, nft: { capability: 'none', commitment: receiptCommitment(index, previousCredit - CONTRIBUTION) } },
+      });
+    }
+    builder.addOutput({ to: pkhToAddress(treasury.pkh, 'chipnet'), amount: gross / 100n });
+    builder.addOutput({ to: pkhToAddress(fiveMembers[round].pkh, 'chipnet'), amount: gross - gross / 100n });
+    builder.addOutput({ to: feeAddress, amount: funding.satoshis - 8_000n });
+    await builder.send();
+  }
+
+  it('completes five payouts without further deposits and reaches round-five terminal state', async () => {
+    const provider = new MockNetworkProvider();
+    const contract = fiveContract(provider);
+    fiveGenesis(provider, contract);
+    for (let index = 0; index < fiveMembers.length; index++) {
+      await depositFive(provider, contract, index);
+    }
+    for (let round = 0; round < fiveMembers.length; round++) {
+      await payoutFive(provider, contract);
+    }
+    const all = await contract.getUtxos();
+    const state = all.find((utxo) => utxo.token?.nft?.capability === 'minting');
+    expect(state?.token?.nft?.commitment).toBe('540501');
+    const receipts = fiveMembers.map((_, index) => all.find((utxo) =>
+      utxo.token?.nft?.commitment?.startsWith('52' + index.toString(16).padStart(2, '0')),
+    ));
+    expect(receipts.every((receipt, index) =>
+      receipt?.token?.nft?.commitment === receiptCommitment(index, 0n),
+    )).toBe(true);
+    await expect(payoutFive(provider, contract)).rejects.toThrow();
+  }, 20000);
+});
