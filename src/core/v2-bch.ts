@@ -57,6 +57,24 @@ export function validateV2Circle(params: V2CircleDraft | V2CircleParams): void {
   }
 }
 
+export function v2StateCommitment(nextRound: number, memberCount: number): string {
+  if (!Number.isInteger(nextRound) || !Number.isInteger(memberCount) ||
+      memberCount < 2 || memberCount > 5 || nextRound < 0 || nextRound > memberCount) {
+    throw new Error("Invalid V2 state round.");
+  }
+  return nextRound === memberCount ? "54" : "53" + nextRound.toString(16).padStart(2, "0");
+}
+
+export function v2StateRound(commitment: string, memberCount: number): number {
+  if (commitment === "54") return memberCount;
+  if (!/^53(?:0[0-4])$/i.test(commitment)) {
+    throw new Error("Invalid V2 state NFT commitment.");
+  }
+  const round = Number.parseInt(commitment.slice(2), 16);
+  if (round >= memberCount) throw new Error("V2 state round is outside this circle's schedule.");
+  return round;
+}
+
 export function v2ReceiptCommitment(index: number, credit: bigint): string {
   if (!Number.isInteger(index) || index < 0 || index > 4 ||
       credit < 0n || credit > CASH_SCRIPT_INT_MAX) {
@@ -67,7 +85,7 @@ export function v2ReceiptCommitment(index: number, credit: bigint): string {
 }
 
 export function v2CreditFromCommitment(commitment: string): bigint {
-  if (!/^52[0-4][0-9a-f][0-9a-f]{16}$/i.test(commitment)) {
+  if (!/^52(?:00|01|02|03|04)[0-9a-f]{16}$/i.test(commitment)) {
     throw new Error("Invalid V2 member receipt commitment.");
   }
   const credit = BigInt("0x" + commitment.slice(4).match(/../g)!.reverse().join(""));
@@ -92,7 +110,7 @@ function findState(utxos: SpendableUtxo[], category: string) {
   const matches = utxos.filter((utxo) =>
     utxo.token?.category.toLowerCase() === category.toLowerCase() &&
     utxo.token.nft?.capability === "minting" &&
-    /^53[0-4]$/i.test(utxo.token.nft.commitment),
+    (utxo.token.nft.commitment === "54" || /^53(?:00|01|02|03|04)$/i.test(utxo.token.nft.commitment)),
   );
   if (matches.length !== 1) {
     throw new Error(matches.length
@@ -235,6 +253,8 @@ export async function planV2Deposit(
   const all = await contract.getUtxos();
   assertV2UtxoSet(all, params.stateCategory, params.members.length);
   const state = findState(all, params.stateCategory);
+  const currentRound = v2StateRound(state.token!.nft!.commitment, params.members.length);
+  if (currentRound >= params.members.length) throw new Error("This V2 circle has completed all scheduled payouts.");
   const receipt = findReceipt(all, params.stateCategory, memberIndex);
   const fee = estimateFee(3, 3);
   if (fee > params.maxFee) throw new Error("Estimated V2 deposit fee exceeds this circle's maxFee.");
@@ -293,9 +313,9 @@ export async function planV2Payout(params: V2CircleParams) {
   const utxos = await contract.getUtxos();
   assertV2UtxoSet(utxos, params.stateCategory, params.members.length);
   const state = findState(utxos, params.stateCategory);
-  const round = Number.parseInt(state.token!.nft!.commitment.slice(2), 16);
-  if (!Number.isInteger(round) || round < 0 || round >= params.members.length) {
-    throw new Error("Invalid V2 payout round.");
+  const round = v2StateRound(state.token!.nft!.commitment, params.members.length);
+  if (round >= params.members.length) {
+    throw new Error("This V2 circle has completed all scheduled payouts.");
   }
   const receipts = params.members.map((_, index) =>
     findReceipt(utxos, params.stateCategory, index),
@@ -323,7 +343,7 @@ export async function planV2Payout(params: V2CircleParams) {
         amount: 0n,
         nft: {
           capability: "minting",
-          commitment: "53" + ((round + 1) % params.members.length).toString(16).padStart(2, "0"),
+          commitment: v2StateCommitment(round + 1, params.members.length),
         },
       },
     });
@@ -354,10 +374,8 @@ export async function readV2Circle(params: V2CircleParams) {
   const utxos = await contract.getUtxos();
   assertV2UtxoSet(utxos, params.stateCategory, params.members.length);
   const state = findState(utxos, params.stateCategory);
-  const round = Number.parseInt(state.token!.nft!.commitment.slice(2), 16);
-  if (!Number.isInteger(round) || round < 0 || round >= params.members.length) {
-    throw new Error("Invalid V2 payout round.");
-  }
+  const round = v2StateRound(state.token!.nft!.commitment, params.members.length);
+  const completed = round >= params.members.length;
   const receipts = params.members.map((_, index) =>
     findReceipt(utxos, params.stateCategory, index),
   );
@@ -371,8 +389,9 @@ export async function readV2Circle(params: V2CircleParams) {
     round,
     stateSatoshis: state.satoshis,
     credits,
-    ready: credits.every((credit) => credit >= params.contribution),
-    recipient: params.members[round],
+    ready: !completed && credits.every((credit) => credit >= params.contribution),
+    completed,
+    recipient: completed ? null : params.members[round],
   };
 }
 
