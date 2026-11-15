@@ -14,7 +14,6 @@ const artifact = artifactJson as unknown as Artifact;
 const STATE_DUST = 1_000n;
 const RECEIPT_DUST = 1_000n;
 const CHANGE_DUST = 546n;
-const STATE_PREFIX = "53";
 const RECEIPT_PREFIX = "52";
 const CASH_SCRIPT_INT_MAX = 0x7fffffffffffffffn;
 
