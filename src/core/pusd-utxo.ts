@@ -12,6 +12,20 @@ export interface PusdUtxo {
   lockingBytecode?: string;
 }
 
+/**
+ * UTXOs admitted to the PUSD selector must already have raw provenance,
+ * wallet-script ownership and a fresh unspent-state check.
+ */
+export interface AuthenticatedPusdUtxo extends PusdUtxo {
+  lockingBytecode: string;
+  provenance: {
+    rawTransactionVerified: true;
+    txid: string;
+    vout: number;
+    unspentChecked: true;
+  };
+}
+
 export interface PusdInputPlan {
   inputs: PusdUtxo[];
   totalTokenAmount: bigint;
@@ -20,13 +34,13 @@ export interface PusdInputPlan {
 }
 
 /** Select exact-category, fungible-only PUSD UTXOs from fresh provider data. */
-export function planPusdInputs(utxos: PusdUtxo[], requiredTokenAmount: bigint): PusdInputPlan {
+export function planPusdInputs(utxos: AuthenticatedPusdUtxo[], requiredTokenAmount: bigint): PusdInputPlan {
   if (requiredTokenAmount <= 0n || requiredTokenAmount > CASH_TOKEN_MAX_AMOUNT) {
     throw new Error("Requested PUSD amount is outside the CashTokens fungible amount range.");
   }
 
   const seen = new Set<string>();
-  const candidates: PusdUtxo[] = [];
+  const candidates: AuthenticatedPusdUtxo[] = [];
   for (const utxo of utxos) {
     if (!/^[0-9a-f]{64}$/i.test(utxo.txid) || !Number.isSafeInteger(utxo.vout) || utxo.vout < 0) {
       throw new Error("UTXO has an invalid outpoint.");
@@ -55,7 +69,7 @@ export function planPusdInputs(utxos: PusdUtxo[], requiredTokenAmount: bigint): 
     return keyA.localeCompare(keyB);
   });
 
-  const inputs: PusdUtxo[] = [];
+  const inputs: AuthenticatedPusdUtxo[] = [];
   let totalTokenAmount = 0n;
   for (const utxo of candidates) {
     inputs.push(utxo);
