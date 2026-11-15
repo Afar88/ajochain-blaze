@@ -65,7 +65,7 @@ function addGenesis(provider: MockNetworkProvider, contract: Contract, escrows: 
   }
 }
 
-async function current(provider: MockNetworkProvider, contract: Contract, escrows: Contract[]) {
+async function current(contract: Contract, escrows: Contract[]) {
   const all = await contract.getUtxos();
   const state = all.find(u => u.token?.nft?.capability === 'minting') as SpendableUtxo;
   const receipts = members.map((_, i) => all.find(u =>
@@ -79,7 +79,7 @@ async function current(provider: MockNetworkProvider, contract: Contract, escrow
 }
 
 async function deposit(provider: MockNetworkProvider, contract: Contract, escrows: Contract[], index: number, fundingIndex = index, escrowIndex = index) {
-  const { state, receipts, emptyEscrows } = await current(provider, contract, escrows);
+  const { state, receipts, emptyEscrows } = await current(contract, escrows);
   const escrow = emptyEscrows[escrowIndex];
   const memberAddress = tokenAddress(members[fundingIndex].pkh);
   const funding = provider.addUtxo(memberAddress, randomUtxo({
