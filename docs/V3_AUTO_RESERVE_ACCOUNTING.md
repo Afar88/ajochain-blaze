@@ -8,14 +8,14 @@ New V3 circles do not require each member to pre-fund the entire contribution cy
 
 For a circle with:
 
-- (N) members;
-- contribution (C) per member per round;
-- zero-based payout round (r);
+- `N` members;
+- contribution `C` per member per round;
+- zero-based payout round `r`;
 
 the transaction computes:
 
 - Gross round pot: (N \times C)
-- Current-round debit from every receipt: (C)
+- Current-round debit from every receipt: `C`
 - Recipient's future-contribution reserve: ((N-r-1) \times C)
 - Project fee: 1% of the gross pot
 - Net amount sent to the recipient: (N \times C - 1\%\text{ fee} - (N-r-1) \times C)
@@ -24,7 +24,7 @@ The reserve is not a platform fee and is not sent to another member. It remains 
 
 ## Eligibility before a payout
 
-- A member who has not yet received a payout must have at least one current contribution (C) in their receipt.
+- A member who has not yet received a payout must have at least one current contribution `C` in their receipt.
 - A member who has already received a payout must have the entire remaining obligation ((N-r) \times C) reserved in their own receipt.
 - The payout fails unless every member meets the corresponding threshold.
 - After the payout, each receipt is debited by (C), then the current recipient's receipt is credited with the entire remaining reserve.
