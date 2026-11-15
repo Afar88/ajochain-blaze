@@ -2,7 +2,7 @@
 
 **Status: Chipnet prototype only; not approved for real-value Mainnet circles.**
 
-New V3 circles do not require each member to pre-fund the entire contribution cycle. Instead, each member funds the current round. When that member receives their scheduled payout, the covenant atomically retains the full value of every contribution they still owe and credits that reserve to their own immutable member receipt.
+New V3 circles do not require each member to pre-fund the entire contribution cycle. Instead, each member funds the current round. When that member receives their scheduled payout, the covenant atomically withholds exactly one contribution for their next scheduled round and credits that reserve to their own immutable member receipt. The amount is calculated as a percentage of the recipient’s payout, but the satoshi amount is fixed to one contribution.
 
 ## Payout rule
 
@@ -28,19 +28,19 @@ The reserve is not a platform fee and is not sent to another member. It remains 
 - A member who has already received a payout must have the entire remaining obligation ((N-r) \times C) reserved in their own receipt.
 - The payout fails unless every member meets the corresponding threshold.
 - After the payout, each receipt is debited by (C), then the current recipient's receipt is credited with the entire remaining reserve.
-- The final recipient has no future contributions, so the reserve is zero and their payout is reduced only by the existing 1% project fee.
+- The final recipient has no next contribution, so the reserve is zero and their payout is reduced only by the existing 1% project fee.
 
 ## Example
 
-For five members contributing 0.002 BCH each:
+For five members contributing 0.002 BCH each, on the first payout:
 
 - Gross pot: 0.010 BCH
-- First recipient's future reserve: 0.008 BCH (four remaining contributions)
+- First recipient's next-installment reserve: 0.002 BCH (one contribution, even though four rounds remain)
 - Project fee: 0.0001 BCH
-- First recipient receives: 0.0019 BCH
+- First recipient receives: 0.0079 BCH
 - The 0.008 BCH reserve remains assigned to that recipient's member receipt and pays their next four scheduled contributions automatically.
 
-## Compatibility
+\n## Important limitation\n\nThis rule secures exactly the recipient's next installment, not every future installment. If that member stops contributing permanently, the prefunded amount can cover the following round once. After it is consumed, later rounds still require that member to contribute again. Therefore this rule reduces immediate post-payout default risk, but by itself it does not guarantee completion of every later round. A full-cycle guarantee would require more collateral or the larger remaining-commitment reserve, which is a different policy.\n\n## Compatibility
 
 - V3 uses a new covenant and a new compiled artifact. Existing V1 and V2 circle addresses and rules are not changed.
 - V2 full-cycle escrow circles remain readable with their original covenant and original funding requirements.
