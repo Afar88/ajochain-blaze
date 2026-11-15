@@ -269,8 +269,10 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
     memberIndex,
     credited: amount,
     newCredit: oldCredit + amount,
-    shortfall: maximumEscrow > oldCredit ? maximumEscrow - oldCredit : 0n,
-    requiredCredit: maximumEscrow,
+    shortfall: params.covenant === 'fee-v2-escrow'
+      ? (maximumEscrow > oldCredit ? maximumEscrow - oldCredit : 0n)
+      : (params.contribution > oldCredit ? params.contribution - oldCredit : 0n),
+    requiredCredit: params.covenant === 'fee-v2-escrow' ? maximumEscrow : params.contribution,
   };
 }
 
