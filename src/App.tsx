@@ -10,6 +10,7 @@ import { NETWORKS, type NetworkId } from "./core/network";
 import { validateCircleDraft, type ContributionFrequency } from "./core/circle";
 import type { CircleAsset } from "./core/member-ledger";
 import { CLOSED_MAINNET_GATES, MAINNET_GATE_KEYS, MAINNET_GATE_LABELS, evaluateMainnetFlow } from "./core/mainnet-flow";
+import { isAssetAvailableOnNetwork, PUSD_ASSET } from "./core/assets";
 
 type CircleDraftView = {
   name: string;
@@ -110,6 +111,7 @@ export default function App() {
     frequency,
     members: members.map((name) => ({ name })),
   }), [circleName, asset, amount, frequency, members]);
+  const assetNetworkSupported = isAssetAvailableOnNetwork(asset, network);
 
   const openCreate = () => {
     if (draft) {
@@ -135,7 +137,7 @@ export default function App() {
   const handleDraftSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setAttemptedSubmit(true);
-    if (!validation.valid) return;
+    if (!validation.valid || !assetNetworkSupported) return;
     setDraft({ name: circleName.trim(), asset, amount: amount.trim(), frequency, members });
     setShowCreate(false);
     setActiveNav("circles");
@@ -365,9 +367,11 @@ export default function App() {
                   <select id="circle-asset" className="form-control" value={asset} onChange={(event) => setAsset(event.target.value as CircleAsset)}>
                     <option value="BCH">Bitcoin Cash (BCH)</option><option value="PUSD">ParyonUSD (PUSD)</option>
                   </select>
+                  {asset === "PUSD" && <small className="field-hint">PUSD mainnet CashToken · 2 decimals · verified category ID. This is a draft preview only; PUSD contract transfers are not enabled.</small>}
                 </div>
                 <div><label className="field-label" htmlFor="circle-amount">Contribution per member</label>
-                  <input id="circle-amount" className="form-control" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.01" />
+                  <input id="circle-amount" className="form-control" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder={asset === "PUSD" ? "10.00" : "0.01"} />
+                  <small className="field-hint">{asset === "PUSD" ? "PUSD amount, up to 2 decimal places" : "BCH amount, up to 8 decimal places"}</small>
                 </div>
               </div>
               <label className="field-label" htmlFor="circle-frequency">Contribution schedule</label>
@@ -377,8 +381,11 @@ export default function App() {
               <label className="field-label" htmlFor="circle-members">Member names <span>One name per line · minimum 2</span></label>
               <textarea id="circle-members" className="form-control members-input" value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder={"You\nMember 2"} />
               <div className="member-count"><Users size={14} /> {members.length} member{members.length === 1 ? "" : "s"} listed <span>At least 2 required</span></div>
-              {attemptedSubmit && !validation.valid && (
-                <div className="form-errors" role="alert">{validation.errors.map((error) => <p key={error}>{error}</p>)}</div>
+              {attemptedSubmit && (!validation.valid || !assetNetworkSupported) && (
+                <div className="form-errors" role="alert">
+                  {validation.errors.map((error) => <p key={error}>{error}</p>)}
+                  {!assetNetworkSupported && <p>PUSD is a Bitcoin Cash mainnet token. Switch the app network to Mainnet; there is no verified PUSD Chipnet category configured.</p>}
+                </div>
               )}
               <div className="draft-disclaimer"><ShieldCheck size={16} /><span><b>Safe preview only</b><small>This creates a temporary on-screen draft. Wallet addresses and member identities are not verified, and no transaction is signed or broadcast.</small></span></div>
               <div className="modal-actions"><button type="button" className="secondary-button" onClick={closeCreate}>Cancel</button><button type="submit" className="primary-button"><span>Preview circle</span><ArrowRight size={16} /></button></div>
