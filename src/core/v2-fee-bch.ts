@@ -243,11 +243,19 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
   const allCredits = allReceipts.map(u => v2FeeCreditFromCommitment(u.token!.nft!.commitment));
   if (state.satoshis !== allCredits.reduce((sum, credit) => sum + credit, STATE_DUST)) throw new Error('State BCH does not match the exact member-credit total. Stop and investigate.');
   const receipt = allReceipts[memberIndex];
+  const remainingRounds = params.members.length - currentRound;
+  const maximumEscrow = params.covenant === 'fee-v2-escrow'
+    ? BigInt(remainingRounds) * params.contribution
+    : CASH_SCRIPT_INT_MAX;
   const fee = feeEstimate(params.members.length);
   if (fee > params.maxFee) throw new Error('The configured maxFee is too low for a safe V2 member deposit.');
   const funding = pickFunding((await provider.getUtxos(walletAddress)).filter(u => !u.token), amount + fee + CHANGE_DUST);
   const oldCredit = v2FeeCreditFromCommitment(receipt.token!.nft!.commitment);
   if (oldCredit + amount > CASH_SCRIPT_INT_MAX) throw new Error('This deposit would exceed the supported member-credit limit.');
+  if (oldCredit + amount > maximumEscrow) {
+    throw new Error('Deposit exceeds this member\'s exact remaining circle commitment. Add no more than ' +
+      (maximumEscrow > oldCredit ? (maximumEscrow - oldCredit).toString() : '0') + ' sats.');
+  }
   const builder = new TransactionBuilder({ provider })
     .addInput(state, contract.unlock.addCredit(BigInt(memberIndex), amount))
     .addInput(receipt, contract.unlock.addCredit(BigInt(memberIndex), amount))
