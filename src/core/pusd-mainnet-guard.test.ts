@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { verifyAndBroadcastPusdTransfer } from "./pusd-api";
 import {
   assertPusdMainnetSpendingAllowed,
   PUSD_MAINNET_SPENDING_ENABLED,
@@ -22,5 +23,10 @@ describe("PUSD mainnet spend kill-switch", () => {
     expect(() => assertPusdMainnetSpendingAllowed({
       network: "mainnet", asset: "BCH",
     })).not.toThrow();
+  });
+
+  it("blocks direct client broadcast-function calls before any API request", async () => {
+    await expect(verifyAndBroadcastPusdTransfer({} as never))
+      .rejects.toThrow(/PUSD mainnet spending is disabled/);
   });
 });
