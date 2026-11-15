@@ -334,6 +334,30 @@ async function fetchPreviousTransaction(session, txid) {
   return { hex: hex.toLowerCase(), decoded };
 }
 
+export function assertPreviousTransactionsAgree(transactions) {
+  if (!Array.isArray(transactions) || transactions.length < 2) {
+    throw new Error("At least two raw previous-transaction responses are required.");
+  }
+  const normalized = transactions.map((transaction) => {
+    if (!transaction || !isHex(transaction.hex)) {
+      throw new Error("An Electrum endpoint returned malformed raw previous-transaction bytes.");
+    }
+    return transaction.hex.toLowerCase();
+  });
+  if (normalized.some((hex) => hex !== normalized[0])) {
+    throw new Error("Independent Electrum endpoints disagree on raw previous-transaction bytes.");
+  }
+  return normalized[0];
+}
+
+async function fetchQuorumPreviousTransaction(sessions, txid) {
+  const transactions = await Promise.all(
+    sessions.map((session) => fetchPreviousTransaction(session, txid)),
+  );
+  const agreedHex = assertPreviousTransactionsAgree(transactions);
+  return transactions[0].hex === agreedHex ? transactions[0] : { ...transactions[0], hex: agreedHex };
+}
+
 async function mapConcurrent(values, concurrency, mapper) {
   const results = new Array(values.length);
   let nextIndex = 0;
@@ -358,12 +382,15 @@ async function getVerifiedAddressUtxos(sessions, tip, address) {
   const confirmed = all.filter((utxo) => utxo.height > 0);
   const unconfirmedCount = all.length - confirmed.length;
   const rawPreviousTransactions = {};
+  const previousPromises = new Map();
   const walletUtxos = await mapConcurrent(confirmed, 8, async (candidate) => {
-    let previous = rawPreviousTransactions[candidate.txid];
-    if (!previous) {
-      previous = await fetchPreviousTransaction(sessions[0], candidate.txid);
-      rawPreviousTransactions[candidate.txid] = previous.hex;
+    let previousPromise = previousPromises.get(candidate.txid);
+    if (!previousPromise) {
+      previousPromise = fetchQuorumPreviousTransaction(sessions, candidate.txid);
+      previousPromises.set(candidate.txid, previousPromise);
     }
+    const previous = await previousPromise;
+    rawPreviousTransactions[candidate.txid] = previous.hex;
     const output = previous.decoded.outputs[candidate.vout];
     if (!output) throw new Error("Electrum referenced a transaction output index that does not exist.");
     if (binToHex(output.lockingBytecode).toLowerCase() !== lockingBytecode) {
@@ -490,7 +517,7 @@ async function verifyPusdSpendAndBroadcast(sessions, tip, body) {
     if (!initialUnspent.has(key)) throw new Error("Input " + index + " is already spent or is not present in every Electrum server's UTXO set.");
     let previous = previousByTxid[outpointTxid];
     if (!previous) {
-      previous = await fetchPreviousTransaction(sessions[0], outpointTxid);
+      previous = await fetchQuorumPreviousTransaction(sessions, outpointTxid);
       previousByTxid[outpointTxid] = previous;
     }
     const sourceOutput = previous.decoded.outputs[input.outpointIndex];
