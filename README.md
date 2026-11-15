@@ -58,6 +58,10 @@ A separate workflow builds and deploys the static app to GitHub Pages on pushes 
 
 See [PUSD CashToken integration status](docs/PUSD_CASHTOKEN_INTEGRATION.md) for the verified ParyonUSD category, two-decimal base-unit rules, and the still-blocked token-aware covenant work. See [WizardConnect and Selene integration](docs/WIZARDCONNECT_SELENE_PORT.md) for the mobile reconnect behaviour and signing safeguards. See [member accounting and circle completion](docs/MEMBER_ACCOUNTING_AND_CIRCLE_COMPLETION.md) for the rule that members must continue contributing after receiving a payout, and the V2 covenant design that blocks a round when any member is short.
 
+## Mainnet launch status
+
+The current deployment is a **Mainnet read-only release**, not an approved real-value circles release. Classic BCH Mainnet signing/broadcast and PUSD Mainnet spending remain fail-closed; the V2 member-credit covenant remains Chipnet-only. The server cannot be switched to PUSD broadcasting with an environment variable. See [Mainnet release checklist](docs/MAINNET_RELEASE_CHECKLIST.md) and [PUSD Mainnet spending checklist](docs/PUSD_MAINNET_RELEASE_CHECKLIST.md) for the evidence required before any real-value release.
+
 ## Network and safety policy
 
 Mainnet compatibility is a product goal; it is not permission to expose users to unaudited contracts or unsafe transactions.
