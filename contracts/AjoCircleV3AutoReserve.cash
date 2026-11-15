@@ -1,6 +1,6 @@
 pragma cashscript ^0.14.0;
 
-// AjoChain automatic payout-reserve covenant: each recipient's entire remaining contribution obligation is retained from their payout.
+// AjoChain automatic payout-reserve covenant: exactly one next contribution is retained from each non-final recipient's payout.
 //
 // NFT layout (one CashTokens category per circle):
 //   - Input/output 0: minting state NFT, commitment = 0x54 | round (1 byte) | hasPaid (1 byte)
