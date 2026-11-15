@@ -25,8 +25,8 @@ export type LedgerResult =
 
 /**
  * Applies one confirmed contribution to the individual member's ledger.
- * Payment IDs are idempotency keys; a period can be credited only once per
- * member, wallet and asset. All amounts stay in integer base units.
+ * Payment IDs are namespaced by period for safe retries. A period can be
+ * credited only once per member, wallet and asset. Amounts stay in base units.
  */
 export function applyMemberPayment(
   current: MemberBalance[],
@@ -40,13 +40,14 @@ export function applyMemberPayment(
     return { ok: false, reason: "Amounts must be positive" };
   }
 
+  const paymentKey = `${payment.periodId}:${payment.paymentId}`;
   const existing = current.find(
     (entry) => entry.memberId === payment.memberId &&
       entry.walletAddress === payment.walletAddress &&
       entry.asset === payment.asset,
   );
 
-  if (existing?.paymentIds.includes(payment.paymentId)) {
+  if (existing?.paymentIds.includes(paymentKey)) {
     return { ok: true, duplicate: true, balances: current };
   }
 
@@ -60,7 +61,6 @@ export function applyMemberPayment(
     return { ok: false, reason: "Contribution period already credited" };
   }
 
-  const paymentKey = `${payment.periodId}:${payment.paymentId}`;
   const priorCredit = existing?.leftoverBaseUnits ?? 0n;
   const available = priorCredit + payment.amountBaseUnits;
   const contributed = available >= contributionDueBaseUnits
