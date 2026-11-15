@@ -161,7 +161,7 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
     if (!initiator) { setError("No verified Chipnet receive address is available for this wallet."); return; }
     setBusy(true);
     try {
-      const members = membersText.split(/\\r?\\n/).map((entry) => entry.trim()).filter(Boolean);
+      const members = membersText.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean);
       const draft: V2FeeCircleDraft = {
         version: 2,
         covenant: "fee-v1",
@@ -173,17 +173,16 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
         initiator,
         treasury: treasury.trim(),
       };
-      if (!/^\\d+$/.test(maxFee.trim())) throw new Error("Maximum miner fee must be a whole number of satoshis.");
+      if (!/^\d+$/.test(maxFee.trim())) throw new Error("Maximum miner fee must be a whole number of satoshis.");
       const plan = await planV2FeeGenesis(draft, initiator);
       const gross = BigInt(members.length) * draft.contribution;
-      const projectFee = gross / 100n;
       if (!window.confirm(
-        "Create new V2 fee circle on Chipnet?\\n\\n" +
-        plan.contract.address + "\\n" +
-        members.length + " member receipts will be created.\\n" +
-        "Contribution: " + formatBch(draft.contribution) + " per member.\\n" +
-        "Project fee: 1% of each gross round payout, paid to " + draft.treasury + ".\\n" +
-        "Miner fee is separate and capped at " + draft.maxFee.toString() + " sats.\\n\\n" +
+        "Create new V2 fee circle on Chipnet?\n\n" +
+        plan.contract.address + "\n" +
+        members.length + " member receipts will be created.\n" +
+        "Contribution: " + formatBch(draft.contribution) + " per member.\n" +
+        "Project fee: 1% of each gross round payout, paid to " + draft.treasury + ".\n" +
+        "Miner fee is separate and capped at " + draft.maxFee.toString() + " sats.\n\n" +
         "This is experimental Chipnet software, not for real funds.",
       )) return;
       const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Create AjoChain V2 fee circle: " + draft.name);
@@ -210,7 +209,7 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
       const units = parseAssetAmount("BCH", depositAmount);
       const plan = await planV2FeeDeposit(active, memberIndex, units, address);
       if (!window.confirm(
-        "Add " + formatBch(units) + " to Member " + (memberIndex + 1) + "'s own receipt?\\n" +
+        "Add " + formatBch(units) + " to Member " + (memberIndex + 1) + "'s own receipt?\n" +
         "Only this member's wallet can fund this slot.",
       )) return;
       const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Add my V2 AjoChain member credit");
@@ -230,11 +229,11 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
     try {
       const plan = await planV2FeePayout(active);
       if (!window.confirm(
-        "Pay round " + (plan.round + 1) + " to Member " + (plan.round + 1) + "?\\n\\n" +
-        "Gross pot: " + formatBch(plan.gross) + "\\n" +
-        "1% project fee: " + formatBch(plan.projectFee) + "\\n" +
-        "Estimated miner fee: up to " + plan.minerFee.toString() + " sats\\n" +
-        "Recipient receives approximately: " + formatBch(plan.payout) + "\\n\\n" +
+        "Pay round " + (plan.round + 1) + " to Member " + (plan.round + 1) + "?\n\n" +
+        "Gross pot: " + formatBch(plan.gross) + "\n" +
+        "1% project fee: " + formatBch(plan.projectFee) + "\n" +
+        "Estimated miner fee: up to " + plan.minerFee.toString() + " sats\n" +
+        "Recipient receives approximately: " + formatBch(plan.payout) + "\n\n" +
         "Every member's receipt will be debited by one full contribution, including the recipient.",
       )) return;
       const provider = await getClassicProvider("chipnet");
@@ -320,7 +319,7 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
             <label>Contribution per member (BCH)<input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" required /></label>
             <label>Maximum miner fee (satoshis)<input value={maxFee} onChange={(event) => setMaxFee(event.target.value)} inputMode="numeric" required /></label>
             <label>Fixed Chipnet treasury address<input value={treasury} onChange={(event) => setTreasury(event.target.value)} required /></label>
-            <label>Member Chipnet BCH addresses · one per line<textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder="bchtest:…\\nbchtest:…" required /></label>
+            <label>Member Chipnet BCH addresses · one per line<textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder="bchtest:…\nbchtest:…" required /></label>
             <button className="primary-button" type="submit" disabled={busy || network !== "chipnet" || !walletConnected}>
               {network !== "chipnet" ? "Switch to Chipnet" : !walletConnected ? "Connect wallet first" : "Create fee circle"}
             </button>
