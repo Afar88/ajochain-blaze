@@ -166,6 +166,124 @@ describe("AjoChain V3 automatic future-contribution reserve covenant", () => {
     await expect(triggerPayout(provider, contract)).rejects.toThrow();
   });
 
+  it("carries one contribution into the next round, but blocks a later missed installment", async () => {
+    const five = [31, 32, 33, 34, 35].map(key);
+    const fiveCategory = "bc".repeat(32);
+    const fiveTreasury = key(38);
+    const fiveInitiator = key(39);
+    const provider = new MockNetworkProvider();
+    const fiveContract = new Contract(artifact, [
+      five[0].pkh, five[1].pkh, five[2].pkh, five[3].pkh, five[4].pkh,
+      5n, CONTRIBUTION, 20_000n, hexToBin(fiveCategory).reverse(),
+      fiveInitiator.pkh, fiveTreasury.pkh,
+    ], { provider, contractType: "p2sh32" });
+
+    provider.addUtxo(fiveContract.address, randomUtxo({
+      satoshis: DUST,
+      token: { category: fiveCategory, amount: 0n, nft: { capability: "minting", commitment: "540000" } },
+    }));
+    for (let index = 0; index < five.length; index++) {
+      provider.addUtxo(fiveContract.address, randomUtxo({
+        satoshis: DUST,
+        token: { category: fiveCategory, amount: 0n, nft: { capability: "none", commitment: commitment(index, 0n) } },
+      }));
+    }
+
+    const readFive = async () => {
+      const utxos = await fiveContract.getUtxos();
+      const state = utxos.find((utxo) => utxo.token?.nft?.capability === "minting") as SpendableUtxo;
+      const receipts = five.map((_, index) => utxos.find((utxo) =>
+        utxo.token?.nft?.commitment?.startsWith("52" + index.toString(16).padStart(2, "0")),
+      ) as SpendableUtxo);
+      return { state, receipts };
+    };
+
+    const depositFive = async (index: number) => {
+      const { state, receipts } = await readFive();
+      const address = pkhToAddress(five[index].pkh, "chipnet");
+      const funding = provider.addUtxo(address, randomUtxo({ satoshis: CONTRIBUTION + 20_000n }));
+      const oldCredit = v2FeeCreditFromCommitment(receipts[index].token!.nft!.commitment);
+      const builder = new TransactionBuilder({ provider })
+        .addInput(state, fiveContract.unlock.addCredit(BigInt(index), CONTRIBUTION))
+        .addInput(receipts[index], fiveContract.unlock.addCredit(BigInt(index), CONTRIBUTION))
+        .addInput(funding, five[index].signer.unlockP2PKH())
+        .addOutput({
+          to: fiveContract.tokenAddress,
+          amount: state.satoshis + CONTRIBUTION,
+          token: { category: fiveCategory, amount: 0n, nft: { capability: "minting", commitment: state.token!.nft!.commitment } },
+        })
+        .addOutput({
+          to: fiveContract.tokenAddress,
+          amount: receipts[index].satoshis,
+          token: { category: fiveCategory, amount: 0n, nft: { capability: "none", commitment: commitment(index, oldCredit + CONTRIBUTION) } },
+        })
+        .addOutput({ to: address, amount: 10_000n });
+      await builder.send();
+    };
+
+    const payoutFive = async () => {
+      const { state, receipts } = await readFive();
+      const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
+      const pot = BigInt(five.length) * CONTRIBUTION;
+      const projectFee = pot / 100n;
+      const reserve = round < five.length - 1 ? CONTRIBUTION : 0n;
+      const feeAddress = pkhToAddress(fiveInitiator.pkh, "chipnet");
+      const feeFunding = provider.addUtxo(feeAddress, randomUtxo({ satoshis: 50_000n }));
+      const builder = new TransactionBuilder({ provider })
+        .addInput(state, fiveContract.unlock.payout())
+        .addInputs(receipts, fiveContract.unlock.payout())
+        .addInput(feeFunding, fiveInitiator.signer.unlockP2PKH())
+        .addOutput({
+          to: fiveContract.tokenAddress,
+          amount: state.satoshis - pot + reserve,
+          token: { category: fiveCategory, amount: 0n, nft: { capability: "minting", commitment: "54" + (round + 1).toString(16).padStart(2, "0") + "01" } },
+        });
+      for (let index = 0; index < receipts.length; index++) {
+        const oldCredit = v2FeeCreditFromCommitment(receipts[index].token!.nft!.commitment);
+        const nextCredit = oldCredit - CONTRIBUTION + (index === round ? reserve : 0n);
+        builder.addOutput({
+          to: fiveContract.tokenAddress,
+          amount: receipts[index].satoshis,
+          token: { category: fiveCategory, amount: 0n, nft: { capability: "none", commitment: commitment(index, nextCredit) } },
+        });
+      }
+      builder.addOutput({ to: pkhToAddress(fiveTreasury.pkh, "chipnet"), amount: projectFee });
+      builder.addOutput({
+        to: pkhToAddress(five[round].pkh, "chipnet"),
+        amount: pot - projectFee - reserve,
+      });
+      builder.addOutput({ to: feeAddress, amount: feeFunding.satoshis - 15_000n });
+      await builder.send();
+      return { reserve, pot, projectFee };
+    };
+
+    // All five members fund round one. Member one receives one next installment,
+    // not the four future installments remaining in the overall circle.
+    for (let index = 0; index < five.length; index++) await depositFive(index);
+    const first = await payoutFive();
+    expect(first.reserve).toBe(CONTRIBUTION);
+    let circle = await readFive();
+    expect(circle.state.satoshis).toBe(DUST + CONTRIBUTION);
+    expect(v2FeeCreditFromCommitment(circle.receipts[0].token!.nft!.commitment)).toBe(CONTRIBUTION);
+    expect(circle.receipts.slice(1).every((receipt) =>
+      v2FeeCreditFromCommitment(receipt.token!.nft!.commitment) === 0n,
+    )).toBe(true);
+
+    // The one retained contribution lets member one continue through round two
+    // without sending a fresh deposit. The other four members fund that round.
+    for (let index = 1; index < five.length; index++) await depositFive(index);
+    const second = await payoutFive();
+    expect(second.reserve).toBe(CONTRIBUTION);
+    circle = await readFive();
+    expect(v2FeeCreditFromCommitment(circle.receipts[0].token!.nft!.commitment)).toBe(0n);
+    expect(v2FeeCreditFromCommitment(circle.receipts[1].token!.nft!.commitment)).toBe(CONTRIBUTION);
+
+    // The first recipient's single reserve is now consumed. If that member stops
+    // contributing completely, the next scheduled payout is blocked.
+    for (let index = 2; index < five.length; index++) await depositFive(index);
+    await expect(payoutFive()).rejects.toThrow();
+  }, 90000);
+
   it("reserves exactly one next contribution for the first recipient in a five-member circle", () => {
     const params = {
       version: 2 as const,
