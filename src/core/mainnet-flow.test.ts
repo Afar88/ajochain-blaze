@@ -40,4 +40,19 @@ describe("mainnet release flow", () => {
     expect(result.canBroadcast).toBe(false);
     expect(result.missing).toContain("walletSessionVerified");
   });
+
+  it("does not skip required Mainnet phases when evidence arrives out of order", () => {
+    expect(evaluateMainnetFlow({ transactionPlanReviewed: true }).phase).toBe("read-only");
+    expect(evaluateMainnetFlow({
+      circleStateReconciled: true,
+      memberAccountingVerified: true,
+      contractAuditApproved: true,
+      tokenPolicyVerified: true,
+    }).phase).toBe("read-only");
+    expect(evaluateMainnetFlow({
+      networkIdentityVerified: true,
+      walletSessionVerified: true,
+      transactionPlanReviewed: true,
+    }).phase).toBe("state-reconciliation");
+  });
 });
