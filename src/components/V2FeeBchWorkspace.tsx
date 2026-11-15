@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { ArrowRight, Copy, RefreshCw, ShieldCheck, Users } from "lucide-react";
+import { Copy, RefreshCw, ShieldCheck } from "lucide-react";
 import { parseAssetAmount } from "../core/assets";
 import { classicAddressToPkh, getClassicProvider } from "../core/classic-bch";
 import { formatBch, type NetworkId } from "../core/network";
@@ -187,7 +187,8 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
         "This is experimental Chipnet software, not for real funds.",
       )) return;
       const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Create AjoChain V2 fee circle: " + draft.name);
-      const txid = await plan.provider.sendRawTransaction(signed.signedTransaction);
+      const provider = await getClassicProvider("chipnet");
+      const txid = await provider.sendRawTransaction(signed.signedTransaction);
       persist(plan.params);
       setNotice("V2 fee circle genesis broadcast on Chipnet. Transaction: " + txid);
     } catch (cause) { setError(errorText(cause)); }
