@@ -35,15 +35,15 @@ export function validateCircleDraft(input: CircleDraftInput): CircleDraftValidat
   if (!CIRCLE_ASSETS.includes(input.asset)) {
     errors.push("Choose BCH or PUSD.");
   }
-  if (!/^\\d+(?:\\.\\d+)?$/.test(input.contributionAmount.trim()) ||
-      !/[1-9]/.test(input.contributionAmount.replace(/\\./g, ""))) {
+  const amount = input.contributionAmount.trim();
+  if (!/^\d+(?:\.\d+)?$/.test(amount) || !/[1-9]/.test(amount.replace(/\./g, ""))) {
     errors.push("Enter a contribution amount greater than zero.");
   }
   if (!["daily", "weekly", "monthly"].includes(input.frequency)) {
     errors.push("Choose a valid contribution schedule.");
   }
   if (input.members.length < MIN_CIRCLE_MEMBERS) {
-    errors.push(`A circle needs at least ${MIN_CIRCLE_MEMBERS} members.`);
+    errors.push("A circle needs at least 2 members.");
   }
   if (input.members.length > 50) {
     errors.push("A circle can have at most 50 members in this setup.");
