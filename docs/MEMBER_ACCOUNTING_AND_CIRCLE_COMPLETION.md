@@ -26,13 +26,17 @@ A payout is valid only when **every member's receipt credit is at least one full
 3. pays the full round pot (subject to the configured fee cap) to the member whose turn it is;
 4. keeps the member receipts alive with their remaining balances.
 
-This means the member who received round 1 must still fund their receipt for round 2. Receiving a payout does not discharge future contribution obligations. A member who stops contributing leaves their receipt below the required threshold and blocks the next payout rather than allowing the other members' funds to be distributed as if the circle were fully funded.
+This means the member who received an earlier payout must still fund their receipt for the next round. Receiving a payout does not discharge future contribution obligations. A member who stops contributing leaves their receipt below the required threshold and blocks the next payout rather than allowing the other members' funds to be distributed as if the circle were fully funded.
 
-After the last registered member receives a payout, the round index wraps back to the first member. The circle continues as a repeating rotation unless a separately designed, reviewed closure/refund mechanism is introduced. This is deliberate: members remain obligated to contribute in subsequent rounds even after receiving their first payout.
+### Circle completion
+
+The contract marks the circle permanently completed after the final registered member receives a payout by changing the state NFT commitment to `0x54`. The contract's `addCredit` and `payout` paths require the active `0x53 | round` state marker, so a completed circle cannot accept further contributions or payouts.
+
+This is a **finite rotation**, not an automatically repeating one. A repeating-cycle product requires a separately designed and reviewed state transition and must not be implied by this contract. Do not represent a completed circle as accepting another round.
 
 ## Credit and carry-forward
 
-Credits are per-member, not a group-wide balance. If a member contributes more than the current round requires, the extra amount remains on that member's receipt and can count toward a later round. The contract consumes one contribution from each receipt per payout, so overpayment by one member cannot silently cover another member's shortfall.
+Credits are per-member, not a group-wide balance. If a member contributes more than the current round requires, the extra amount remains with that member's receipt and can count toward a later round. The contract consumes one contribution from each receipt per payout, so overpayment by one member cannot silently cover another member's shortfall.
 
 ## Wallet and address binding
 
@@ -59,4 +63,4 @@ The wallet integration must:
 - One member's excess credit remains with that member and cannot satisfy another member's deficit.
 - Duplicate deposits cannot increase a receipt twice.
 - Wrong member funding address, altered member index, altered receipt commitment, missing receipt, wrong payout recipient, and incorrect round transition all fail.
-- After N payouts, the round index wraps to member 0 and the next cycle still requires every member to fund their own receipt.
+- After N payouts, the circle reaches the terminal state and rejects further deposits and payouts.
