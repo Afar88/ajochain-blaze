@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "npm run compile && tsc -b && vite build",
     "preview": "vite preview",
-    "test": "node --test server/*.test.mjs && npm run compile && vitest run src test --testTimeout=20000",
+    "test": "node --test server/mainnet-api.node.mjs && npm run compile && vitest run src test --testTimeout=20000",
     "typecheck": "tsc -b",
     "compile": "cashc contracts/AjoCircleV2.cash -o contracts/AjoCircleV2.json"
   },
