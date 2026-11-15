@@ -4,6 +4,24 @@
 
 A rotating savings circle must not become a pooled wallet that pays the first recipient and then relies on goodwill for later rounds. Every member remains responsible for contributing in every round, including a member who has already received an earlier payout.
 
+## New V2 full-cycle escrow covenant model
+
+New circles use the separately compiled `AjoCircleV2FeeEscrow.cash` covenant (invite version `fee-v2-escrow`). Existing `fee-v1` invites remain tied to their old immutable contract and are not silently migrated. The legacy fee-v1 model only checks one contribution per payout; a member who abandons a circle after receiving a payout can block every later payout.
+
+The full-cycle escrow version is designed to prevent that specific default:
+
+- Before the first payout, each member must lock `memberCount × contribution` in their own receipt: one contribution for every scheduled payout in the finite rotation.
+- Before payout round `r`, each receipt must contain at least `(memberCount - r) × contribution`. Deposits are capped at that exact remaining commitment, so excess BCH cannot become stranded.
+- Each payout debits one contribution from every receipt, including the member receiving that payout. The recipient's future obligations remain locked in their receipt; they cannot withdraw those funds after the first payout.
+- A payout is impossible while any member's remaining commitment is short, even when the pooled state balance appears sufficient.
+- After the final scheduled payout, the state NFT records the terminal round `memberCount`; deposits and payouts are rejected permanently.
+
+This changes the funding schedule: members pre-fund the entire cycle before the first payout instead of relying on future installment promises. For example, a 3-member circle with a 0.002 BCH contribution requires 0.006 BCH locked by each member before payout. This is the on-chain guarantee that an early recipient cannot take the first pot and leave later rounds unfunded.
+
+## Legacy rolling-credit V2 fee circles
+
+Existing `fee-v1` invites preserve their original rules and addresses. They only require one contribution per member at each payout. They are displayed as legacy rolling-credit circles in the UI and must not be described as having full-cycle default protection.
+
 ## Ported V2 covenant model
 
 The V2 BCH covenant source is `contracts/AjoCircleV2.cash`. It is a separate contract version; it does not change the rules of existing V1 or pooled-pot circles.
