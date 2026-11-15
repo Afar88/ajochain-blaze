@@ -32,7 +32,7 @@ function encodeCircle(params: V2FeeCircleParams) {
   const bytes = new TextEncoder().encode(json);
   let binary = "";
   bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
-  return btoa(binary).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/g, "");
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 function decodeCircle(encoded: string): V2FeeCircleParams {
   const normalized = encoded.replace(/-/g, "+").replace(/_/g, "/");
@@ -270,7 +270,7 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
     setError("");
     try {
       const candidate = restoreInput.trim();
-      const match = candidate.match(/#\\/v2-fee\\/([A-Za-z0-9_-]+)/) ?? candidate.match(/^\\/?v2-fee\\/([A-Za-z0-9_-]+)$/);
+      const match = candidate.match(/#\/v2-fee\/([A-Za-z0-9_-]+)/) ?? candidate.match(/^\/?v2-fee\/([A-Za-z0-9_-]+)$/);
       if (!match) throw new Error("Paste a recognised AjoChain V2 fee-circle invite.");
       const params = decodeCircle(match[1]);
       persist(params);
