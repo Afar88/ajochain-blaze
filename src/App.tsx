@@ -13,6 +13,7 @@ import { CLOSED_MAINNET_GATES, MAINNET_GATE_KEYS, MAINNET_GATE_LABELS, evaluateM
 import { formatAssetAmount, isAssetAvailableOnNetwork, parseAssetAmount, PUSD_ASSET } from "./core/assets";
 import { fetchPusdWalletBalance } from "./core/pusd-api";
 import ClassicBchWorkspace from "./components/ClassicBchWorkspace";
+import V2BchWorkspace from "./components/V2BchWorkspace";
 
 type CircleDraftView = {
   name: string;
@@ -350,6 +351,7 @@ export default function App() {
           </section>
 
           <ClassicBchWorkspace network={network} walletConnected={walletView.state === "connected"} />
+          <V2BchWorkspace network={network} walletConnected={walletView.state === "connected"} />
 
           <section className="workspace-grid">
             <div className="section-card circles-card" id="circles">
