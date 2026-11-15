@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyMemberPayment, applyMemberPayout, MIN_CIRCLE_MEMBERS } from "./member-ledger";
-import type { MemberPayment } from "./member-ledger";
+import type { MemberBalance, MemberPayment } from "./member-ledger";
 
 const payment: MemberPayment = {
   paymentId: "tx-001", memberId: "member-a", walletAddress: "bitcoincash:qmember",
@@ -10,7 +10,7 @@ const members = [
   { memberId: "member-a", walletAddress: "bitcoincash:qmember" },
   { memberId: "member-b", walletAddress: "bitcoincash:qother" },
 ];
-function addMemberB(current: ReturnType<typeof applyMemberPayment> extends infer _ ? any[] : never) {
+function addMemberB(current: MemberBalance[]) {
   const result = applyMemberPayment(current, {
     ...payment, paymentId: "tx-b1", memberId: "member-b", walletAddress: "bitcoincash:qother", amountBaseUnits: 100n,
   }, 100n);
