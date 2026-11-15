@@ -62,6 +62,21 @@ describe("member contribution ledger", () => {
     if (second.ok) expect(second.balances).toHaveLength(2);
   });
 
+  it("treats upper- and lower-case CashAddress forms as the same wallet", () => {
+    const first = applyMemberPayment([], payment, 100n);
+    if (!first.ok) throw new Error(first.reason);
+    const retry = applyMemberPayment(first.balances, {
+      ...payment, walletAddress: "BITCOINCASH:QMEMBER",
+    }, 100n);
+    expect(retry).toMatchObject({ ok: true, duplicate: true });
+    if (retry.ok) expect(retry.balances).toHaveLength(1);
+  });
+
+  it("rejects blank payment identity fields", () => {
+    expect(applyMemberPayment([], { ...payment, paymentId: " " }, 100n))
+      .toMatchObject({ ok: false, reason: "Missing payment identity" });
+  });
+
   it("rejects zero or negative contribution amounts", () => {
     expect(applyMemberPayment([], { ...payment, amountBaseUnits: 0n }, 100n))
       .toMatchObject({ ok: false, reason: "Amounts must be positive" });
