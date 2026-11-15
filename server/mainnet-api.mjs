@@ -12,6 +12,8 @@ import {
 } from "@bitauth/libauth";
 
 const PUSD_CATEGORY = "2469acc5afa4b10cb5b5c04afb89c3a3ffd61c5da9c01e26d00951cae2a02544";
+// Hard release gate: runtime environment variables must never activate real-value broadcasts.
+export const MAINNET_BROADCAST_ENABLED = false;
 const MAINNET_GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f";
 const DEFAULT_TIMEOUT_MS = 12_000;
 const MAX_TIP_AGE_MS = 3 * 60 * 60 * 1000;
@@ -690,7 +692,7 @@ export function createMainnetApiServer() {
             providerConfidence: sessions.length,
             tipHeight: tip.height,
             tipHash: tip.hash,
-            broadcastEnabled: process.env.ENABLE_MAINNET_BROADCAST === "true",
+            broadcastEnabled: MAINNET_BROADCAST_ENABLED,
           });
         });
         return;
@@ -730,7 +732,7 @@ export function createMainnetApiServer() {
         return;
       }
       if (request.method === "POST" && url.pathname === "/api/pusd/broadcast") {
-        if (process.env.ENABLE_MAINNET_BROADCAST !== "true") {
+        if (!MAINNET_BROADCAST_ENABLED) {
           sendJson(response, 403, { error: "Mainnet broadcast is disabled until the release review is approved." });
           return;
         }
