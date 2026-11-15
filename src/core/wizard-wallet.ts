@@ -286,8 +286,8 @@ class WizardWallet {
   }
 
   /** Resume a stored WizardConnect session after reload or mobile app switching. */
-  tryResume() {
-    if (this.state !== 'idle' && this.state !== 'disconnected') return;
+  tryResume(): boolean {
+    if (this.state !== 'idle' && this.state !== 'disconnected') return false;
     const now = Date.now();
     if (now - this.lastResumeAttemptAt < 5000) return;
     try {
@@ -296,12 +296,15 @@ class WizardWallet {
         this.lastResumeAttemptAt = now;
         this.walletName = s.walletName ?? null;
         this.connect({ privateKey: s.privateKey, secret: s.secret, walletPublicKey: s.walletPublicKey });
+        return true;
       }
+      return false;
     } catch (e) {
       this.lastResumeAttemptAt = now;
       this.error = e instanceof Error ? e.message : 'Could not restore the saved wallet session';
       this.state = 'idle';
       this.emit();
+      return false;
     }
   }
 
