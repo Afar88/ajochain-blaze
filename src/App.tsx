@@ -1,60 +1,298 @@
-import { useState } from "react";
-import { ArrowUpRight, CircleDollarSign, ShieldCheck, Users, Wallet, Plus, Activity, ChevronDown, X } from "lucide-react";
+import { useMemo, useState, type FormEvent } from "react";
+import {
+  Activity, ArrowRight, ArrowUpRight, CalendarDays, Check, ChevronDown,
+  CircleDollarSign, Clock3, CreditCard, LockKeyhole, Plus, ShieldCheck,
+  Sparkles, Users, Wallet, X,
+} from "lucide-react";
 import { useWizardConnect, WizardConnectQRDialog } from "@wizardconnect/react";
 import { NETWORKS, type NetworkId } from "./core/network";
+import { validateCircleDraft, type ContributionFrequency } from "./core/circle";
+import type { CircleAsset } from "./core/member-ledger";
+
+type CircleDraftView = {
+  name: string;
+  asset: CircleAsset;
+  amount: string;
+  frequency: ContributionFrequency;
+  members: string[];
+};
+
+const scheduleLabels: Record<ContributionFrequency, string> = {
+  daily: "Every day",
+  weekly: "Every week",
+  monthly: "Every month",
+};
 
 export default function App() {
   const [network, setNetwork] = useState<NetworkId>("mainnet");
   const [showNetworks, setShowNetworks] = useState(false);
-  const wc = useWizardConnect({ dappName: "AjoChain", sessionKey: "ajochain-wizardconnect-session" });
+  const [showCreate, setShowCreate] = useState(false);
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+  const [activeNav, setActiveNav] = useState("overview");
+  const [circleName, setCircleName] = useState("");
+  const [asset, setAsset] = useState<CircleAsset>("BCH");
+  const [amount, setAmount] = useState("0.01");
+  const [frequency, setFrequency] = useState<ContributionFrequency>("weekly");
+  const [membersText, setMembersText] = useState("You\nMember 2");
+  const [draft, setDraft] = useState<CircleDraftView | null>(null);
+
+  const wc = useWizardConnect({
+    dappName: "AjoChain",
+    sessionKey: "ajochain-wizardconnect-session",
+  });
   const selected = NETWORKS[network];
+  const members = useMemo(
+    () => membersText.split("\n").map((name) => name.trim()).filter(Boolean),
+    [membersText],
+  );
+  const validation = useMemo(() => validateCircleDraft({
+    name: circleName,
+    asset,
+    contributionAmount: amount,
+    frequency,
+    members: members.map((name) => ({ name })),
+  }), [circleName, asset, amount, frequency, members]);
+
+  const openCreate = () => {
+    setAttemptedSubmit(false);
+    setShowCreate(true);
+  };
+
+  const handleDraftSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setAttemptedSubmit(true);
+    if (!validation.valid) return;
+    setDraft({ name: circleName.trim(), asset, amount: amount.trim(), frequency, members });
+    setShowCreate(false);
+    setActiveNav("circles");
+  };
+
+  const closeCreate = () => {
+    setShowCreate(false);
+    setAttemptedSubmit(false);
+  };
 
   return (
     <main className="app-shell">
       <aside className="sidebar">
-        <a className="brand" href="/" aria-label="AjoChain home"><span className="brand-mark">a</span><span>AjoChain</span></a>
-        <div className="workspace-label">WORKSPACE</div>
-        <nav>
-          <a className="nav-item active" href="#overview"><Activity size={18}/> Overview</a>
-          <a className="nav-item" href="#circles"><Users size={18}/> My circles</a>
-          <a className="nav-item" href="#activity"><CircleDollarSign size={18}/> Transactions</a>
+        <a className="brand" href="#overview" onClick={() => setActiveNav("overview")} aria-label="AjoChain home">
+          <span className="brand-mark">a</span><span>AjoChain</span>
+        </a>
+        <div className="workspace-label">YOUR SPACE</div>
+        <nav aria-label="Main navigation">
+          <a className={activeNav === "overview" ? "nav-item active" : "nav-item"} href="#overview" onClick={() => setActiveNav("overview")}>
+            <Activity size={18} /><span>Overview</span>
+          </a>
+          <a className={activeNav === "circles" ? "nav-item active" : "nav-item"} href="#circles" onClick={() => setActiveNav("circles")}>
+            <Users size={18} /><span>My circles</span>
+          </a>
+          <a className={activeNav === "activity" ? "nav-item active" : "nav-item"} href="#activity" onClick={() => setActiveNav("activity")}>
+            <CreditCard size={18} /><span>Activity</span>
+          </a>
         </nav>
         <div className="sidebar-bottom">
-          <div className="security-note"><ShieldCheck size={17}/><span><b>Security first</b><small>Signing and broadcast remain disabled.</small></span></div>
-          <div className="profile"><div className="avatar">A</div><span><b>{wc.walletName ?? "Guest workspace"}</b><small>{wc.state === "connected" ? "WizardConnect connected" : "Wallet not connected"}</small></span></div>
+          <div className="security-note">
+            <ShieldCheck size={18} />
+            <span><b>Built with care</b><small>Transactions stay locked until verification is complete.</small></span>
+          </div>
+          <div className="profile">
+            <div className="avatar">{wc.state === "connected" ? "W" : "A"}</div>
+            <span><b>{wc.walletName ?? "Personal workspace"}</b><small>{wc.state === "connected" ? "Wallet connected" : "No wallet connected"}</small></span>
+          </div>
         </div>
       </aside>
+
       <section className="main-panel" id="overview">
         <header className="topbar">
-          <div className="breadcrumb">Workspace <span>/</span> Overview</div>
+          <div className="breadcrumb">Workspace <span>/</span> <b>{activeNav === "activity" ? "Activity" : activeNav === "circles" ? "My circles" : "Overview"}</b></div>
           <div className="top-actions">
             <div className="network-wrap">
               <button className="network-button" onClick={() => setShowNetworks(!showNetworks)} aria-expanded={showNetworks}>
-                <span className={network === "mainnet" ? "network-dot live" : "network-dot"} />{selected.label}<ChevronDown size={15}/>
+                <span className={network === "mainnet" ? "network-dot live" : "network-dot"} />
+                <span>{network === "mainnet" ? "Mainnet" : "Chipnet"}</span><ChevronDown size={14} />
               </button>
-              {showNetworks && <div className="network-menu">{(["mainnet", "chipnet"] as NetworkId[]).map((id) => <button key={id} onClick={() => { setNetwork(id); setShowNetworks(false); }}><span className={id === "mainnet" ? "network-dot live" : "network-dot"}/>{NETWORKS[id].label}</button>)}</div>}
+              {showNetworks && (
+                <div className="network-menu">
+                  {(["mainnet", "chipnet"] as NetworkId[]).map((id) => (
+                    <button key={id} onClick={() => { setNetwork(id); setShowNetworks(false); }}>
+                      <span className={id === "mainnet" ? "network-dot live" : "network-dot"} />{NETWORKS[id].label}
+                      {network === id && <Check size={14} />}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-            {wc.state === "connected" ? <button className="connect-button" onClick={() => void wc.disconnect()}><X size={17}/> Disconnect {wc.walletName ?? "wallet"}</button> : <button className="connect-button" onClick={() => wc.connect()} disabled={wc.state === "connecting"}><Wallet size={17}/> {wc.state === "connecting" ? "Waiting for wallet…" : "Connect with WizardConnect"}</button>}
+            {wc.state === "connected" ? (
+              <button className="connect-button connected" onClick={() => void wc.disconnect()}>
+                <Wallet size={16} /> <span>{wc.walletName ?? "Wallet connected"}</span><X size={14} />
+              </button>
+            ) : (
+              <button className="connect-button" onClick={() => wc.connect()} disabled={wc.state === "connecting"}>
+                <Wallet size={16} /><span>{wc.state === "connecting" ? "Waiting for wallet…" : "Connect wallet"}</span>
+              </button>
+            )}
           </div>
         </header>
+
         <div className="content">
-          <div className="welcome-row">
-            <div><div className="eyebrow">YOUR SAVINGS, IN SYNC</div><h1>Save together.<br/><em>Grow together.</em></h1><p className="intro">A clearer way to build savings circles with people who matter.</p></div>
-            <div className="hero-art" aria-hidden="true"><div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="hero-coin">₿</div><span className="spark spark-one">✳</span><span className="spark spark-two">·</span></div>
-          </div>
-          <div className="notice"><ShieldCheck size={18}/><div><b>{network === "mainnet" ? "Bitcoin Cash mainnet selected" : "Chipnet selected"} — protected preview</b><span>{wc.state === "connected" ? `Connected to ${wc.walletName ?? "wallet"} using WizardConnect. Address and network verification is still required before transactions.` : "Connect a BCH wallet using WizardConnect. Signing and transaction broadcast are not enabled yet."}</span></div><span className="notice-tag">READ ONLY</span></div>
-          {wc.error && <div className="notice" role="alert"><ShieldCheck size={18}/><div><b>Wallet connection issue</b><span>{wc.error}</span></div></div>}
-          <div className="section-heading"><div><h2>Your overview</h2><p>Your circles and contributions will appear here.</p></div><button className="primary-button" disabled title="Available after network, wallet and contract verification"><Plus size={17}/> Create a circle</button></div>
-          <div className="stats-grid">
-            <div className="stat-card"><div className="stat-top"><span>Total saved</span><CircleDollarSign size={18}/></div><strong>—</strong><small>Across your active circles</small></div>
-            <div className="stat-card"><div className="stat-top"><span>Active circles</span><Users size={18}/></div><strong>0</strong><small>Join or create a circle to begin</small></div>
-            <div className="stat-card"><div className="stat-top"><span>Next contribution</span><Activity size={18}/></div><strong>—</strong><small>Your upcoming schedule</small></div>
-          </div>
-          <section className="empty-card" id="circles"><div className="empty-icon"><Users size={23}/></div><h3>Your circles start here</h3><p>Circle creation will unlock after wallet address derivation, transaction verification and contract review are complete.</p><button className="text-button" disabled>Circle creation is being built <ArrowUpRight size={16}/></button></section>
-          <footer><span>© 2026 AjoChain</span><span><span className="footer-dot"/> Independent BCH build · {selected.label}</span></footer>
+          <section className="hero">
+            <div className="hero-copy">
+              <div className="eyebrow"><span className="eyebrow-line" /> SAVING IS BETTER TOGETHER</div>
+              <h1>Small steps.<br /><em>Shared progress.</em></h1>
+              <p className="intro">Build a savings circle with your people. Keep every contribution clear, every member accountable, and every goal in sight.</p>
+              <div className="hero-actions">
+                <button className="primary-button" onClick={openCreate}><Plus size={17} /> Start a circle</button>
+                <a className="subtle-link" href="#how-it-works" onClick={() => setActiveNav("overview")}>How it works <ArrowUpRight size={15} /></a>
+              </div>
+            </div>
+            <div className="hero-visual" aria-hidden="true">
+              <div className="visual-ring ring-back" />
+              <div className="visual-ring ring-front" />
+              <div className="visual-core"><span>₿</span><small>together</small></div>
+              <div className="visual-bubble bubble-one"><Users size={17} /></div>
+              <div className="visual-bubble bubble-two"><Sparkles size={16} /></div>
+              <span className="visual-spark">✳</span>
+            </div>
+          </section>
+
+          <section className="network-notice" aria-live="polite">
+            <div className="notice-icon"><ShieldCheck size={18} /></div>
+            <div className="notice-copy">
+              <b>{network === "mainnet" ? "Mainnet preview is protected" : "Chipnet preview is protected"}</b>
+              <span>{wc.state === "connected"
+                ? `Connected with ${wc.walletName ?? "a WizardConnect wallet"}. Address and network checks are still required before any transaction.`
+                : "Connect Selene or another WizardConnect wallet. No signing or funds movement is enabled in this build."}</span>
+            </div>
+            <span className="read-only-pill"><LockKeyhole size={11} /> READ ONLY</span>
+          </section>
+          {wc.error && (
+            <section className="wallet-error" role="alert">
+              <ShieldCheck size={17} /><div><b>Wallet connection needs attention</b><span>{wc.error}</span></div>
+            </section>
+          )}
+
+          <section className="metrics-grid" aria-label="Savings overview">
+            <article className="metric-card">
+              <div className="metric-icon sage"><CircleDollarSign size={18} /></div>
+              <span className="metric-label">Total contributed</span>
+              <strong>—</strong>
+              <small>Appears when verified activity is available</small>
+            </article>
+            <article className="metric-card">
+              <div className="metric-icon lilac"><Users size={18} /></div>
+              <span className="metric-label">Active circles</span>
+              <strong>{draft ? "1 draft" : "0"}</strong>
+              <small>{draft ? "One local preview, not yet on-chain" : "Your circles will live here"}</small>
+            </article>
+            <article className="metric-card">
+              <div className="metric-icon sand"><Clock3 size={18} /></div>
+              <span className="metric-label">Next contribution</span>
+              <strong>—</strong>
+              <small>Schedules appear after a circle is active</small>
+            </article>
+          </section>
+
+          <section className="workspace-grid">
+            <div className="section-card circles-card" id="circles">
+              <div className="section-heading">
+                <div><span className="section-kicker">YOUR SAVINGS GROUPS</span><h2>My circles</h2><p>Stay close to the goals you are building together.</p></div>
+                <button className="icon-button" aria-label="Start a circle" onClick={openCreate}><Plus size={18} /></button>
+              </div>
+              {draft ? (
+                <div className="draft-card">
+                  <div className="draft-card-top">
+                    <div className="draft-avatar"><Users size={19} /></div>
+                    <span className="draft-status">LOCAL DRAFT</span>
+                  </div>
+                  <h3>{draft.name}</h3>
+                  <p className="draft-summary">{draft.members.length} members · {scheduleLabels[draft.frequency].toLowerCase()}</p>
+                  <div className="draft-amount"><strong>{draft.amount}</strong><span>{draft.asset} per member</span></div>
+                  <div className="draft-members">{draft.members.slice(0, 4).map((member, index) => <span key={`${member}-${index}`}>{member.slice(0, 1).toUpperCase()}</span>)}<small>{draft.members.length} people listed</small></div>
+                  <div className="draft-warning"><LockKeyhole size={14} /> This is a page-only preview. It has not been saved on-chain or sent to a wallet.</div>
+                  <button className="text-action" onClick={openCreate}>Edit draft <ArrowRight size={14} /></button>
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <div className="empty-illustration"><Users size={26} /><span>+</span></div>
+                  <h3>Your first circle starts here</h3>
+                  <p>Bring at least two people together, choose BCH or PUSD, and set a rhythm that works for everyone.</p>
+                  <button className="text-action" onClick={openCreate}>Set up your first circle <ArrowRight size={15} /></button>
+                </div>
+              )}
+            </div>
+
+            <aside className="section-card guide-card" id="how-it-works">
+              <div className="guide-heading"><div className="guide-icon"><Sparkles size={18} /></div><span>THE AJOCHAIN WAY</span></div>
+              <h2>Good habits.<br /><em>Shared momentum.</em></h2>
+              <div className="guide-step"><span>01</span><div><b>Bring your people</b><small>Start with at least two members.</small></div></div>
+              <div className="guide-step"><span>02</span><div><b>Agree on the rhythm</b><small>Choose BCH or PUSD and a schedule.</small></div></div>
+              <div className="guide-step"><span>03</span><div><b>Track every contribution</b><small>Each member gets their own clear credit record.</small></div></div>
+              <div className="guide-foot"><ShieldCheck size={15} /> Member-level accounting is built into the foundation.</div>
+            </aside>
+          </section>
+
+          <section className="section-card activity-card" id="activity">
+            <div className="section-heading">
+              <div><span className="section-kicker">YOUR LATEST MOVEMENT</span><h2>Recent activity</h2><p>Verified contributions and payouts will be shown here.</p></div>
+              <span className="coming-soon">AWAITING VERIFICATION</span>
+            </div>
+            <div className="activity-empty"><div className="activity-icon"><Activity size={18} /></div><span>No transactions to show yet.</span><small>Transaction history will appear after wallet, network and contract checks pass.</small></div>
+          </section>
+
+          <section className="verification-strip">
+            <div><div className="verification-icon"><LockKeyhole size={17} /></div><span><b>Mainnet safeguards</b><small>Wallet validation · transaction inspection · contract review</small></span></div>
+            <span className="verification-state"><span className="state-dot" /> Verification in progress</span>
+          </section>
+          <footer><span>© 2026 AjoChain</span><span><span className="footer-dot" /> Independent BCH build · {selected.label}</span></footer>
         </div>
       </section>
-      {wc.uri && wc.qrUri && <WizardConnectQRDialog show={wc.state === "connecting"} onClose={() => void wc.disconnect()} uri={wc.uri} qrUri={wc.qrUri} title="Connect to AjoChain" subtitle="Scan with Selene or another WizardConnect BCH wallet" />}
+
+      {showCreate && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeCreate(); }}>
+          <section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-title">
+            <div className="modal-heading">
+              <div><span className="section-kicker">NEW SAVINGS GROUP</span><h2 id="create-title">Set up your circle</h2><p>Start with the basics. You can review everything before any wallet action.</p></div>
+              <button className="modal-close" onClick={closeCreate} aria-label="Close"><X size={19} /></button>
+            </div>
+            <form onSubmit={handleDraftSubmit} noValidate>
+              <label className="field-label" htmlFor="circle-name">Circle name</label>
+              <input id="circle-name" className="form-control" value={circleName} onChange={(event) => setCircleName(event.target.value)} placeholder="e.g. Family goals" maxLength={40} />
+              <div className="field-row">
+                <div><label className="field-label" htmlFor="circle-asset">Savings asset</label>
+                  <select id="circle-asset" className="form-control" value={asset} onChange={(event) => setAsset(event.target.value as CircleAsset)}>
+                    <option value="BCH">Bitcoin Cash (BCH)</option><option value="PUSD">ParyonUSD (PUSD)</option>
+                  </select>
+                </div>
+                <div><label className="field-label" htmlFor="circle-amount">Contribution per member</label>
+                  <input id="circle-amount" className="form-control" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.01" />
+                </div>
+              </div>
+              <label className="field-label" htmlFor="circle-frequency">Contribution schedule</label>
+              <select id="circle-frequency" className="form-control" value={frequency} onChange={(event) => setFrequency(event.target.value as ContributionFrequency)}>
+                <option value="weekly">Every week</option><option value="daily">Every day</option><option value="monthly">Every month</option>
+              </select>
+              <label className="field-label" htmlFor="circle-members">Member names <span>One name per line · minimum 2</span></label>
+              <textarea id="circle-members" className="form-control members-input" value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder={"You\nMember 2"} />
+              <div className="member-count"><Users size={14} /> {members.length} member{members.length === 1 ? "" : "s"} listed <span>At least 2 required</span></div>
+              {attemptedSubmit && !validation.valid && (
+                <div className="form-errors" role="alert">{validation.errors.map((error) => <p key={error}>{error}</p>)}</div>
+              )}
+              <div className="draft-disclaimer"><ShieldCheck size={16} /><span><b>Safe preview only</b><small>This creates a temporary on-screen draft. Wallet addresses and member identities are not verified, and no transaction is signed or broadcast.</small></span></div>
+              <div className="modal-actions"><button type="button" className="secondary-button" onClick={closeCreate}>Cancel</button><button type="submit" className="primary-button"><span>Preview circle</span><ArrowRight size={16} /></button></div>
+            </form>
+          </section>
+        </div>
+      )}
+      {wc.uri && wc.qrUri && (
+        <WizardConnectQRDialog
+          show={wc.state === "connecting"}
+          onClose={() => void wc.disconnect()}
+          uri={wc.uri}
+          qrUri={wc.qrUri}
+          title="Connect to AjoChain"
+          subtitle="Scan with Selene or another WizardConnect BCH wallet"
+        />
+      )}
     </main>
   );
 }
