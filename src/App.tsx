@@ -3,7 +3,7 @@ import {
   Activity, ArrowRight, Check, ChevronDown, Coins, Home,
   Menu, ShieldCheck, Users, Wallet, X,
 } from "lucide-react";
-import { NETWORKS, type NetworkId } from "./core/network-config";
+import { getDefaultNetwork, NETWORKS, type NetworkId } from "./core/network-config";
 import { formatAssetAmount, parseAssetAmount, PUSD_ASSET } from "./core/assets";
 import type { PusdTransferPlan } from "./core/pusd-transaction-builder";
 import type { AuthenticatedPusdUtxo } from "./core/pusd-utxo";
@@ -40,7 +40,7 @@ const pageLabels: Record<Page, string> = {
 };
 
 export default function App() {
-  const [network, setNetwork] = useState<NetworkId>("chipnet");
+  const [network, setNetwork] = useState<NetworkId>(() => getDefaultNetwork(import.meta.env.PROD));
   const [page, setPage] = useState<Page>("overview");
   const [menuOpen, setMenuOpen] = useState(false);
   const [walletClient, setWalletClient] = useState<WalletClient | null>(null);
