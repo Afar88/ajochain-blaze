@@ -3,7 +3,7 @@
 // derives receive addresses locally and asks the wallet to sign transactions.
 import { initiateDappRelay, RelayMsgAction, type DappRelayResult } from '@wizardconnect/core';
 import { DappConnectionManager, loadSession } from '@wizardconnect/dapp';
-import { binToHex, decodeTransactionBCH, encodeTransactionOutputs, hash160, hexToBin } from '@bitauth/libauth';
+import { binToHex, createVirtualMachineBCH2023, decodeTransactionBCH, encodeTransactionOutputs, hash160, hexToBin } from '@bitauth/libauth';
 import { sourceOutputToRelay } from '@wizardconnect/core/hdwalletv1-serialize';
 import { pkhToAddress, type Net } from './bch-address';
 
@@ -117,7 +117,64 @@ export function buildWizardSignRequest(
  * (version, locktime, input outpoints/order/sequence, and every output) may not.
  * This is a dapp-side integrity check, not a substitute for covenant validation.
  */
-export function verifySignedTransaction(signedHex: string, expected: any) {
+/**
+ * Parse a push-only unlocking script. P2PKH wallet inputs use two pushes:
+ * signature (including the sighash byte) and public key.
+ */
+export function readPushOnlyUnlockingScript(script: Uint8Array): Uint8Array[] {
+  const pushes: Uint8Array[] = [];
+  let offset = 0;
+  while (offset < script.length) {
+    const opcode = script[offset++];
+    let length: number;
+    if (opcode <= 75) {
+      length = opcode;
+    } else if (opcode === 0x4c) {
+      if (offset + 1 > script.length) throw new Error("Malformed PUSHDATA1 unlocking script.");
+      length = script[offset++];
+    } else if (opcode === 0x4d) {
+      if (offset + 2 > script.length) throw new Error("Malformed PUSHDATA2 unlocking script.");
+      length = script[offset] | (script[offset + 1] << 8);
+      offset += 2;
+    } else if (opcode === 0x4e) {
+      if (offset + 4 > script.length) throw new Error("Malformed PUSHDATA4 unlocking script.");
+      length = new DataView(script.buffer, script.byteOffset + offset, 4).getUint32(0, true);
+      offset += 4;
+    } else {
+      throw new Error("Wallet-owned input contains a non-push opcode in its unlocking script.");
+    }
+    if (offset + length > script.length) throw new Error("Unlocking script push exceeds its available bytes.");
+    pushes.push(script.slice(offset, offset + length));
+    offset += length;
+  }
+  return pushes;
+}
+
+/**
+ * WizardConnect's hdwalletv1 protocol requires SIGHASH_ALL | FORKID | UTXOS
+ * (0x61). A wallet-owned P2PKH input signed with a weaker flag is rejected.
+ */
+export function assertRequiredWalletSighash(script: Uint8Array): void {
+  const pushes = readPushOnlyUnlockingScript(script);
+  if (pushes.length !== 2) {
+    throw new Error("Wallet-owned P2PKH input must contain exactly a signature and public-key push.");
+  }
+  const signature = pushes[0];
+  const publicKey = pushes[1];
+  if (signature.length < 2 || signature[signature.length - 1] !== 0x61) {
+    throw new Error("Wallet signature must use SIGHASH_ALL | SIGHASH_FORKID | SIGHASH_UTXOS (0x61).");
+  }
+  if (publicKey.length !== 33 && publicKey.length !== 65) {
+    throw new Error("Wallet-owned input did not contain a valid compressed or uncompressed public key.");
+  }
+}
+
+export function verifySignedTransaction(
+  signedHex: string,
+  expected: any,
+  expectedSourceOutputs?: any[],
+  walletInputs: number[] = [],
+) {
   if (typeof signedHex !== 'string' || !/^(?:[0-9a-f]{2})+$/i.test(signedHex)) {
     throw new Error('Wallet returned malformed transaction hex.');
   }
@@ -127,6 +184,9 @@ export function verifySignedTransaction(signedHex: string, expected: any) {
   }
   if (!expected || !Array.isArray(expected.inputs) || !Array.isArray(expected.outputs)) {
     throw new Error('Original transaction is incomplete; refusing to broadcast.');
+  }
+  if (!Array.isArray(expectedSourceOutputs) || expectedSourceOutputs.length !== expected.inputs.length) {
+    throw new Error('Exact previous-output data is missing; refusing to trust a wallet signature.');
   }
   if (decoded.version !== expected.version || decoded.locktime !== expected.locktime) {
     throw new Error('Wallet changed transaction version or locktime; refusing to broadcast.');
@@ -146,6 +206,23 @@ export function verifySignedTransaction(signedHex: string, expected: any) {
   if (binToHex(encodeTransactionOutputs(decoded.outputs)) !==
       binToHex(encodeTransactionOutputs(expected.outputs))) {
     throw new Error('Wallet changed transaction outputs or CashTokens; refusing to broadcast.');
+  }
+
+  const seenWalletInputs = new Set<number>();
+  for (const index of walletInputs) {
+    if (!Number.isInteger(index) || index < 0 || index >= decoded.inputs.length || seenWalletInputs.has(index)) {
+      throw new Error('Wallet signing input indexes are invalid or duplicated.');
+    }
+    seenWalletInputs.add(index);
+    assertRequiredWalletSighash(decoded.inputs[index].unlockingBytecode);
+  }
+
+  const vmResult = createVirtualMachineBCH2023().verify({
+    transaction: decoded,
+    sourceOutputs: expectedSourceOutputs,
+  });
+  if (vmResult !== true) {
+    throw new Error('Signed BCH transaction failed local BCH 2023 VM verification: ' + String(vmResult));
   }
   return decoded;
 }
@@ -395,7 +472,7 @@ class WizardWallet {
     if (typeof signedTransaction !== 'string' || !/^(?:[0-9a-f]{2})+$/i.test(signedTransaction)) {
       throw new Error('Selene did not return a valid signed transaction. The transaction was not broadcast.');
     }
-    const decoded = verifySignedTransaction(signedTransaction, wcObject?.transaction);
+    const decoded = verifySignedTransaction(signedTransaction, wcObject?.transaction, wcObject?.sourceOutputs, walletInputs);
     return { signedTransaction, decoded };
   }
 }
