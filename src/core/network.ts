@@ -1,3 +1,5 @@
+import { decodeCashAddress } from "@bitauth/libauth";
+
 export type NetworkId = "mainnet" | "chipnet";
 
 export interface NetworkConfig {
@@ -27,10 +29,11 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
 
 export function isAddressForNetwork(address: string, network: NetworkId): boolean {
   const normalized = address.trim().toLowerCase();
-  const prefix = NETWORKS[network].cashAddressPrefix;
-  // This is a prefix sanity check only. Full CashAddress checksum and payload
-  // validation must be performed by the BCH address library before signing.
-  return normalized.startsWith(prefix + ":") && normalized.slice(prefix.length + 1).length > 0;
+  const decoded = decodeCashAddress(normalized);
+  return typeof decoded !== "string" &&
+    decoded.prefix === NETWORKS[network].cashAddressPrefix &&
+    (decoded.type === "p2pkh" || decoded.type === "p2sh" ||
+      decoded.type === "p2pkhWithTokens" || decoded.type === "p2shWithTokens");
 }
 
 export function formatBch(satoshis: bigint): string {
