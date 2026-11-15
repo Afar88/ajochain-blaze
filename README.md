@@ -16,6 +16,7 @@ This repository is the **independent BCH BLAZE build**. It is not a copy, mirror
 ## Current application status
 
 - Responsive dashboard and local circle-preview form.
+- Local circle drafts persist in the current browser and can be edited or deleted; they are not on-chain records.
 - WizardConnect pairing UI and session persistence.
 - BCH/Chipnet network selection and a basic CashAddress prefix sanity guard.
 - Member-level contribution ledger using integer base units, with leftover credit and idempotent payment keys.
@@ -49,6 +50,10 @@ npm run build
 ```
 
 The GitHub Actions workflow runs the same checks on pushes to `main` and pull requests targeting `main`.
+
+## GitHub Pages preview
+
+A separate workflow builds and deploys the static app to GitHub Pages on pushes to `main`. The Pages build uses the `/ajochain-blaze/` base path; local development and root-hosted deployments use `/`. The public Pages URL becomes available after the first successful deployment run.
 
 ## Network and safety policy
 
