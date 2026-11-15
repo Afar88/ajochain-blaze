@@ -3,19 +3,18 @@ import {
   Activity, ArrowRight, Check, ChevronDown, Coins, Home,
   Menu, ShieldCheck, Users, Wallet, X,
 } from "lucide-react";
-import { wallet } from "./core/wizard-wallet";
-import { NETWORKS, type NetworkId } from "./core/network";
+import { NETWORKS, type NetworkId } from "./core/network-config";
 import { formatAssetAmount, parseAssetAmount, PUSD_ASSET } from "./core/assets";
-import { buildPusdTransferPlan, type PusdTransferPlan } from "./core/pusd-transaction-builder";
-import { cashAddressToExpectedLockingBytecode, fetchPusdFeeQuote, fetchPusdWalletBalance } from "./core/pusd-api";
+import type { PusdTransferPlan } from "./core/pusd-transaction-builder";
 import type { AuthenticatedPusdUtxo } from "./core/pusd-utxo";
 import { PUSD_MAINNET_SPENDING_ENABLED } from "./core/pusd-mainnet-guard";
 const ClassicBchWorkspace = lazy(() => import("./components/ClassicBchWorkspace"));
 const V2FeeBchWorkspace = lazy(() => import("./components/V2FeeBchWorkspace"));
 
 type Page = "overview" | "circles" | "assets" | "activity";
+type WalletClient = typeof import("./core/wizard-wallet").wallet;
 type WalletView = {
-  state: typeof wallet.state;
+  state: "idle" | "connecting" | "connected" | "reconnecting" | "disconnecting" | "disconnected";
   uri: string | null;
   qrUri: string | null;
   walletName: string | null;
@@ -44,9 +43,9 @@ export default function App() {
   const [network, setNetwork] = useState<NetworkId>("chipnet");
   const [page, setPage] = useState<Page>("overview");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [walletClient, setWalletClient] = useState<WalletClient | null>(null);
   const [walletView, setWalletView] = useState<WalletView>({
-    state: wallet.state, uri: wallet.uri, qrUri: wallet.qrUri,
-    walletName: wallet.walletName, error: wallet.error, receiveIndex: wallet.receiveIndex,
+    state: "idle", uri: null, qrUri: null, walletName: null, error: null, receiveIndex: 0,
   });
   const [showWallet, setShowWallet] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState("");
@@ -64,23 +63,40 @@ export default function App() {
   const [pusdPlanError, setPusdPlanError] = useState("");
   const [pusdPlanBusy, setPusdPlanBusy] = useState(false);
 
-  const walletAddress = wallet.address(network);
+  const walletAddress = walletClient?.address(network) ?? null;
   const connected = walletView.state === "connected";
   const menuLabel = pageLabels[page];
 
   useEffect(() => {
-    const sync = () => setWalletView({
-      state: wallet.state,
-      uri: wallet.uri,
-      qrUri: wallet.qrUri,
-      walletName: wallet.walletName,
-      error: wallet.error,
-      receiveIndex: wallet.receiveIndex,
-    });
-    const unsubscribe = wallet.onChange(sync);
-    sync();
-    wallet.tryResume();
-    return unsubscribe;
+    let active = true;
+    let unsubscribe: (() => void) | undefined;
+    const timer = window.setTimeout(() => {
+      void import("./core/wizard-wallet").then(({ wallet: client }) => {
+        if (!active) return;
+        setWalletClient(client);
+        const sync = () => setWalletView({
+          state: client.state,
+          uri: client.uri,
+          qrUri: client.qrUri,
+          walletName: client.walletName,
+          error: client.error,
+          receiveIndex: client.receiveIndex,
+        });
+        unsubscribe = client.onChange(sync);
+        sync();
+        client.tryResume();
+      }).catch((cause: unknown) => {
+        if (active) setWalletView((view) => ({
+          ...view,
+          error: cause instanceof Error ? cause.message : "Wallet module could not be loaded.",
+        }));
+      });
+    }, 900);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+      unsubscribe?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -101,7 +117,8 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    if (network !== "mainnet" || walletView.state !== "connected" || !wallet.address("mainnet")) {
+    if (page !== "assets") return () => { active = false; };
+    if (network !== "mainnet" || walletView.state !== "connected" || !walletClient) {
       setPusdView({
         status: "idle", amount: 0n,
         detail: network !== "mainnet"
@@ -111,14 +128,21 @@ export default function App() {
       });
       return () => { active = false; };
     }
-    const address = wallet.address("mainnet");
-    if (!address) return () => { active = false; };
+    const address = walletClient.address("mainnet");
+    if (!address) {
+      setPusdView({
+        status: "idle", amount: 0n, detail: "Mainnet receive address is still being derived.",
+        utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
+      });
+      return () => { active = false; };
+    }
     setPusdView({
       status: "loading", amount: 0n,
-      detail: "Authenticating PUSD UTXOs, previous transactions and live unspent status through the configured provider quorum…",
+      detail: "Authenticating PUSD UTXOs and unspent status through the configured provider quorum…",
       utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
     });
-    void fetchPusdWalletBalance(address)
+    void import("./core/pusd-api")
+      .then(({ fetchPusdWalletBalance }) => fetchPusdWalletBalance(address))
       .then((result) => {
         if (!active) return;
         setPusdView({
@@ -144,12 +168,12 @@ export default function App() {
         });
       });
     return () => { active = false; };
-  }, [network, walletView.state, walletView.receiveIndex, pusdRefresh]);
+  }, [page, network, walletView.state, walletView.receiveIndex, walletClient, pusdRefresh]);
 
   const preparePusdTransfer = async () => {
     setPusdPlanError("");
     setPusdTransferPlan(null);
-    if (!connected || wallet.state !== "connected") {
+    if (!connected || walletClient?.state !== "connected") {
       setPusdPlanError("Connect your wallet before preparing a PUSD transfer.");
       return;
     }
@@ -161,7 +185,7 @@ export default function App() {
       setPusdPlanError("A verified PUSD balance is required before planning a transfer.");
       return;
     }
-    const senderAddress = wallet.address("mainnet");
+    const senderAddress = walletClient?.address("mainnet");
     if (!senderAddress) {
       setPusdPlanError("The connected wallet does not currently expose a verified Mainnet receive address.");
       return;
@@ -170,6 +194,8 @@ export default function App() {
     try {
       if (!/^\\d+$/.test(pusdMaxFee.trim())) throw new Error("Maximum miner fee must be entered as whole satoshis.");
       const requiredPusdAmount = parseAssetAmount("PUSD", pusdAmount);
+      const [{ buildPusdTransferPlan }, { cashAddressToExpectedLockingBytecode, fetchPusdFeeQuote }] =
+        await Promise.all([import("./core/pusd-transaction-builder"), import("./core/pusd-api")]);
       const feeQuote = await fetchPusdFeeQuote();
       const plan = buildPusdTransferPlan({
         authenticatedUtxos: pusdView.utxos,
@@ -189,12 +215,20 @@ export default function App() {
 
   const openWallet = () => {
     setMenuOpen(false);
-    if (wallet.state === "disconnected") {
-      if (!wallet.tryResume()) wallet.connect();
-    } else if (wallet.state === "idle") {
-      wallet.connect();
-    }
     setShowWallet(true);
+    const start = (client: WalletClient) => {
+      setWalletClient(client);
+      if (client.state === "disconnected") {
+        if (!client.tryResume()) client.connect();
+      } else if (client.state === "idle") {
+        client.connect();
+      }
+    };
+    if (walletClient) start(walletClient);
+    else void import("./core/wizard-wallet").then(({ wallet: client }) => start(client))
+      .catch((cause: unknown) => setWalletView((view) => ({
+        ...view, error: cause instanceof Error ? cause.message : "Wallet module could not be loaded.",
+      })));
   };
 
   const navigate = (next: Page) => {
@@ -433,7 +467,7 @@ export default function App() {
         )}
       </div>
 
-      {walletView.error && <div className="global-wallet-error" role="alert"><ShieldCheck size={17} /><span>{walletView.error}</span><button onClick={() => wallet.startFreshPairing()}>Fresh pairing</button></div>}
+      {walletView.error && <div className="global-wallet-error" role="alert"><ShieldCheck size={17} /><span>{walletView.error}</span><button onClick={() => walletClient?.startFreshPairing()}>Fresh pairing</button></div>}
 
       {showWallet && (
         <div className="modal-backdrop wallet-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowWallet(false); }}>
@@ -450,14 +484,14 @@ export default function App() {
                 <input id="selene-address" className="form-control" value={seleneAddress} onChange={(event) => setSeleneAddress(event.target.value)} placeholder="Paste Selene receive address" autoComplete="off" />
                 <button className="primary-button" onClick={() => {
                   try {
-                    const index = wallet.matchReceiveAddress(seleneAddress, network, 50);
+                    const index = walletClient?.matchReceiveAddress(seleneAddress, network, 50) ?? null;
                     setAddressMatchMessage(index === null
                       ? "No match in receive indices 0–50. Check Selene's selected network before sending funds."
                       : "Matched Selene receive address at index " + index + ".");
                   } catch (cause) { setAddressMatchMessage(cause instanceof Error ? cause.message : "Could not match address."); }
                 }}>Match Selene address</button>
                 {addressMatchMessage && <p className="wallet-match-message" role="status">{addressMatchMessage}</p>}
-                <button className="secondary-button" onClick={() => void wallet.disconnect()}>Disconnect wallet</button>
+                <button className="secondary-button" onClick={() => void walletClient?.disconnect()}>Disconnect wallet</button>
               </div>
             ) : (
               <div className="wallet-detail-body">
@@ -467,9 +501,10 @@ export default function App() {
                 {walletView.error && <p className="wallet-match-message" role="alert">{walletView.error}</p>}
                 <div className="wallet-modal-actions">
                   <button className="primary-button" onClick={() => {
-                    if (wallet.state === "disconnected") { if (!wallet.tryResume()) wallet.connect(); }
-                    else if (wallet.state === "idle") wallet.connect();
-                    else if (wallet.state === "connecting" || wallet.state === "reconnecting") wallet.startFreshPairing();
+                    if (!walletClient) { openWallet(); return; }
+                    if (walletClient.state === "disconnected") { if (!walletClient.tryResume()) walletClient.connect(); }
+                    else if (walletClient.state === "idle") walletClient.connect();
+                    else if (walletClient.state === "connecting" || walletClient.state === "reconnecting") walletClient.startFreshPairing();
                   }}>{walletView.state === "reconnecting" ? "Start fresh pairing" : "Retry / connect Selene"}</button>
                   <button className="secondary-button" onClick={() => setShowWallet(false)}>Close</button>
                 </div>
