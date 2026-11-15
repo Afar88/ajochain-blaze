@@ -46,6 +46,9 @@ export function applyMemberPayment(
   }
 
   const paymentKey = payment.paymentId.trim();
+  if (current.some((entry) => entry.paymentIds.includes(paymentKey))) {
+    return { ok: true, duplicate: true, balances: current };
+  }
   const existing = current.find(
     (entry) => entry.memberId === payment.memberId.trim() &&
       entry.walletAddress.trim().toLowerCase() === walletAddress &&
@@ -92,12 +95,19 @@ export function applyMemberPayout(
   if (contributionDueBaseUnits <= 0n) return { ok: false, reason: "Contribution must be positive" };
   if (registeredMembers.length < MIN_CIRCLE_MEMBERS) return { ok: false, reason: "A circle needs at least two members" };
 
-  const memberKeys = registeredMembers.map((member) =>
-    member.memberId.trim() + ":" + member.walletAddress.trim().toLowerCase(),
-  );
-  if (memberKeys.some((key) => key.startsWith(":") || key.endsWith(":")) ||
-      new Set(memberKeys).size !== memberKeys.length) {
+  const memberIds = registeredMembers.map((member) => member.memberId.trim());
+  const memberWallets = registeredMembers.map((member) => member.walletAddress.trim().toLowerCase());
+  if (memberIds.some((id) => !id) || memberWallets.some((address) => !address) ||
+      new Set(memberIds).size !== memberIds.length ||
+      new Set(memberWallets).size !== memberWallets.length) {
     return { ok: false, reason: "Registered members must have unique identities and wallets" };
+  }
+  const registeredKeys = new Set(memberIds.map((id, index) => id + ":" + memberWallets[index]));
+  const currentKeys = current
+    .filter((entry) => entry.asset === asset && registeredKeys.has(entry.memberId + ":" + entry.walletAddress.trim().toLowerCase()))
+    .map((entry) => entry.memberId + ":" + entry.walletAddress.trim().toLowerCase());
+  if (new Set(currentKeys).size !== currentKeys.length) {
+    return { ok: false, reason: "Duplicate member balance records detected" };
   }
   const matched = registeredMembers.map((member) => current.find((entry) =>
     entry.memberId === member.memberId &&
