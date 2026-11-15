@@ -188,11 +188,11 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
         members.length + " member receipts will be created.\\n" +
         "Contribution: " + formatBch(draft.contribution) + " per member, per scheduled payout.\\n" +
         "Each member funds one current-round contribution: " + formatBch(draft.contribution) + ".\\n" +
-        "When a member receives a payout, the full value of all their remaining contributions is automatically retained in their own on-chain receipt.\\n" +
+        "When a member receives a payout, exactly one next contribution is withheld and credited to their own on-chain receipt.\\n" +
         "Gross round pot: " + formatBch(grossPot) + ".\\n" +
         "Project fee: " + formatBch(projectFee) + " (1%), paid to " + draft.treasury + ".\\n" +
         "Miner fee is separate and capped at " + draft.maxFee.toString() + " sats.\\n\\n" +
-        "No one must pre-fund the entire cycle. Earlier recipients’ future contributions are reserved automatically from their own payout; unpaid members fund only the current round.\\n" +
+        "No one must pre-fund the entire cycle. Each recipient carries one next contribution forward from their payout to cover the following round.\\n" +
         "Experimental Chipnet software only; no real funds.",
       )) return;
       const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Create AjoChain V2 fee circle: " + draft.name);
@@ -249,12 +249,12 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
         "Gross pot: " + formatBch(plan.gross) + "\\n" +
         "Fixed 1% project fee: " + formatBch(plan.projectFee) + "\\n" +
         (plan.hasAutomaticFutureReserve
-          ? "Automatic reserve for recipient’s remaining contributions: " + formatBch(plan.autoReserve) + "\\n"
+          ? "Automatic reserve for one next contribution: " + formatBch(plan.autoReserve) + " (" + plan.autoReservePercent + "% of the recipient’s pre-reserve payout)\\n"
           : "Automatic future-contribution reserve: not used by this older circle version.\\n") +
         "Member receives: " + formatBch(plan.payout) + "\\n" +
         "Separate miner fee paid by your wallet: up to " + plan.minerFee.toString() + " sats\\n\\n" +
         (plan.hasAutomaticFutureReserve
-          ? "Every receipt is debited by one current-round contribution. The recipient’s entire remaining contribution obligation is then reserved in that same member receipt. Unpaid members fund only the current round."
+          ? "Every receipt is debited by one current-round contribution. Exactly one next contribution is then reserved in the recipient’s own receipt for the following round. After that reserve is consumed, the member must fund later installments again."
           : "This circle follows its original versioned member-credit rules. Its funding and payout terms have not been changed."),
       )) return;
       const signed = await wallet.signAndVerify(
@@ -333,7 +333,7 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
       </div>
       <div className="safety-note-inline">
         <ShieldCheck size={17} />
-        <span>Experimental and unaudited. Chipnet only. Every payout automatically reserves the recipient’s full remaining contribution commitment in that member’s receipt. Members who have not received a payout fund only the current round. No Mainnet signing or broadcasting is enabled.</span>
+        <span>Experimental and unaudited. Chipnet only. Every payout except the final payout reserves exactly one next contribution for the recipient. It covers the following round; after it is consumed, that member must fund later installments again. No Mainnet signing or broadcasting is enabled.</span>
       </div>
 
       <div className="circle-workspace-grid">
@@ -349,7 +349,7 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
               {network !== "chipnet" ? "Switch to Chipnet" : !walletConnected ? "Connect wallet first" : "Create fee circle"}
             </button>
           </form>
-          <small className="field-hint">New circles require at least 0.002 BCH per member for the current round. Each payout automatically retains the recipient’s entire remaining contribution commitment in their own receipt. No full-cycle pre-funding is required. The treasury is immutable after creation.</small>
+          <small className="field-hint">New circles require at least 0.002 BCH per member for the current round. Each non-final recipient carries one next contribution forward from their payout. No full-cycle pre-funding is required. The treasury is immutable after creation.</small>
         </div>
         <div className="circle-panel">
           <h3>Saved fee circles</h3>
@@ -410,7 +410,7 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
           <p className="field-hint">{snapshot.hasPaid ? "The first payout has happened. Cancellation is permanently locked; remaining escrow cannot be withdrawn." : "No payout has happened yet. Only the initiator may cancel and refund recorded member credit."}</p>
         </> : <p className="classic-empty">Reading the state NFT and all member receipts from Chipnet. Refresh if the transaction is still confirming.</p>}
         <label className="classic-deposit-field">Your BCH contribution deposit<input value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} inputMode="decimal" /></label>
-        {memberIndex >= 0 && snapshot?.memberAccounting[memberIndex] && <p className="field-hint">Your receipt holds {formatBch(snapshot.memberAccounting[memberIndex].currentCredit)}. Amount needed to meet your current-round or protected-reserve requirement: <b>{formatBch(snapshot.memberAccounting[memberIndex].shortfallForNextPayout)}</b>. <button type="button" className="fee-exact-amount-button" onClick={() => setDepositAmount(bchInputAmount(snapshot.memberAccounting[memberIndex].shortfallForNextPayout))}>Use exact amount due</button></p>}
+        {memberIndex >= 0 && snapshot?.memberAccounting[memberIndex] && <p className="field-hint">Your receipt holds {formatBch(snapshot.memberAccounting[memberIndex].currentCredit)}. Amount needed for your next contribution reserve or current round: <b>{formatBch(snapshot.memberAccounting[memberIndex].shortfallForNextPayout)}</b>. <button type="button" className="fee-exact-amount-button" onClick={() => setDepositAmount(bchInputAmount(snapshot.memberAccounting[memberIndex].shortfallForNextPayout))}>Use exact amount due</button></p>}
         <div className="classic-actions">
           <button type="button" className="secondary-button" disabled={busy} onClick={() => void refresh()}><RefreshCw size={14} /> Refresh</button>
           <button type="button" className="secondary-button" disabled={busy || memberIndex < 0 || network !== "chipnet" || Boolean(snapshot?.completed)} onClick={() => void deposit()}>
