@@ -4,6 +4,7 @@ pragma cashscript ^0.14.0;
 //
 // NFT layout (one CashTokens category per circle):
 //   - Input/output 0: minting state NFT, commitment = 0x53 | round (1 byte)
+//   - After the final payout the state commitment becomes 0x54 (completed).
 //   - Input/output i+1: immutable member receipt NFT, commitment =
 //       0x52 | memberIndex (1 byte) | credit (8-byte integer)
 // All state and receipt UTXOs use this covenant's locking bytecode.
@@ -121,7 +122,9 @@ contract AjoCircleV2(
         require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
         require(tx.outputs[0].tokenCategory == stateCategory + 0x02);
         require(tx.outputs[0].tokenAmount == 0);
-        require(tx.outputs[0].nftCommitment == 0x53 + toPaddedBytes((round + 1) % memberCount, 1));
+        require(tx.outputs[0].nftCommitment == (round + 1 == memberCount
+            ? 0x54
+            : 0x53 + toPaddedBytes(round + 1, 1)));
         require(tx.outputs[0].value == tx.inputs[0].value - pot);
         require(tx.outputs[0].value >= 1000);
 
