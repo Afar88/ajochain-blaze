@@ -51,7 +51,8 @@ The executable guard starts with every gate closed. Evidence must be independent
 
 | Gate | Evidence required | Status |
 |---|---|---|
-| Network identity | Independent mainnet chain identity and endpoint verification | Blocked |
+| Network identity | Independent Mainnet genesis/tip verification and endpoint verification (browser quorum implementation added; operator independence and production monitoring still need evidence) | Partially implemented |
+| Consensus VM | Stable verifier matching the active BCH_2026_05 consensus rules | Blocked |
 | Wallet | WizardConnect/Selene device E2E, reconnect and signing tests | Blocked |
 | Circle state | Contract version, state NFT and all receipt UTXOs reconciled | Blocked |
 | Member accounting | Per-member credit, duplicate/replay and round invariants | Blocked |
