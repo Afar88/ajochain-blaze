@@ -106,6 +106,13 @@ contract AjoCircleV2FeeEscrow(
 
         int pot = memberCount * contribution;
         int totalCredits = 0;
+        bytes statePrefix, bytes stateData = tx.inputs[0].nftCommitment.split(1);
+        bytes stateRound, bytes hasPaid = stateData.split(1);
+        require(statePrefix == 0x54);
+        require(stateRound.length == 1 && hasPaid.length == 1);
+        require(int(hasPaid) == 0 || int(hasPaid) == 1);
+        int round = int(stateRound);
+        require(round >= 0 && round < memberCount);
         int remainingRounds = memberCount - round;
         for (int i = 0; i < memberCount; i++) {
             int receiptInput = i + 1;
@@ -131,13 +138,6 @@ contract AjoCircleV2FeeEscrow(
         }
 
         require(tx.inputs[0].value == totalCredits + 1000);
-        bytes statePrefix, bytes stateData = tx.inputs[0].nftCommitment.split(1);
-        bytes stateRound, bytes hasPaid = stateData.split(1);
-        require(statePrefix == 0x54);
-        require(stateRound.length == 1 && hasPaid.length == 1);
-        require(int(hasPaid) == 0 || int(hasPaid) == 1);
-        int round = int(stateRound);
-        require(round >= 0 && round < memberCount);
         require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
         require(tx.outputs[0].tokenCategory == stateCategory + 0x02);
         require(tx.outputs[0].tokenAmount == 0);
