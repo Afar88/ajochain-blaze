@@ -11,6 +11,7 @@ import { decodeCashAddress, hexToBin } from "@bitauth/libauth";
 import { ElectrumClient } from "@electrum-cash/network";
 import { ElectrumWebSocket } from "@electrum-cash/web-socket";
 import artifactJson from "../../contracts/AjoCircle.json" with { type: "json" };
+import { MainnetQuorumNetworkProvider } from "./mainnet-quorum-provider";
 
 export type ClassicNetwork = "mainnet" | "chipnet";
 export const CLASSIC_MIN_MEMBERS = 2;
@@ -52,11 +53,10 @@ const servers: Record<ClassicNetwork, Array<[string, number]>> = {
   ],
   mainnet: [
     ["bch.imaginary.cash", 50004],
-    ["electroncash.de", 50004],
-    ["bch.loping.net", 50004],
+    ["electroncash.dk", 50004],
   ],
 };
-const providers: Partial<Record<ClassicNetwork, Promise<ElectrumNetworkProvider>>> = {};
+const providers: Partial<Record<ClassicNetwork, Promise<NetworkProvider>>> = {};
 
 function makeProvider(network: ClassicNetwork, host: string, port: number) {
   const client = new ElectrumClient(
@@ -67,33 +67,51 @@ function makeProvider(network: ClassicNetwork, host: string, port: number) {
   return new ElectrumNetworkProvider(network, { electrum: client } as never);
 }
 
-/** First responsive TLS Electrum endpoint. Mainnet is read-only until separately approved. */
-export function getClassicProvider(network: ClassicNetwork): Promise<ElectrumNetworkProvider> {
+/**
+ * Mainnet uses a strict multi-server read quorum and can never broadcast.
+ * Chipnet keeps the first-responsive test provider with a local override.
+ */
+export function getClassicProvider(network: ClassicNetwork): Promise<NetworkProvider> {
   if (!providers[network]) {
-    const configured = typeof localStorage !== "undefined"
-      ? localStorage.getItem("ajochain-electrum-" + network)
-      : null;
-    const endpoints: Array<[string, number]> = configured
-      ? [[configured.split(":")[0], Number(configured.split(":")[1] || 50004)]]
-      : servers[network];
-    const attempts = endpoints.map(async ([host, port]) => {
-      const provider = makeProvider(network, host, port);
-      await Promise.race([
-        provider.getBlockHeight(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(host + " timed out")), 9_000),
-        ),
-      ]);
-      return provider;
-    });
-    providers[network] = Promise.any(attempts).catch((error) => {
-      delete providers[network];
-      throw new Error(
-        "No " + network + " Electrum server responded (" +
-        endpoints.map(([host]) => host).join(", ") + "). " +
-        (error instanceof Error ? error.message : ""),
+    if (network === "mainnet") {
+      const electrumProviders = servers.mainnet.map(([host, port]) =>
+        makeProvider("mainnet", host, port),
       );
-    });
+      const quorum = new MainnetQuorumNetworkProvider(electrumProviders);
+      providers.mainnet = quorum.getBlockHeight().then(() => quorum).catch((error) => {
+        delete providers.mainnet;
+        throw new Error(
+          "BCH Mainnet quorum could not be established (" +
+          servers.mainnet.map(([host]) => host).join(", ") + "). " +
+          (error instanceof Error ? error.message : String(error)),
+        );
+      });
+    } else {
+      const configured = typeof localStorage !== "undefined"
+        ? localStorage.getItem("ajochain-electrum-chipnet")
+        : null;
+      const endpoints: Array<[string, number]> = configured
+        ? [[configured.split(":")[0], Number(configured.split(":")[1] || 50004)]]
+        : servers.chipnet;
+      const attempts = endpoints.map(async ([host, port]) => {
+        const provider = makeProvider("chipnet", host, port);
+        await Promise.race([
+          provider.getBlockHeight(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(host + " timed out")), 9_000),
+          ),
+        ]);
+        return provider;
+      });
+      providers.chipnet = Promise.any(attempts).catch((error) => {
+        delete providers.chipnet;
+        throw new Error(
+          "No chipnet Electrum server responded (" +
+          endpoints.map(([host]) => host).join(", ") + "). " +
+          (error instanceof Error ? error.message : String(error)),
+        );
+      });
+    }
   }
   return providers[network]!;
 }
