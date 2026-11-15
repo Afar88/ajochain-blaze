@@ -6,6 +6,8 @@ import {
   validateV2Circle,
   v2CreditFromCommitment,
   v2ReceiptCommitment,
+  v2StateCommitment,
+  v2StateRound,
 } from "./v2-bch";
 
 function chipnetAddress(byte: number) {
@@ -39,6 +41,23 @@ describe("V2 member receipt encoding", () => {
     expect(() => v2ReceiptCommitment(5, 1n)).toThrow(/Invalid V2 member receipt/);
     expect(() => v2ReceiptCommitment(0, 0x8000000000000000n)).toThrow(/Invalid V2 member receipt/);
     expect(() => v2CreditFromCommitment("53000000000000000000")).toThrow(/Invalid V2 member receipt/);
+  });
+});
+
+describe("V2 state marker lifecycle", () => {
+  it("uses the 0x54 completion marker after the final payout", () => {
+    expect(v2StateCommitment(0, 3)).toBe("5300");
+    expect(v2StateCommitment(1, 3)).toBe("5301");
+    expect(v2StateCommitment(3, 3)).toBe("54");
+    expect(v2StateRound("5300", 3)).toBe(0);
+    expect(v2StateRound("5302", 3)).toBe(2);
+    expect(v2StateRound("54", 3)).toBe(3);
+  });
+  it("rejects invalid round commitments and counts", () => {
+    expect(() => v2StateCommitment(-1, 3)).toThrow(/Invalid V2 state round/);
+    expect(() => v2StateCommitment(4, 3)).toThrow(/Invalid V2 state round/);
+    expect(() => v2StateRound("5303", 3)).toThrow(/outside this circle/);
+    expect(() => v2StateRound("5500", 3)).toThrow(/Invalid V2 state NFT/);
   });
 });
 
