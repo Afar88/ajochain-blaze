@@ -24,6 +24,7 @@ The executable fail-closed policy is in `src/core/mainnet-flow.ts`. It is a read
 All keys in `MAINNET_GATE_KEYS` must be true before broadcast eligibility:
 
 - `networkIdentityVerified`
+- `consensusVmVerified`
 - `walletSessionVerified`
 - `circleStateReconciled`
 - `memberAccountingVerified`
