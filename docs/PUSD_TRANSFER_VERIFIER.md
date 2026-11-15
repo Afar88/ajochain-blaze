@@ -1,6 +1,6 @@
 # PUSD transfer verifier — scope and limitations
 
-Status: **off-chain guard prototype; not a raw transaction decoder, signer, covenant, or production wallet integration**.
+Status: **off-chain guard prototype; not a raw transaction decoder, signer, covenant, or production PUSD wallet integration**.
 
 `src/core/pusd-transfer-verifier.ts` checks a fully decoded transaction summary for a deliberately narrow case: a plain fungible PUSD transfer with no NFTs and no other CashToken categories.
 
@@ -12,6 +12,7 @@ Status: **off-chain guard prototype; not a raw transaction decoder, signer, cove
 - PUSD fungible input and output totals are equal.
 - The approved recipient receives exactly the requested amount.
 - Any remaining PUSD is sent only to the explicitly approved token-change address.
+- Every BCH output is restricted to the approved recipient or change address, preventing an unreviewed BCH-only output from siphoning wallet funds.
 - BCH input/output values balance to the supplied fee, and the fee is within the approved maximum.
 
 ## What it does not prove
@@ -22,7 +23,7 @@ Status: **off-chain guard prototype; not a raw transaction decoder, signer, cove
 - That a covenant transition, state NFT, receipt NFT, minting capability, or circle payout is valid.
 - That provider data is fresh or independently authenticated.
 
-The caller must independently decode the exact transaction bytes and provide **all** inputs and outputs. Never treat a caller-supplied summary as proof of transaction validity. The verifier must run again against the final signed bytes before any future signing/broadcast integration.
+The current intent shape reuses the token-change address as the only approved BCH change destination. A production planner must model BCH change separately before it can support a different BCH change address. The caller must independently decode the exact transaction bytes and provide **all** inputs and outputs. Never treat a caller-supplied summary as proof of transaction validity. The verifier must run again against the final signed bytes before any future signing/broadcast integration.
 
 ## Deliberate restriction
 
