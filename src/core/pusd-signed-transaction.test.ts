@@ -42,7 +42,11 @@ function signedSpend(outputScript = recipientScript, outputAmount = 90n, outputS
       valueSatoshis: BigInt(outputSatoshis),
       lockingBytecode: hexToBin(outputScript),
       token: { category: hexToBin(PUSD_ASSET.categoryId), amount: outputAmount },
-    }],
+    }, ...(outputAmount < 100n ? [{
+      valueSatoshis: 1000n,
+      lockingBytecode: hexToBin(walletScript),
+      token: { category: hexToBin(PUSD_ASSET.categoryId), amount: 100n - outputAmount },
+    }] : [])],
   });
   return {
     previous,
@@ -97,7 +101,7 @@ describe("verifySignedPusdTransaction", () => {
     await expect(verify({
       signedHex: fixture.signedHex,
       previous: fixture.previous,
-      walletScripts: [attackerScript],
+      walletScripts: [attackerScript, walletScript],
       isUnspent,
     })).rejects.toThrow(/not locked to a locally derived wallet script/);
     expect(isUnspent).not.toHaveBeenCalled();
