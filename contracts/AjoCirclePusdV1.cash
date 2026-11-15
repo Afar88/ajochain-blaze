@@ -57,6 +57,7 @@ contract AjoCirclePusdV1(
         // Member funding input must be PUSD, not another token category or
         // a minting-capability NFT. BCH signature validation is consensus-level.
         require(tx.inputs[3].tokenCategory == pusdCategory);
+        require(tx.inputs[3].nftCommitment == 0x);
         require(tx.inputs[3].tokenAmount >= amount);
         require(tx.inputs[3].tokenAmount <= 9223372036854775807);
         require(tx.inputs[4].tokenCategory == 0x);
