@@ -28,7 +28,9 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
 export function isAddressForNetwork(address: string, network: NetworkId): boolean {
   const normalized = address.trim().toLowerCase();
   const prefix = NETWORKS[network].cashAddressPrefix;
-  return normalized.startsWith(prefix + ":") || normalized.startsWith(prefix);
+  // This is a prefix sanity check only. Full CashAddress checksum and payload
+  // validation must be performed by the BCH address library before signing.
+  return normalized.startsWith(prefix + ":") && normalized.slice(prefix.length + 1).length > 0;
 }
 
 export function formatBch(satoshis: bigint): string {
