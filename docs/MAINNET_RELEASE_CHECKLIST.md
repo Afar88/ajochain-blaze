@@ -9,7 +9,8 @@ This checklist is a release control, not a list of UI switches. A checkbox may b
 - [ ] Independent review of `contracts/AjoCircle.cash` and the exact compiled artifact deployed by the app.
 - [ ] Adversarial tests for genesis/category creation, payout order, empty/duplicate/missing state NFTs, unexpected tokens, dust, fee ceilings, malformed commitments, and completed circles.
 - [ ] Confirm the deployed script template and constructor arguments against independently derived test vectors.
-- [ ] Mainnet chain reader with at least two independently operated providers; verify chain identity, tip, script history, complete UTXO set, transaction bytes, and reorg handling.
+- [ ] Mainnet chain reader with at least two independently operated providers; verify chain identity, tip, script history, complete UTXO set, raw previous transactions and reorg handling. The new browser quorum reader cross-checks chain tips, UTXO snapshots and previous-transaction bytes, but does not prove provider operator independence or replace SPV/consensus validation.
+- [ ] Use a stable verifier that implements the active 15 May 2026 BCH consensus rules (BCH_2026_05); record the exact package/version and consensus test evidence. The currently pinned stable Libauth 3.0.0 exposes the BCH 2023 VM; the Libauth BCH 2026 VM is currently in its 3.1.0-next prerelease line. Do not authorize real-value signing/broadcast with the older VM or adopt an unreleased prerelease dependency without independent review.
 - [ ] End-to-end create, contribute, payout, failure, reconnect, and confirmation tests with two independently controlled Selene/WizardConnect wallets.
 - [ ] Exact signed transaction verification covering every input outpoint, prevout script and value, sequence, signature/sighash policy, output, fee, and change.
 - [ ] External security review and written approval for the deployed artifact and wallet transaction path.
