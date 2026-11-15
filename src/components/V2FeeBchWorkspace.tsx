@@ -175,13 +175,16 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
       };
       if (!/^\d+$/.test(maxFee.trim())) throw new Error("Maximum miner fee must be a whole number of satoshis.");
       const plan = await planV2FeeGenesis(draft, initiator);
+      const grossPot = BigInt(members.length) * draft.contribution;
+      const projectFee = grossPot / 100n;
       if (!window.confirm(
-        "Create new V2 fee circle on Chipnet?\n\n" +
-        plan.contract.address + "\n" +
-        members.length + " member receipts will be created.\n" +
-        "Contribution: " + formatBch(draft.contribution) + " per member.\n" +
-        "Project fee: 1% of each gross round payout, paid to " + draft.treasury + ".\n" +
-        "Miner fee is separate and capped at " + draft.maxFee.toString() + " sats.\n\n" +
+        "Create new V2 fee circle on Chipnet?\\n\\n" +
+        plan.contract.address + "\\n" +
+        members.length + " member receipts will be created.\\n" +
+        "Contribution: " + formatBch(draft.contribution) + " per member.\\n" +
+        "Gross round pot: " + formatBch(grossPot) + ".\\n" +
+        "Project fee: " + formatBch(projectFee) + " (1%), paid to " + draft.treasury + ".\\n" +
+        "Miner fee is separate and capped at " + draft.maxFee.toString() + " sats.\\n\\n" +
         "This is experimental Chipnet software, not for real funds.",
       )) return;
       const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Create AjoChain V2 fee circle: " + draft.name);
