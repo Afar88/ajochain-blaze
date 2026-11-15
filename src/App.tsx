@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import QRCode from "qrcode";
 import {
   Activity, ArrowRight, ArrowUpRight, Check, ChevronDown,
   CircleDollarSign, Clock3, CreditCard, LockKeyhole, Plus, ShieldCheck,
@@ -79,13 +78,21 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    if (walletView.qrUri) {
-      void QRCode.toDataURL(walletView.qrUri, { errorCorrectionLevel: "M", margin: 1, width: 240 })
-        .then((url) => { if (active) setQrDataUrl(url); })
-        .catch(() => { if (active) setQrDataUrl(""); });
-    } else {
+    const uri = walletView.qrUri;
+    if (!uri) {
       setQrDataUrl("");
+      return () => { active = false; };
     }
+
+    void import("qrcode")
+      .then(({ default: QRCode }) => QRCode.toDataURL(uri, {
+        errorCorrectionLevel: "M",
+        margin: 1,
+        width: 240,
+      }))
+      .then((url) => { if (active) setQrDataUrl(url); })
+      .catch(() => { if (active) setQrDataUrl(""); });
+
     return () => { active = false; };
   }, [walletView.qrUri]);
 
