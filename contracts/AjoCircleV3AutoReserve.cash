@@ -13,7 +13,7 @@ pragma cashscript ^0.14.0;
 //
 // payout inputs: 0 state NFT, 1..N receipt NFTs, N+1 token-free caller fee input
 // payout outputs: 0 state, 1..N updated receipts, N+1 treasury fee,
-//                 N+2 gross-minus-project-fee recipient, N+3 caller fee change
+//                 N+2 recipient net of project fee and future-contribution reserve, N+3 caller fee change
 //
 // Chipnet prototype only. This is a new immutable covenant version; never reuse its address for fee-v1 circles. The fee and pre-first-payout cancellation branches are
 // implemented in this versioned covenant and exposed in the Chipnet workspace.
