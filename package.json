@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "npm run compile && vitest run --testTimeout=20000",
     "typecheck": "tsc -b",
-    "compile": "cashc contracts/AjoCircleV2.cash -o contracts/AjoCircleV2.json"
+    "compile": "cashc contracts/AjoCircle.cash -o contracts/AjoCircle.json && cashc contracts/AjoCircleV2.cash -o contracts/AjoCircleV2.json && cashc contracts/AjoCircleV2Fee.cash -o contracts/AjoCircleV2Fee.json && cashc contracts/AjoCirclePUSDV2.cash -o contracts/AjoCirclePUSDV2.json && cashc contracts/AjoPUSDMemberEscrow.cash -o contracts/AjoPUSDMemberEscrow.json"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -19,7 +19,9 @@
     "@wizardconnect/dapp": "^0.2.2",
     "@bitauth/libauth": "^3.0.0",
     "qrcode": "^1.5.4",
-    "cashscript": "^0.14.0"
+    "cashscript": "^0.14.0",
+    "@electrum-cash/network": "^4.4.8",
+    "@electrum-cash/web-socket": "^4.2.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",
