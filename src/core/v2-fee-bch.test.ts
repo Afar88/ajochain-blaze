@@ -119,7 +119,7 @@ async function payout(provider: MockNetworkProvider, contract: Contract, treasur
 }
 
 async function cancel(provider: MockNetworkProvider, contract: Contract, signer = initiator) {
-  const { state, receipts } = await currentCircle(provider, contract);
+  const { state, receipts } = await currentCircle(contract);
   const fundingAddress = pkhToAddress(signer.pkh, 'chipnet');
   const funding = provider.addUtxo(fundingAddress, randomUtxo({ satoshis: 20_000n }));
   const builder = new TransactionBuilder({ provider })
@@ -145,7 +145,7 @@ describe('AjoCircleV2Fee versioned covenant', () => {
     await deposit(provider, contract, 1);
 
     await payout(provider, contract);
-    const { state } = await currentCircle(provider, contract);
+    const { state } = await currentCircle(contract);
     expect(state.token!.nft!.commitment).toBe('540101');
   });
 
@@ -192,7 +192,7 @@ describe('AjoCircleV2Fee versioned covenant', () => {
     await deposit(provider, contract, 1);
     await payout(provider, contract);
 
-    const { state } = await currentCircle(provider, contract);
+    const { state } = await currentCircle(contract);
     expect(state.token!.nft!.commitment).toBe('540001');
     await expect(cancel(provider, contract)).rejects.toThrow();
   });
