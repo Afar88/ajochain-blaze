@@ -11,7 +11,7 @@ import { authenticatePusdUtxo } from "./pusd-utxo-auth";
 const ownerScript = "76a914" + "11".repeat(20) + "88ac";
 const otherScript = "76a914" + "22".repeat(20) + "88ac";
 
-function fixture(tokenCategory = PUSD_ASSET.categoryId) {
+function fixture(tokenCategory: string = PUSD_ASSET.categoryId) {
   const transaction = {
     version: 2,
     locktime: 0,
