@@ -22,7 +22,10 @@ export interface DecodedPusdOutput {
 export interface PusdTransferIntent {
   recipient: string;
   amount: bigint;
+  /** Destination for fungible PUSD remainder. */
   changeAddress: string;
+  /** Separate BCH-only change destination. Omit to fail closed to the two known destinations. */
+  bchChangeAddress?: string;
   maxFeeSatoshis: bigint;
 }
 
@@ -57,6 +60,10 @@ export function verifyDecodedPusdTransfer(
   if (!intent.recipient || !intent.changeAddress || intent.recipient === intent.changeAddress) {
     return fail("Recipient and token-change addresses must be distinct and non-empty.");
   }
+  if (intent.bchChangeAddress &&
+      (intent.bchChangeAddress === intent.recipient || intent.bchChangeAddress === intent.changeAddress)) {
+    return fail("BCH-only change must use a destination distinct from recipient and PUSD change.");
+  }
   if (intent.amount <= 0n || intent.amount > CASH_TOKEN_MAX_AMOUNT) {
     return fail("Requested PUSD amount is outside the CashTokens fungible amount range.");
   }
@@ -65,6 +72,11 @@ export function verifyDecodedPusdTransfer(
     return fail("Transaction must contain inputs and outputs.");
   }
 
+  const approvedBchDestinations = new Set([
+    intent.recipient,
+    intent.changeAddress,
+    ...(intent.bchChangeAddress ? [intent.bchChangeAddress] : []),
+  ]);
   const seen = new Set<string>();
   let inputPusd = 0n;
   let inputSatoshis = 0n;
@@ -95,10 +107,7 @@ export function verifyDecodedPusdTransfer(
   let changePusd = 0n;
   for (const output of decoded.outputs) {
     if (!output.address || output.satoshis < 0n) return fail("Output address or BCH value is invalid.");
-    // This narrow intent has no independent BCH-change destination field. Until
-    // the wallet planner supplies one, constrain every BCH output to the two
-    // explicitly approved destinations rather than permitting silent BCH theft.
-    if (output.address !== intent.recipient && output.address !== intent.changeAddress) {
+    if (!approvedBchDestinations.has(output.address)) {
       return fail("BCH output is directed to an unapproved address.");
     }
     outputSatoshis += output.satoshis;
