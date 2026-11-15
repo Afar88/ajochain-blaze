@@ -10,7 +10,8 @@ import { NETWORKS, type NetworkId } from "./core/network";
 import { validateCircleDraft, type ContributionFrequency } from "./core/circle";
 import type { CircleAsset } from "./core/member-ledger";
 import { CLOSED_MAINNET_GATES, MAINNET_GATE_KEYS, MAINNET_GATE_LABELS, evaluateMainnetFlow } from "./core/mainnet-flow";
-import { isAssetAvailableOnNetwork, PUSD_ASSET } from "./core/assets";
+import { formatAssetAmount, isAssetAvailableOnNetwork, parseAssetAmount, PUSD_ASSET } from "./core/assets";
+import { isAddressForNetwork } from "./core/network";
 
 type CircleDraftView = {
   name: string;
@@ -36,6 +37,9 @@ export default function App() {
   const [showWallet, setShowWallet] = useState(false);
   const [seleneAddress, setSeleneAddress] = useState("");
   const [addressMatchMessage, setAddressMatchMessage] = useState("");
+  const [pusdRecipient, setPusdRecipient] = useState("");
+  const [pusdAmount, setPusdAmount] = useState("");
+  const [pusdReview, setPusdReview] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [circleName, setCircleName] = useState("");
   const [asset, setAsset] = useState<CircleAsset>("BCH");
@@ -413,6 +417,36 @@ export default function App() {
                   } catch (error) { setAddressMatchMessage(error instanceof Error ? error.message : "Could not match address."); }
                 }}>Match Selene address</button>
                 {addressMatchMessage && <p className="wallet-match-message" role="status">{addressMatchMessage}</p>}
+                <section className="section-card" aria-labelledby="pusd-wallet-title">
+                  <div className="section-heading">
+                    <div><span className="section-kicker">CASH TOKENS · MAINNET ONLY</span><h2 id="pusd-wallet-title">ParyonUSD wallet</h2><p>Token category is pinned to the issuer-published PUSD ID.</p></div>
+                  </div>
+                  <div className="wallet-address-card">
+                    <span>PUSD balance</span><strong>Not yet verified</strong>
+                    <small>Wallet connection does not establish token balance. A trusted, fresh CashTokens indexer is still required.</small>
+                  </div>
+                  <div className="wallet-address-card">
+                    <span>Canonical PUSD category</span>
+                    <code>${PUSD_ASSET.categoryId}</code>
+                    <small>2 decimal places · Mainnet only</small>
+                  </div>
+                  <label className="field-label" htmlFor="pusd-recipient">Recipient BCH address</label>
+                  <input id="pusd-recipient" className="form-control" value={pusdRecipient} onChange={(event) => { setPusdRecipient(event.target.value); setPusdReview(""); }} placeholder="bitcoincash:…" autoComplete="off" />
+                  <label className="field-label" htmlFor="pusd-amount">PUSD amount</label>
+                  <input id="pusd-amount" className="form-control" inputMode="decimal" value={pusdAmount} onChange={(event) => { setPusdAmount(event.target.value); setPusdReview(""); }} placeholder="0.00" />
+                  <button className="primary-button" onClick={() => {
+                    try {
+                      if (network !== "mainnet") throw new Error("PUSD is not configured on Chipnet. Switch to Mainnet.");
+                      if (!isAddressForNetwork(pusdRecipient, "mainnet")) throw new Error("Enter a valid Bitcoin Cash mainnet address.");
+                      const units = parseAssetAmount("PUSD", pusdAmount);
+                      setPusdReview("Details valid: " + formatAssetAmount("PUSD", units) + " PUSD to " + pusdRecipient + ". This is a local review only; balance, UTXOs, BCH fees and transaction outputs are not yet verified.");
+                    } catch (error) {
+                      setPusdReview(error instanceof Error ? error.message : "Could not validate transfer details.");
+                    }
+                  }}>Validate transfer details</button>
+                  {pusdReview && <p className="wallet-match-message" role="status">{pusdReview}</p>}
+                  <p className="wallet-match-message">Signing is deliberately unavailable until trusted UTXO discovery, transaction construction, full signed-byte decoding and final intent verification are connected.</p>
+                </section>
                 <button className="secondary-button" onClick={() => void wallet.disconnect()}>Disconnect wallet</button>
               </div>
             ) : (
