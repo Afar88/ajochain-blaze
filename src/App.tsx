@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import {
   Activity, ArrowRight, Check, ChevronDown, Coins, Home, LockKeyhole,
   Menu, ShieldCheck, Users, Wallet, X,
@@ -7,8 +7,8 @@ import { wallet } from "./core/wizard-wallet";
 import { NETWORKS, type NetworkId } from "./core/network";
 import { formatAssetAmount, PUSD_ASSET } from "./core/assets";
 import { fetchPusdWalletBalance } from "./core/pusd-api";
-import ClassicBchWorkspace from "./components/ClassicBchWorkspace";
-import V2FeeBchWorkspace from "./components/V2FeeBchWorkspace";
+const ClassicBchWorkspace = lazy(() => import("./components/ClassicBchWorkspace"));
+const V2FeeBchWorkspace = lazy(() => import("./components/V2FeeBchWorkspace"));
 
 type Page = "overview" | "circles" | "assets" | "activity";
 type WalletView = {
@@ -272,8 +272,10 @@ export default function App() {
               <h1>Circle tools</h1>
               <p>Create, restore and manage circles. Choose the member-credit fee covenant for the new BCH test flow.</p>
             </div>
-            <ClassicBchWorkspace network={network} walletConnected={connected} />
-            <V2FeeBchWorkspace network={network} walletConnected={connected} />
+            <Suspense fallback={<div className="workspace-loading"><span className="loading-orb" />Loading circle tools…</div>}>
+              <ClassicBchWorkspace network={network} walletConnected={connected} />
+              <V2FeeBchWorkspace network={network} walletConnected={connected} />
+            </Suspense>
           </section>
         )}
 
