@@ -19,7 +19,8 @@ This repository is the **independent BCH BLAZE build**. It is not a copy, mirror
 - Local circle drafts persist in the current browser and can be edited or deleted; they are not on-chain records.
 - WizardConnect dapp relay integration with encrypted saved-session resume, mobile focus/visibility recovery, overlap protection, Selene receive-index matching and signed-transaction intent verification.
 - BCH/Chipnet network selection and full CashAddress checksum + network-prefix validation.
-- Member-level round-credit model with partial top-ups, member-owned carry-forward, duplicate protection and payout blocking until every member has funded their own round.
+- New BCH fee circles use the `fee-v2-escrow` covenant: every member locks all contributions for the remaining scheduled payouts before anyone receives a pot; each payout debits every member receipt, including the recipient, and the final round writes a terminal state. The workspace includes a member accountability ledger showing paid-in, locked credit, received payout, remaining shortfall and payout lock status.
+- Existing `fee-v1` invites remain on their original rolling-credit contract and are clearly marked as legacy; they do not gain the full-cycle default guarantee retroactively.
 - Ported BCH V2 member-receipt covenant source in `contracts/AjoCircleV2.cash`; each payout consumes one round contribution from every member receipt, including the previous payout recipient.
 - Unit tests are written for the member ledger, circle draft validation, checksummed network addresses and raw signed-transaction intent comparison. Their execution status, TypeScript build and CashScript compilation must be confirmed by a successful CI run.
 - Circle previews are local UI drafts only; they are not persisted to a contract or broadcast to the network.
