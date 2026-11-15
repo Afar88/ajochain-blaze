@@ -215,7 +215,7 @@ describe('AjoChain full-cycle escrow five-member rotation', () => {
     return new Contract(artifact, [
       fiveMembers[0].pkh, fiveMembers[1].pkh, fiveMembers[2].pkh,
       fiveMembers[3].pkh, fiveMembers[4].pkh,
-      5n, CONTRIBUTION, MAX_FEE, hexToBin(fiveCategory).reverse(),
+      5n, CONTRIBUTION, 15_000n, hexToBin(fiveCategory).reverse(),
       initiator.pkh, treasury.pkh,
     ], { provider, contractType: 'p2sh32' });
   }
@@ -267,7 +267,7 @@ describe('AjoChain full-cycle escrow five-member rotation', () => {
     const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
     const gross = BigInt(fiveMembers.length) * CONTRIBUTION;
     const feeAddress = pkhToAddress(initiator.pkh, 'chipnet');
-    const funding = provider.addUtxo(feeAddress, randomUtxo({ satoshis: 20_000n }));
+    const funding = provider.addUtxo(feeAddress, randomUtxo({ satoshis: 25_000n }));
     const nextRound = round + 1;
     const builder = new TransactionBuilder({ provider })
       .addInput(state, contract.unlock.payout())
@@ -288,7 +288,7 @@ describe('AjoChain full-cycle escrow five-member rotation', () => {
     }
     builder.addOutput({ to: pkhToAddress(treasury.pkh, 'chipnet'), amount: gross / 100n });
     builder.addOutput({ to: pkhToAddress(fiveMembers[round].pkh, 'chipnet'), amount: gross - gross / 100n });
-    builder.addOutput({ to: feeAddress, amount: funding.satoshis - 8_000n });
+    builder.addOutput({ to: feeAddress, amount: funding.satoshis - 12_000n });
     await builder.send();
   }
 
