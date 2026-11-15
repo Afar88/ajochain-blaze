@@ -36,9 +36,10 @@ export function validateCircleDraft(input: CircleDraftInput): CircleDraftValidat
   if (!CIRCLE_ASSETS.includes(input.asset)) {
     errors.push("Choose BCH or PUSD.");
   }
-  const amount = input.contributionAmount.trim();
-  if (!/^\d+(?:\.\d+)?$/.test(amount) || !/[1-9]/.test(amount.replace(/\./g, ""))) {
-    errors.push("Enter a contribution amount greater than zero.");
+  try {
+    parseAssetAmount(input.asset, input.contributionAmount);
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : "Enter a valid contribution amount.");
   }
   if (!["daily", "weekly", "monthly"].includes(input.frequency)) {
     errors.push("Choose a valid contribution schedule.");
