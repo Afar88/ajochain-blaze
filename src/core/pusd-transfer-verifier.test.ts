@@ -28,6 +28,25 @@ describe("plain PUSD transaction verifier", () => {
     });
   });
 
+  it("accepts BCH-only change only at its separately approved destination", () => {
+    const intentWithBchChange = { ...intent, bchChangeAddress: "bitcoincash:bch-change" };
+    const withBchChange = {
+      ...valid,
+      outputs: [...valid.outputs, { address: intentWithBchChange.bchChangeAddress, satoshis: 400n }],
+      feeSatoshis: 100n,
+    };
+    expect(verifyDecodedPusdTransfer(intentWithBchChange, withBchChange)).toMatchObject({ ok: true, feeSatoshis: 100n });
+    expect(verifyDecodedPusdTransfer(intent, withBchChange)).toMatchObject({
+      ok: false, reason: "BCH output is directed to an unapproved address.",
+    });
+  });
+
+  it("rejects a BCH change address that aliases a token destination", () => {
+    expect(verifyDecodedPusdTransfer({ ...intent, bchChangeAddress: intent.changeAddress }, valid)).toMatchObject({
+      ok: false, reason: "BCH-only change must use a destination distinct from recipient and PUSD change.",
+    });
+  });
+
   it("rejects token inflation or burning", () => {
     const changed = { ...valid, outputs: valid.outputs.map((o, i) => i === 1
       ? { ...o, token: { category: PUSD_ASSET.categoryId, amount: 299n } } : o) };
@@ -36,7 +55,7 @@ describe("plain PUSD transaction verifier", () => {
 
   it("rejects recipient substitution and unexpected PUSD change destination", () => {
     const changed = { ...valid, outputs: valid.outputs.map((o, i) => i === 0 ? { ...o, address: "bitcoincash:attacker" } : o) };
-    expect(verifyDecodedPusdTransfer(intent, changed)).toMatchObject({ ok: false, reason: "PUSD output is directed to an unapproved address." });
+    expect(verifyDecodedPusdTransfer(intent, changed)).toMatchObject({ ok: false, reason: "BCH output is directed to an unapproved address." });
   });
 
   it("rejects an unapproved token category and any NFT", () => {
