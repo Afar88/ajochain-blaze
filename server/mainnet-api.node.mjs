@@ -7,6 +7,8 @@ import {
   hashBlockHeader,
   lockingBytecodeToScriptHash,
   normalizeElectrumUnspent,
+  MAINNET_BROADCAST_ENABLED,
+  createMainnetApiServer,
 } from "./mainnet-api.mjs";
 
 const mainnetP2pkh = "bitcoincash:qq2azmyyv6dtgczexyalqar70q036yund54qgw0wg6";
@@ -84,4 +86,32 @@ test("BCH genesis header is recognized by its canonical mainnet hash", () => {
     "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",
   );
   assert.throws(() => hashBlockHeader("00"), /malformed/);
+});
+
+
+test("PUSD Mainnet broadcast stays locked even if a runtime override is set", async () => {
+  const original = process.env.ENABLE_MAINNET_BROADCAST;
+  process.env.ENABLE_MAINNET_BROADCAST = "true";
+  const server = createMainnetApiServer();
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const response = await fetch("http://127.0.0.1:" + address.port + "/api/pusd/broadcast", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    assert.equal(MAINNET_BROADCAST_ENABLED, false);
+    assert.equal(response.status, 403);
+    const payload = await response.json();
+    assert.match(payload.error, /Mainnet broadcast is disabled/);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    if (original === undefined) delete process.env.ENABLE_MAINNET_BROADCAST;
+    else process.env.ENABLE_MAINNET_BROADCAST = original;
+  }
 });
