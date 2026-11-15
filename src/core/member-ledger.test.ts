@@ -10,9 +10,9 @@ const members = [
   { memberId: "member-a", walletAddress: "bitcoincash:qmember" },
   { memberId: "member-b", walletAddress: "bitcoincash:qother" },
 ];
-function addMemberB(current: MemberBalance[]) {
+function addMemberB(current: MemberBalance[], paymentId = "tx-b1") {
   const result = applyMemberPayment(current, {
-    ...payment, paymentId: "tx-b1", memberId: "member-b", walletAddress: "bitcoincash:qother", amountBaseUnits: 100n,
+    ...payment, paymentId, periodId: paymentId, memberId: "member-b", walletAddress: "bitcoincash:qother", amountBaseUnits: 100n,
   }, 100n);
   if (!result.ok) throw new Error(result.reason);
   return result.balances;
@@ -104,7 +104,7 @@ describe("member contribution and payout accounting", () => {
     expect(applyMemberPayout(roundOne.balances, members, "BCH", 100n)).toMatchObject({ ok: false });
     const next = applyMemberPayment(roundOne.balances, { ...payment, paymentId: "tx-a2", periodId: "round-2", amountBaseUnits: 50n }, 100n);
     if (!next.ok) throw new Error(next.reason);
-    const nextBoth = addMemberB(next.balances);
+    const nextBoth = addMemberB(next.balances, "tx-b2");
     expect(applyMemberPayout(nextBoth, members, "BCH", 100n).ok).toBe(true);
   });
 
