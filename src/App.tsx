@@ -399,7 +399,8 @@ export default function App() {
                     <small>Estimated size {pusdTransferPlan.estimatedSizeBytes} bytes · fee rate {pusdTransferPlan.feeRateSatoshisPerKb.toString()} sats/kB. The plan must be rebuilt from fresh chain data before any signature.</small>
                   </div>
                 )}
-                <button type="button" className="primary-button" disabled title="PUSD Mainnet spending is not yet approved by the security release gate">
+                <button type="button" className="primary-button" disabled={!PUSD_MAINNET_SPENDING_ENABLED || !pusdTransferPlan}
+                  title="PUSD Mainnet spending is not yet approved by the security release gate">
                   Send PUSD · Mainnet locked
                 </button>
                 <small className="field-hint">PUSD sending stays locked until raw transaction inspection, independent wallet testing, fee/carrier validation, and security review are completed. This preview is not a payment.</small>
