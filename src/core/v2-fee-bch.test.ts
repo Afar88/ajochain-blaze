@@ -14,7 +14,7 @@ import { pkhToAddress } from './bch-address';
 
 const artifact = artifactJson as unknown as Artifact;
 const CATEGORY = 'cd'.repeat(32);
-const CONTRIBUTION = 100_000n;
+const CONTRIBUTION = 200_000n;
 const MAX_FEE = 10_000n;
 const DUST = 1000n;
 
