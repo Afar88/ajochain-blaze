@@ -34,8 +34,8 @@ contract AjoCirclePusdV1(
         require(memberIndex >= 0 && memberIndex < memberCount);
         require(amount > 0 && amount <= 9223372036854775807);
         require(maxFee >= 0);
-        require(tx.inputs.length == 4);
-        require(tx.outputs.length >= 3 && tx.outputs.length <= 5);
+        require(tx.inputs.length == 5);
+        require(tx.outputs.length == 4 || tx.outputs.length == 5);
 
         // The three covenant inputs must be the same locking script.
         require(tx.inputs[0].lockingBytecode == tx.inputs[1].lockingBytecode);
@@ -59,6 +59,9 @@ contract AjoCirclePusdV1(
         require(tx.inputs[3].tokenCategory == pusdCategory);
         require(tx.inputs[3].tokenAmount >= amount);
         require(tx.inputs[3].tokenAmount <= 9223372036854775807);
+        require(tx.inputs[4].tokenCategory == 0x);
+        require(tx.inputs[4].lockingBytecode == tx.inputs[3].lockingBytecode);
+        require(tx.inputs[4].value > maxFee + 546);
         if (memberIndex == 0) { require(tx.inputs[3].lockingBytecode == new LockingBytecodeP2PKH(m0)); }
         if (memberIndex == 1) { require(tx.inputs[3].lockingBytecode == new LockingBytecodeP2PKH(m1)); }
         if (memberIndex == 2) { require(tx.inputs[3].lockingBytecode == new LockingBytecodeP2PKH(m2)); }
@@ -94,7 +97,13 @@ contract AjoCirclePusdV1(
         require(tx.outputs[2].tokenCategory == pusdCategory);
         require(tx.outputs[2].tokenAmount == oldPool + amount);
         require(tx.outputs[2].nftCommitment == 0x);
-        require(tx.outputs[2].value == tx.inputs[2].value);
+        // If the member has no token change, the PUSD UTXO's BCH carrier
+        // joins the pool. Otherwise the token-change output keeps that carrier.
+        if (tx.inputs[3].tokenAmount == amount) {
+            require(tx.outputs[2].value == tx.inputs[2].value + tx.inputs[3].value);
+        } else {
+            require(tx.outputs[2].value == tx.inputs[2].value);
+        }
 
         // Any member token change must return to the same member and preserve
         // exactly the remainder. With no token-change output, input must be exact.
@@ -104,16 +113,16 @@ contract AjoCirclePusdV1(
             require(tx.outputs[3].lockingBytecode == tx.inputs[3].lockingBytecode);
             require(tx.outputs[3].tokenAmount == memberRemainder);
             require(tx.outputs[3].value == tx.inputs[3].value);
-            if (tx.outputs.length == 5) {
-                require(tx.outputs[4].tokenCategory == 0x);
-                require(tx.outputs[4].value <= maxFee);
-            }
+            require(tx.outputs[4].tokenCategory == 0x);
+            require(tx.outputs[4].lockingBytecode == tx.inputs[4].lockingBytecode);
+            require(tx.outputs[4].value >= tx.inputs[4].value - maxFee);
+            require(tx.outputs[4].value <= tx.inputs[4].value);
         } else {
             require(memberRemainder == 0);
-            if (tx.outputs.length > 3) {
-                require(tx.outputs[3].tokenCategory == 0x);
-                require(tx.outputs[3].value <= maxFee);
-            }
+            require(tx.outputs[3].tokenCategory == 0x);
+            require(tx.outputs[3].lockingBytecode == tx.inputs[4].lockingBytecode);
+            require(tx.outputs[3].value >= tx.inputs[4].value - maxFee);
+            require(tx.outputs[3].value <= tx.inputs[4].value);
         }
     }
 
@@ -122,7 +131,7 @@ contract AjoCirclePusdV1(
         require(contribution > 0 && maxFee >= 0);
         require(this.activeInputIndex >= 0 && this.activeInputIndex <= memberCount + 1);
         require(tx.inputs.length == memberCount + 2);
-        require(tx.outputs.length >= memberCount + 3 && tx.outputs.length <= memberCount + 4);
+        require(tx.outputs.length == memberCount + 3);
 
         // All contract state, receipt and pool inputs share this covenant.
         for (int i = 0; i < memberCount + 2; i++) {
@@ -180,7 +189,10 @@ contract AjoCirclePusdV1(
         int remainingPool = tx.inputs[memberCount + 1].tokenAmount - payoutAmount;
         require(tx.outputs[memberCount + 1].lockingBytecode == tx.inputs[memberCount + 1].lockingBytecode);
         require(tx.outputs[memberCount + 1].tokenAmount == remainingPool);
-        require(tx.outputs[memberCount + 1].value == tx.inputs[memberCount + 1].value);
+        require(tx.inputs[memberCount + 1].value >= 2000 + maxFee);
+        require(tx.outputs[memberCount + 1].value >= 1000);
+        require(tx.outputs[memberCount + 1].value <= tx.inputs[memberCount + 1].value - 1000);
+        require(tx.outputs[memberCount + 1].value >= tx.inputs[memberCount + 1].value - 1000 - maxFee);
         if (remainingPool > 0) {
             require(tx.outputs[memberCount + 1].tokenCategory == pusdCategory);
             require(tx.outputs[memberCount + 1].nftCommitment == 0x);
@@ -198,9 +210,6 @@ contract AjoCirclePusdV1(
         require(tx.outputs[memberCount + 2].tokenAmount == payoutAmount);
         require(tx.outputs[memberCount + 2].value == 1000);
 
-        if (tx.outputs.length == memberCount + 4) {
-            require(tx.outputs[memberCount + 3].tokenCategory == 0x);
-            require(tx.outputs[memberCount + 3].value <= maxFee);
-        }
+
     }
 }
