@@ -28,7 +28,7 @@ A payout is valid only when **every member's receipt credit is at least one full
 
 This means the member who received round 1 must still fund their receipt for round 2. Receiving a payout does not discharge future contribution obligations. A member who stops contributing leaves their receipt below the required threshold and blocks the next payout rather than allowing the other members' funds to be distributed as if the circle were fully funded.
 
-The cycle ends after the registered number of payouts. A new round cannot be started after completion.
+After the last registered member receives a payout, the round index wraps back to the first member. The circle continues as a repeating rotation unless a separately designed, reviewed closure/refund mechanism is introduced. This is deliberate: members remain obligated to contribute in subsequent rounds even after receiving their first payout.
 
 ## Credit and carry-forward
 
@@ -59,4 +59,4 @@ The wallet integration must:
 - One member's excess credit remains with that member and cannot satisfy another member's deficit.
 - Duplicate deposits cannot increase a receipt twice.
 - Wrong member funding address, altered member index, altered receipt commitment, missing receipt, wrong payout recipient, and incorrect round transition all fail.
-- The last payout marks the circle complete and no further payout can execute.
+- After N payouts, the round index wraps to member 0 and the next cycle still requires every member to fund their own receipt.
