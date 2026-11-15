@@ -12,21 +12,25 @@ Classic V1 remains available for compatibility and inspection. It is an aggregat
 
 Mainnet transaction signing/broadcast remains disabled. Chipnet is the transaction-test environment.
 
-### Versioned V2 fee covenant
+### New V2 full-cycle escrow covenant
 
-New V2 fee circles use a separate versioned covenant and do not change previously deployed circles.
+New circles use a separate `fee-v2-escrow` covenant and do not change previously deployed circles. Existing `fee-v1` circles remain on their original contract address and retain their original rolling-credit behavior.
 
-Each circle commits the following to one CashToken category:
+Each full-cycle escrow circle commits the following to one CashToken category:
 - A mutable state NFT containing the current payout round and an irreversible first-payout flag.
-- One immutable receipt NFT per member, containing that member's index and credit.
+- One immutable receipt NFT per member, containing that member's index and locked BCH credit.
 - The 1% treasury destination in the contract's constructor configuration.
 
-Before a payout, **every** member receipt must contain at least one full contribution. The payout consumes all member receipts and debits exactly one contribution from each receipt. That includes the member receiving the pot. Any remaining credit stays attributed to the same member. After the first payout, the state NFT permanently locks cancellation.
+For `N` members and contribution `C`, each member must escrow `N × C` before the first payout. Before payout round `r`, every receipt must still contain at least `(N - r) × C`. Deposits cannot exceed the exact remaining commitment. This means the first payout recipient's future contributions are already locked before they receive the pot; no later payout depends on the recipient returning to deposit again. Each payout debits one contribution from every member receipt, including the recipient. The state NFT advances in finite order and writes a terminal round after the Nth payout. Cancellation is permanently locked after the first payout.
+
+The app's accountability ledger shows each member's total paid in, current receipt balance, remaining commitment, amount short, payout received status, and whether the circle is locked or ready. These figures are read from the chain state and receipt NFTs; the contract enforces the actual spending rules.
 
 The gross pot is split on-chain:
 - 1% of gross pot, rounded down in integer satoshis, is sent to the fixed treasury address.
 - The recipient receives gross pot minus that project fee.
 - Miner fees are supplied by a separate token-free BCH input from the wallet triggering the payout. Any unused fee input value returns to that wallet. The miner fee is not deducted from member credit, the gross member payout, or the project fee.
+
+This full-cycle guarantee requires more funds up front than a rolling monthly promise. For a 2-member circle at 0.002 BCH per scheduled contribution, each member must lock 0.004 BCH before payout.
 
 Each new circle shows the treasury address and fee before creation. The configured Chipnet treasury is a prototype address and should be independently verified before using even test funds.
 
