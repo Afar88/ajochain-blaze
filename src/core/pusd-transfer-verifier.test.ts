@@ -46,7 +46,7 @@ describe("plain PUSD transaction verifier", () => {
 
     const withNft = { ...valid, inputs: valid.inputs.map((i, n) => n === 0
       ? { ...i, token: { category: PUSD_ASSET.categoryId, amount: 1000n, nft: { capability: "none" as const, commitment: "01" } } } : i) };
-    expect(verifyDecodedPusdTransfer(intent, withNft)).toMatchObject({ ok: false, reason: "NFT-bearing inputs are not supported" });
+    expect(verifyDecodedPusdTransfer(intent, withNft)).toMatchObject({ ok: false, reason: "NFT-bearing inputs are not supported by this plain-transfer verifier." });
   });
 
   it("rejects duplicate inputs and BCH value creation", () => {
@@ -54,7 +54,7 @@ describe("plain PUSD transaction verifier", () => {
     expect(verifyDecodedPusdTransfer(intent, duplicate)).toMatchObject({ ok: false, reason: "Duplicate transaction input outpoint." });
 
     const valueCreation = { ...valid, outputs: valid.outputs.map((o) => ({ ...o, satoshis: o.satoshis + 1n })) };
-    expect(verifyDecodedPusdTransfer(intent, valueCreation)).toMatchObject({ ok: false, reason: "Transaction creates BCH value." });
+    expect(verifyDecodedPusdTransfer(intent, valueCreation)).toMatchObject({ ok: false, reason: "Reported miner fee does not match BCH input/output accounting." });
   });
 
   it("rejects a false or excessive fee and a wrong recipient amount", () => {
