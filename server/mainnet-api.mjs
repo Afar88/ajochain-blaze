@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import {
   binToHex,
   createVirtualMachineBCH2023,
@@ -26,11 +27,16 @@ function parseServerList(value = process.env.ELECTRUM_SERVERS ?? "") {
   if (unique.length < 2) {
     throw new Error("Configure at least two independent ELECTRUM_SERVERS endpoints for mainnet quorum.");
   }
+  const hostnames = new Set();
   for (const endpoint of unique) {
     const url = new URL(endpoint);
-    if (url.protocol !== "wss:") {
+    if (url.protocol !== "wss:" || !url.hostname) {
       throw new Error("Mainnet Electrum endpoints must use secure wss:// URLs.");
     }
+    hostnames.add(url.hostname.toLowerCase());
+  }
+  if (hostnames.size < 2) {
+    throw new Error("Electrum quorum endpoints must use at least two different hostnames.");
   }
   return unique;
 }
@@ -58,14 +64,14 @@ export function cashAddressToLockingBytecode(address) {
   }
   const type = String(decoded.type).toLowerCase();
   const payload = binToHex(decoded.payload).toLowerCase();
-  if (!/^[0-9a-f]{40}$/.test(payload)) {
-    throw new Error("Unsupported CashAddress payload length.");
-  }
   if (type === "p2pkh" || type === "p2pkhwithtokens") {
+    if (!/^[0-9a-f]{40}$/.test(payload)) throw new Error("P2PKH CashAddress payload must be 20 bytes.");
     return "76a914" + payload + "88ac";
   }
   if (type === "p2sh" || type === "p2shwithtokens") {
-    return "a914" + payload + "87";
+    if (/^[0-9a-f]{40}$/.test(payload)) return "a914" + payload + "87";
+    if (/^[0-9a-f]{64}$/.test(payload)) return "aa20" + payload + "87";
+    throw new Error("P2SH CashAddress payload must be 20 or 32 bytes.");
   }
   throw new Error("Unsupported CashAddress script type: " + decoded.type);
 }
@@ -83,7 +89,7 @@ export function normalizeElectrumUnspent(value) {
     if (!item || typeof item !== "object" ||
         !/^[0-9a-f]{64}$/i.test(item.tx_hash) ||
         !Number.isSafeInteger(item.tx_pos) || item.tx_pos < 0 ||
-        !Number.isSafeInteger(item.height) ||
+        !Number.isSafeInteger(item.height) || item.height < 0 ||
         !(Number.isSafeInteger(item.value) || (typeof item.value === "string" && /^\d+$/.test(item.value)))) {
       throw new Error("Electrum returned a malformed unspent output record.");
     }
@@ -701,7 +707,7 @@ export function createMainnetApiServer() {
   });
 }
 
-const isDirectExecution = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+const isDirectExecution = process.argv[1] && resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1]);
 if (isDirectExecution) {
   const port = Number(process.env.PORT ?? 3001);
   if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
