@@ -316,7 +316,7 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
     throw new Error("State BCH does not match the exact member-credit total. Stop and investigate.");
   }
   const remainingRounds = params.members.length - round;
-  const requiredCredits = credits.map((_, index) => params.covenant === 'fee-v2-escrow'
+  const requiredCredits = credits.map(() => params.covenant === 'fee-v2-escrow'
     ? BigInt(remainingRounds) * params.contribution
     : params.contribution);
   if (credits.some((credit, index) => credit < requiredCredits[index])) {
