@@ -181,39 +181,83 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
   return { wc: builder.generateWcTransactionObject({ broadcast: false, userPrompt: 'Add credit to your V2 member receipt' }), walletInputs: [2], memberIndex, credited: amount, newCredit: oldCredit + amount };
 }
 
-/** Anyone can trigger a payout; the covenant enforces the 1% treasury output and miner-fee ceiling. */
-export async function planV2FeePayout(params: V2FeeCircleParams) {
+/** Any circle participant can trigger payout and sponsor miner fees from a separate BCH input. */
+export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress: string) {
   validate(params);
+  if (!feePayerAddress) throw new Error("A connected Chipnet fee-payer address is required.");
+  classicAddressToPkh(feePayerAddress, "chipnet");
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
   const all = await contract.getUtxos();
   assertUtxoSet(all, params.stateCategory, params.members.length);
   const state = findState(all, params.stateCategory);
   const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
-  const hasPaid = state.token!.nft!.commitment.slice(4) === '01';
-  if (!Number.isInteger(round) || round < 0 || round >= params.members.length) throw new Error('Invalid V2 fee payout round.');
+  const hasPaid = state.token!.nft!.commitment.slice(4) === "01";
+  if (!Number.isInteger(round) || round < 0 || round >= params.members.length) {
+    throw new Error("Invalid V2 fee payout round.");
+  }
   const receipts = params.members.map((_, i) => findReceipt(all, params.stateCategory, i));
-  const credits = receipts.map(u => v2FeeCreditFromCommitment(u.token!.nft!.commitment));
-  if (state.satoshis !== credits.reduce((sum, credit) => sum + credit, STATE_DUST)) throw new Error('State BCH does not match the exact member-credit total. Stop and investigate.');
-  if (credits.some(c => c < params.contribution)) throw new Error('Payout is blocked until every member has one full contribution in their own receipt.');
+  const credits = receipts.map((u) => v2FeeCreditFromCommitment(u.token!.nft!.commitment));
+  if (state.satoshis !== credits.reduce((sum, credit) => sum + credit, STATE_DUST)) {
+    throw new Error("State BCH does not match the exact member-credit total. Stop and investigate.");
+  }
+  if (credits.some((credit) => credit < params.contribution)) {
+    throw new Error("Payout is blocked until every member has one full contribution in their own receipt.");
+  }
   const pot = BigInt(params.members.length) * params.contribution;
   const projectFee = pot / 100n;
   const minerFee = feeEstimate(params.members.length);
-  if (minerFee > params.maxFee) throw new Error('Estimated miner fee exceeds this circle maxFee.');
-  if (state.satoshis - pot < STATE_DUST) throw new Error('Payout would reduce the state reserve below 1,000 sats.');
-  const recipientAmount = pot - projectFee - minerFee;
-  if (projectFee < 546n || recipientAmount < CHANGE_DUST) throw new Error('The payout fee split would create a dust output.');
+  if (minerFee > params.maxFee) throw new Error("Estimated miner fee exceeds this circle maxFee.");
+  if (state.satoshis - pot < STATE_DUST) {
+    throw new Error("Payout would reduce the state reserve below 1,000 sats.");
+  }
+  if (projectFee < 546n || pot - projectFee < CHANGE_DUST) {
+    throw new Error("The 1% project fee would create a dust output or leave an invalid recipient amount.");
+  }
+
+  const feeCoins = (await provider.getUtxos(feePayerAddress)).filter((u) => !u.token);
+  const feeFunding = pickFunding(feeCoins, minerFee + CHANGE_DUST);
+  const feeChange = feeFunding.satoshis - minerFee;
+
   const builder = new TransactionBuilder({ provider })
     .addInput(state, contract.unlock.payout())
     .addInputs(receipts, contract.unlock.payout())
-    .addOutput({ to: contract.tokenAddress, amount: state.satoshis - pot, token: { category: params.stateCategory, amount: 0n, nft: { capability: 'minting', commitment: v2FeeStateCommitment((round + 1) % params.members.length, true) } } });
-  receipts.forEach((receipt, i) => {
-    const credit = credits[i];
-    builder.addOutput({ to: contract.tokenAddress, amount: receipt.satoshis, token: { category: params.stateCategory, amount: 0n, nft: { capability: 'none', commitment: v2FeeReceiptCommitment(i, credit - params.contribution) } } });
+    .addInput(feeFunding, placeholderP2PKHUnlocker(feePayerAddress))
+    .addOutput({
+      to: contract.tokenAddress,
+      amount: state.satoshis - pot,
+      token: { category: params.stateCategory, amount: 0n,
+        nft: { capability: "minting", commitment: v2FeeStateCommitment((round + 1) % params.members.length, true) } },
+    });
+  receipts.forEach((receipt, index) => {
+    builder.addOutput({
+      to: contract.tokenAddress,
+      amount: receipt.satoshis,
+      token: { category: params.stateCategory, amount: 0n,
+        nft: { capability: "none", commitment: v2FeeReceiptCommitment(index, credits[index] - params.contribution) } },
+    });
   });
   builder.addOutput({ to: params.treasury, amount: projectFee });
-  builder.addOutput({ to: params.members[round], amount: recipientAmount });
-  return { builder, round, recipient: params.members[round], gross: pot, projectFee, minerFee, payout: recipientAmount, hasPaid };
+  // Recipient receives the gross pot less only the 1% project fee.
+  builder.addOutput({ to: params.members[round], amount: pot - projectFee });
+  // Miner fee is separately funded by the caller and change returns to that wallet.
+  builder.addOutput({ to: feePayerAddress, amount: feeChange });
+
+  return {
+    wc: builder.generateWcTransactionObject({
+      broadcast: false,
+      userPrompt: "Pay AjoChain V2 round " + (round + 1) + "; BCH miner fee is paid separately by your wallet",
+    }),
+    walletInputs: [params.members.length + 1],
+    round,
+    recipient: params.members[round],
+    gross: pot,
+    projectFee,
+    minerFee,
+    payout: pot - projectFee,
+    hasPaid,
+    feePayerAddress,
+  };
 }
 
 /** Initiator-only cancellation refunds every member's exact receipt credit and attached BCH. */
