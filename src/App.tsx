@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import QRCode from "qrcode";
 import {
-  Activity, ArrowRight, ArrowUpRight, CalendarDays, Check, ChevronDown,
+  Activity, ArrowRight, ArrowUpRight, Check, ChevronDown,
   CircleDollarSign, Clock3, CreditCard, LockKeyhole, Plus, ShieldCheck,
   Sparkles, Users, Wallet, X,
 } from "lucide-react";
