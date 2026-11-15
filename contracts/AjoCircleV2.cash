@@ -122,9 +122,11 @@ contract AjoCircleV2(
         require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
         require(tx.outputs[0].tokenCategory == stateCategory + 0x02);
         require(tx.outputs[0].tokenAmount == 0);
-        require(tx.outputs[0].nftCommitment == (round + 1 == memberCount
-            ? 0x54
-            : 0x53 + toPaddedBytes(round + 1, 1)));
+        if (round + 1 == memberCount) {
+            require(tx.outputs[0].nftCommitment == 0x54);
+        } else {
+            require(tx.outputs[0].nftCommitment == 0x53 + toPaddedBytes(round + 1, 1));
+        }
         require(tx.outputs[0].value == tx.inputs[0].value - pot);
         require(tx.outputs[0].value >= 1000);
 
