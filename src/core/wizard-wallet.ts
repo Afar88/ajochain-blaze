@@ -386,7 +386,7 @@ class WizardWallet {
     const mgr = this.mgr;
     const generation = this.generation;
     const request = buildWizardSignRequest(wcObject, walletInputs, this.receiveIndex, prompt, mgr.nextSequence());
-    const res = await mgr.sendSignRequest(request);
+    const res = await mgr.sendSignRequest(request as Parameters<typeof mgr.sendSignRequest>[0]);
     if (!this.isCurrent(mgr, generation) || this.state !== 'connected') {
       throw new Error('Wallet connection changed before signing completed. Please reconnect and try again.');
     }
