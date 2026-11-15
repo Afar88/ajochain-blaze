@@ -7,6 +7,7 @@
  */
 export const MAINNET_GATE_KEYS = [
   "networkIdentityVerified",
+  "consensusVmVerified",
   "walletSessionVerified",
   "circleStateReconciled",
   "memberAccountingVerified",
@@ -22,6 +23,7 @@ export type MainnetGateEvidence = Record<MainnetGateKey, boolean>;
 
 export const CLOSED_MAINNET_GATES: MainnetGateEvidence = {
   networkIdentityVerified: false,
+  consensusVmVerified: false,
   walletSessionVerified: false,
   circleStateReconciled: false,
   memberAccountingVerified: false,
@@ -34,6 +36,7 @@ export const CLOSED_MAINNET_GATES: MainnetGateEvidence = {
 
 export const MAINNET_GATE_LABELS: Record<MainnetGateKey, string> = {
   networkIdentityVerified: "Mainnet chain identity independently verified",
+  consensusVmVerified: "Current BCH Mainnet consensus VM independently validated",
   walletSessionVerified: "WizardConnect and Selene session independently verified",
   circleStateReconciled: "Circle state reconciled with confirmed chain data",
   memberAccountingVerified: "Every member receipt and contribution reconciled",
