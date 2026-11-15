@@ -327,7 +327,7 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
         <div>
           <span className="section-kicker">MEMBER CREDIT · FEE COVENANT</span>
           <h2 id="v2-fee-title">Fair-round BCH circle</h2>
-          <p>Members fund the current round. When a member receives a payout, all of that member’s remaining contributions are automatically reserved from the payout in their own on-chain receipt.</p>
+          <p>Members fund the current round. When a member receives a payout, exactly one next contribution is withheld and carried forward in that member’s own on-chain receipt.</p>
         </div>
         <span className="classic-network">Chipnet · automatic future reserve</span>
       </div>
