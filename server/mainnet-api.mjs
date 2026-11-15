@@ -248,6 +248,39 @@ async function getTipQuorum(sessions) {
   return assertTipQuorum(tips);
 }
 
+function bchPerKilobyteToSatoshis(value) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+  const satoshis = Math.ceil(value * 100_000_000);
+  if (!Number.isSafeInteger(satoshis) || satoshis <= 0 || satoshis > 1_000_000_000) return null;
+  return BigInt(satoshis);
+}
+
+async function getFeeRateQuorum(sessions) {
+  const quotes = await Promise.all(sessions.map(async (session) => {
+    let estimated = -1;
+    let relay = -1;
+    try { estimated = await session.call("blockchain.estimatefee", [2]); } catch { /* try relay floor */ }
+    try { relay = await session.call("blockchain.relayfee", []); } catch { /* no fee policy */ }
+    const candidates = [
+      bchPerKilobyteToSatoshis(estimated),
+      bchPerKilobyteToSatoshis(relay),
+    ].filter((value) => value !== null);
+    if (candidates.length === 0) return null;
+    return candidates.reduce((highest, value) => value > highest ? value : highest);
+  }));
+  const valid = quotes.filter((quote) => quote !== null);
+  if (valid.length < 2) {
+    throw new Error("At least two Electrum servers must return a usable BCH fee estimate or relay floor.");
+  }
+  const feeRateSatoshisPerKb = valid.reduce((highest, value) => value > highest ? value : highest);
+  return {
+    feeRateSatoshisPerKb: (feeRateSatoshisPerKb < 1000n ? 1000n : feeRateSatoshisPerKb).toString(),
+    source: "highest of independent Electrum estimates/relay floors, with a 1 sat/byte minimum",
+    serversResponding: valid.length,
+    serversConfigured: sessions.length,
+  };
+}
+
 async function getUnspentSnapshots(sessions, lockingBytecodes) {
   const scriptHashes = [...new Set(lockingBytecodes.map(lockingBytecodeToScriptHash))];
   const snapshots = await Promise.all(sessions.map(async (session) => {
@@ -634,6 +667,16 @@ export function createMainnetApiServer() {
     try {
       applyRateLimit(request);
       const url = new URL(request.url ?? "/", "http://localhost");
+      if (request.method === "GET" && url.pathname === "/api/fees") {
+        await withElectrumSessions(async (sessions) => {
+          const [tip, fees] = await Promise.all([
+            getTipQuorum(sessions),
+            getFeeRateQuorum(sessions),
+          ]);
+          sendJson(response, 200, { network: "mainnet", tipHeight: tip.height, tipHash: tip.hash, ...fees });
+        });
+        return;
+      }
       if (request.method === "GET" && url.pathname === "/api/health") {
         await withElectrumSessions(async (sessions) => {
           const tip = await getTipQuorum(sessions);
