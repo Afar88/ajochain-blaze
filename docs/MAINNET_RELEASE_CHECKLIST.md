@@ -23,6 +23,15 @@ This checklist is a release control, not a list of UI switches. A checkbox may b
 - [ ] Test reorgs, duplicate observations, conflicting events, malformed receipts, unknown tokens, and all member-order edge cases.
 - [ ] External audit before any real-value deployment.
 
+## BCH V3 automatic future-contribution reserve covenant
+
+- [ ] Independently audit `contracts/AjoCircleV3AutoReserve.cash` and the exact compiled artifact, including current-round debit, member-specific reserve thresholds, recipient reserve arithmetic, terminal state, dust and overflow.
+- [ ] Test each payout position: recipient reserve equals all remaining installments; already-paid members retain their full remaining reserve; unpaid members only need the current installment; final recipient reserve is zero.
+- [ ] Reconcile every receipt commitment and the state UTXO value after every payout, including duplicate observations, reorgs, missing receipts and conflicting outputs.
+- [ ] Verify exact recipient net payout, immutable 1% treasury output, reserve backing and separately funded miner fee in the actual signed transaction.
+- [ ] Port and validate a separate Mainnet artifact and network-aware address/provider path; V3 is Chipnet-only today.
+- [ ] Complete the same external security review, current-consensus VM validation, independent wallet signing and confirmation testing required for all real-value BCH circles.
+
 ## PUSD transfers
 
 - [ ] Confirm PUSD issuer identity, category ID, decimals, and token policy against current issuer-controlled sources.
@@ -55,7 +64,7 @@ This checklist is a release control, not a list of UI switches. A checkbox may b
 
 - BCH Mainnet circle signing/broadcast is locked by `BCH_MAINNET_OPERATIONS_ENABLED = false`.
 - PUSD Mainnet spending is locked by `PUSD_MAINNET_SPENDING_ENABLED = false` in the client and `MAINNET_BROADCAST_ENABLED = false` in the API. Runtime environment variables cannot override the API lock.
-- V2 fee/member-credit circles are Chipnet-only.
+- V2 full-cycle escrow and V3 automatic future-contribution reserve circles are Chipnet-only.
 - PUSD circle/escrow contracts are prototypes and are not an active product flow.
 
 Do not remove a hard stop until the corresponding section has evidence, independent approval, and a release commit that has passed the complete test suite. Do not mark the product “Mainnet ready” while any required item remains unchecked.
