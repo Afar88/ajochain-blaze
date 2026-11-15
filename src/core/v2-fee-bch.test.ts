@@ -80,7 +80,7 @@ async function deposit(provider: MockNetworkProvider, contract: Contract, index:
   await builder.send();
 }
 
-async function currentCircle(provider: MockNetworkProvider, contract: Contract) {
+async function currentCircle(contract: Contract) {
   const all = await contract.getUtxos();
   const state = all.find(u => u.token?.nft?.capability === 'minting') as SpendableUtxo;
   const receipts = members.map((_, i) => all.find(u =>
@@ -90,7 +90,7 @@ async function currentCircle(provider: MockNetworkProvider, contract: Contract) 
 }
 
 async function payout(provider: MockNetworkProvider, contract: Contract, treasuryPkh = treasury.pkh) {
-  const { state, receipts } = await currentCircle(provider, contract);
+  const { state, receipts } = await currentCircle(contract);
   const gross = BigInt(members.length) * CONTRIBUTION;
   const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
   const projectFee = gross / 100n;
