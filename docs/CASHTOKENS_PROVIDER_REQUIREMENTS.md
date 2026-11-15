@@ -1,6 +1,6 @@
 # CashTokens provider integration requirements
 
-Status: **integration contract only**. No provider endpoint is configured and no live balance or spendable UTXO is asserted.
+Status: **partial core implementation**. Raw previous-output authentication now exists in `src/core/pusd-utxo-auth.ts` with fixture tests. No production provider endpoint or trusted unspent-state adapter is configured, so no live balance or spendable UTXO is asserted.
 
 ## Required provider capabilities
 
@@ -8,36 +8,43 @@ A production provider adapter must supply, for a requested mainnet address and c
 
 - The network identity (must be Bitcoin Cash mainnet), canonical category ID, address queried, and a server-reported chain tip/block height.
 - Every candidate UTXO's transaction ID, output index, satoshi value, CashToken category, fungible amount, NFT capability/commitment if present, locking bytecode, and confirmation metadata.
-- A way to verify that each outpoint is still unspent immediately before transaction construction/signing, not merely present in a stale address history response.
+- Raw previous transaction bytes for every candidate outpoint. Core code must independently hash and decode these bytes and compare the exact output index, value, locking bytecode and CashToken fields.
+- A way to establish that each outpoint remains unspent immediately before transaction construction/signing, not merely present in stale address history.
 - Pagination metadata and deterministic continuation; incomplete pagination must never be treated as a complete balance.
-- Explicit provider error, timeout, rate-limit, and stale-tip behavior.
+- Explicit provider error, timeout, rate-limit, reorg, and stale-tip behavior.
+
+## Implemented core boundary
+
+`authenticatePusdUtxo` in `src/core/pusd-utxo-auth.ts`:
+
+- Decodes the exact raw previous transaction with Libauth's CashTokens-aware BCH decoder.
+- Recomputes the displayed TXID from the raw bytes and compares it with the requested outpoint.
+- Verifies that the output index exists.
+- Compares the output locking bytecode with the expected wallet-derived script supplied by the caller.
+- Extracts the BCH value and PUSD category/amount from the decoded output; rejects missing PUSD, other categories and NFTs.
+- Requires a separate asynchronous unspent-state check and fails closed if it returns false or errors.
+
+The function deliberately does **not** claim that an indexer is trustworthy, that an unspent check is consensus-authenticated, or that a caller-provided locking bytecode belongs to the connected wallet. Those are responsibilities of the provider/chain-state adapter and wallet derivation boundary, and are not yet integrated into the app.
+
+## Unspent-state trust model
+
+A raw previous transaction and its TXID prove the contents of the referenced output; they do not prove that the output is currently unspent. A Merkle inclusion proof proves transaction inclusion, not UTXO status. The future adapter must document whether it relies on a self-operated BCH full node, a trusted third-party indexer, or another independently verifiable state mechanism. Until that choice is implemented and reviewed, balance and spend selection must remain disabled/unverified.
 
 ## Fail-closed policy
 
-Reject the entire response if the provider reports the wrong network/category/address, malformed values, duplicate outpoints, missing pages, inconsistent tip heights, stale data beyond the configured policy, or an outpoint whose unspent status cannot be established. Never silently fall back to Chipnet, another token category, or a second provider with different semantics.
+Reject the entire response if the provider reports the wrong network/category/address, malformed values, duplicate outpoints, missing pages, inconsistent tip heights, stale data beyond policy, or an outpoint whose unspent status cannot be established. Never silently fall back to Chipnet, another token category, or a second provider with different semantics.
 
-A provider response is evidence for candidate UTXOs, not proof of wallet ownership or a valid transaction. Independently verify each referenced previous transaction/output and its CashTokens serialization before using it as a transaction input.
-
-## Adapter boundary
-
-Keep provider-specific HTTP/GraphQL schemas outside core transaction logic. Normalize responses into a strict internal model only after runtime schema validation. Core code should receive normalized values and explicit provenance metadata; it should not parse arbitrary provider JSON.
-
-Suggested internal metadata:
-- provider identifier and API/schema version
-- network and category
-- queried address
-- chain tip height/hash and observation timestamp
-- pagination completion flag
-- per-outpoint confirmation and unspent-check status
+Keep provider-specific HTTP/GraphQL schemas outside core transaction logic. Normalize responses only after runtime schema validation. Do not treat normalized provider JSON as proof of previous-output contents or unspent status.
 
 ## Acceptance tests before enabling balance display
 
 1. Valid complete mainnet response produces normalized candidate UTXOs.
 2. Wrong network, category, or address is rejected.
 3. Missing/duplicate pages and duplicate outpoints are rejected.
-4. Stale tip, provider timeout, rate limiting, and malformed numeric fields fail closed.
-5. Spent outpoint and mismatched previous-output data are rejected.
-6. Empty results are distinguishable from provider failure and incomplete pagination.
+4. Stale tip, provider timeout, rate limiting, reorg and malformed numeric fields fail closed.
+5. Raw previous-transaction TXID mismatch, missing vout, wrong locking bytecode, wrong category, NFT and non-PUSD outputs are rejected.
+6. Spent outpoint and unavailable unspent-state service fail closed.
+7. Empty results are distinguishable from provider failure and incomplete pagination.
 
 ## Current application behavior
 
