@@ -1,0 +1,89 @@
+export type CircleAsset = "BCH" | "PUSD";
+
+export interface MemberPayment {
+  paymentId: string;
+  memberId: string;
+  walletAddress: string;
+  periodId: string;
+  asset: CircleAsset;
+  amountBaseUnits: bigint;
+}
+
+export interface MemberBalance {
+  memberId: string;
+  walletAddress: string;
+  asset: CircleAsset;
+  creditedBaseUnits: bigint;
+  contributedBaseUnits: bigint;
+  leftoverBaseUnits: bigint;
+  paymentIds: string[];
+}
+
+export type LedgerResult =
+  | { ok: true; duplicate: boolean; balances: MemberBalance[] }
+  | { ok: false; reason: string };
+
+/**
+ * Applies one confirmed contribution to the individual member's ledger.
+ * Payment IDs are idempotency keys; a period can be credited only once per
+ * member, wallet and asset. All amounts stay in integer base units.
+ */
+export function applyMemberPayment(
+  current: MemberBalance[],
+  payment: MemberPayment,
+  contributionDueBaseUnits: bigint,
+): LedgerResult {
+  if (!payment.paymentId || !payment.memberId || !payment.walletAddress || !payment.periodId) {
+    return { ok: false, reason: "Missing payment identity" };
+  }
+  if (payment.amountBaseUnits <= 0n || contributionDueBaseUnits <= 0n) {
+    return { ok: false, reason: "Amounts must be positive" };
+  }
+
+  const existing = current.find(
+    (entry) => entry.memberId === payment.memberId &&
+      entry.walletAddress === payment.walletAddress &&
+      entry.asset === payment.asset,
+  );
+
+  if (existing?.paymentIds.includes(payment.paymentId)) {
+    return { ok: true, duplicate: true, balances: current };
+  }
+
+  const periodAlreadyCredited = current.some(
+    (entry) => entry.memberId === payment.memberId &&
+      entry.walletAddress === payment.walletAddress &&
+      entry.asset === payment.asset &&
+      entry.paymentIds.some((id) => id.startsWith(`${payment.periodId}:`)),
+  );
+  if (periodAlreadyCredited) {
+    return { ok: false, reason: "Contribution period already credited" };
+  }
+
+  const paymentKey = `${payment.periodId}:${payment.paymentId}`;
+  const priorCredit = existing?.leftoverBaseUnits ?? 0n;
+  const available = priorCredit + payment.amountBaseUnits;
+  const contributed = available >= contributionDueBaseUnits
+    ? contributionDueBaseUnits
+    : available;
+  const leftover = available - contributed;
+
+  const next: MemberBalance = {
+    memberId: payment.memberId,
+    walletAddress: payment.walletAddress,
+    asset: payment.asset,
+    creditedBaseUnits: (existing?.creditedBaseUnits ?? 0n) + payment.amountBaseUnits,
+    contributedBaseUnits: (existing?.contributedBaseUnits ?? 0n) + contributed,
+    leftoverBaseUnits: leftover,
+    paymentIds: [...(existing?.paymentIds ?? []), paymentKey],
+  };
+
+  return {
+    ok: true,
+    duplicate: false,
+    balances: [...current.filter((entry) => entry !== existing), next],
+  };
+}
+
+export const MIN_CIRCLE_MEMBERS = 2;
+export const CIRCLE_ASSETS: readonly CircleAsset[] = ["BCH", "PUSD"];
