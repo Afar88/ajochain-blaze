@@ -227,20 +227,29 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
     if (!active) return;
     setError(""); setNotice("");
     if (network !== "chipnet") { setError("V2 fee-circle payouts are Chipnet-only."); return; }
+    const feePayerAddress = wallet.address("chipnet");
+    if (!walletConnected || wallet.state !== "connected" || !feePayerAddress) {
+      setError("Connect a Chipnet wallet to sponsor the miner fee separately from the member pot.");
+      return;
+    }
     setBusy(true);
     try {
-      const plan = await planV2FeePayout(active);
+      const plan = await planV2FeePayout(active, feePayerAddress);
       if (!window.confirm(
-        "Pay round " + (plan.round + 1) + " to Member " + (plan.round + 1) + "?\n\n" +
-        "Gross pot: " + formatBch(plan.gross) + "\n" +
-        "1% project fee: " + formatBch(plan.projectFee) + "\n" +
-        "Estimated miner fee: up to " + plan.minerFee.toString() + " sats\n" +
-        "Recipient receives approximately: " + formatBch(plan.payout) + "\n\n" +
-        "Every member's receipt will be debited by one full contribution, including the recipient.",
+        "Pay round " + (plan.round + 1) + " to Member " + (plan.round + 1) + "?\\n\\n" +
+        "Gross pot: " + formatBch(plan.gross) + "\\n" +
+        "Fixed 1% project fee: " + formatBch(plan.projectFee) + "\\n" +
+        "Member receives: " + formatBch(plan.payout) + "\\n" +
+        "Separate miner fee paid by your wallet: up to " + plan.minerFee.toString() + " sats\\n\\n" +
+        "Every member's receipt is debited by one full contribution, including the recipient.",
       )) return;
+      const signed = await wallet.signAndVerify(
+        plan.wc, plan.walletInputs,
+        "Sponsor the BCH miner fee and trigger AjoChain round " + (plan.round + 1),
+      );
       const provider = await getClassicProvider("chipnet");
-      const txid = await provider.sendRawTransaction(plan.builder.build());
-      setNotice("V2 fee payout broadcast. Transaction: " + txid);
+      const txid = await provider.sendRawTransaction(signed.signedTransaction);
+      setNotice("V2 fee payout broadcast. The 1% project fee and member payout were paid from the circle pot; miner fee came from the connected wallet. Transaction: " + txid);
       await refresh(active);
     } catch (cause) { setError(errorText(cause)); }
     finally { setBusy(false); }
