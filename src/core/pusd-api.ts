@@ -83,11 +83,10 @@ export function cashAddressToExpectedLockingBytecode(address: string): string {
 
 function apiBaseUrl(): string {
   const configured = import.meta.env.VITE_PUSD_API_URL;
-  if (typeof configured !== "string" || !configured.trim()) {
-    throw new Error("PUSD mainnet provider is not connected yet. The AjoChain API URL must be configured.");
-  }
-  const url = configured.trim().replace(/\/+$/, "");
-  if (!/^https:\/\//i.test(url) && !/^http:\/\/localhost(?::\d+)?$/i.test(url)) {
+  const url = (typeof configured === "string" && configured.trim()
+    ? configured.trim()
+    : window.location.origin).replace(/\\/+$/, "");
+  if (!/^https:\\/\\//i.test(url) && !/^http:\\/\\/localhost(?::\\d+)?$/i.test(url)) {
     throw new Error("PUSD API URL must use HTTPS (HTTP is allowed only on localhost).");
   }
   return url;
