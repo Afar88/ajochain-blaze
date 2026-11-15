@@ -289,7 +289,7 @@ class WizardWallet {
   tryResume(): boolean {
     if (this.state !== 'idle' && this.state !== 'disconnected') return false;
     const now = Date.now();
-    if (now - this.lastResumeAttemptAt < 5000) return;
+    if (now - this.lastResumeAttemptAt < 5000) return false;
     try {
       const s = loadSession();
       if (s?.walletPublicKey) {
@@ -371,7 +371,7 @@ class WizardWallet {
     return null;
   }
 
-  /** Ask the connected wallet to sign and broadcast a CashScript-built transaction. */
+  /** Ask the connected wallet to sign, then verify intent without broadcasting. */
   async signAndVerify(wcObject: any, walletInputs: number[], prompt: string) {
     if (!this.mgr || this.state !== 'connected') throw new Error('Connect a wallet first');
     const mgr = this.mgr;
