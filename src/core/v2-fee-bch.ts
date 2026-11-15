@@ -152,7 +152,7 @@ export function summarizeV2FeeMemberAccounting(
       ? 'Circle complete'
       : params.covenant === 'fee-v3-auto-reserve'
         ? payoutReceived
-          ? fullySecured ? 'Payout received · all future contributions secured' : 'Payout received · reserve shortfall'
+          ? fullySecured ? 'Payout received · next installment reserved' : 'Payout received · next installment due'
           : fullySecured ? 'Current contribution funded · awaiting turn' : 'Current contribution due'
         : params.covenant === 'fee-v2-escrow'
           ? payoutReceived
@@ -323,7 +323,7 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
     throw new Error(params.covenant === 'fee-v2-escrow'
       ? "Payout blocked: every member must have the full remaining circle commitment locked in their own receipt."
       : params.covenant === 'fee-v3-auto-reserve'
-        ? "Payout blocked: unpaid members must fund the current contribution, while earlier recipients must retain all remaining contributions in their own receipt."
+        ? "Payout blocked: every member must have one contribution available for this round, either from the previous payout reserve or a fresh deposit."
         : "Payout is blocked until every member has one full contribution in their own receipt.");
   }
   const pot = BigInt(params.members.length) * params.contribution;
@@ -373,8 +373,8 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
     });
   });
   builder.addOutput({ to: params.treasury, amount: projectFee });
-  // The recipient's future contributions stay in the state reserve and are credited to their own receipt.
-  // The wallet receives only the remaining net payout after the 1% project fee and that reserve.
+  // Exactly one next contribution stays in the state reserve and is credited to the recipient's receipt.
+  // The final recipient has no next installment, so no reserve is withheld.
   builder.addOutput({ to: params.members[round], amount: recipientPayout });
   // Miner fee is separately funded by the caller and change returns to that wallet.
   builder.addOutput({ to: feePayerAddress, amount: feeChange });
