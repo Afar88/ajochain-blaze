@@ -77,7 +77,6 @@ contract AjoCircleV3AutoReserve(
         require(receiptCredit.length == 8);
         int oldCredit = int(receiptCredit);
         require(oldCredit >= 0 && oldCredit <= 9223372036854775807 - amount);
-        int currentRound = int(stateRound);
         // Each member carries at most one next-installment reserve at a time.
         // It is consumed at the next payout round, then can be replenished.
         int maximumCredit = contribution;
@@ -141,7 +140,7 @@ contract AjoCircleV3AutoReserve(
             require(tx.outputs[receiptInput].tokenCategory == stateCategory);
             require(tx.outputs[receiptInput].tokenAmount == 0);
             int nextCredit = int(receiptCredit) - contribution;
-            // The recipient's next and all later contributions are reserved
+            // Exactly one next contribution is reserved
             // from this payout and credited to their own receipt atomically.
             if (i == round) { nextCredit = nextCredit + recipientReserve; }
             require(tx.outputs[receiptInput].nftCommitment == 0x52 + toPaddedBytes(i, 1) + toPaddedBytes(nextCredit, 8));
