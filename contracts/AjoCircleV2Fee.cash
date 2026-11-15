@@ -36,6 +36,7 @@ contract AjoCircleV2Fee(
         require(memberCount >= 2 && memberCount <= 5);
         require(memberIndex >= 0 && memberIndex < memberCount);
         require(amount > 0);
+        require(contribution >= 200000 && contribution <= 9223372036854775807 / memberCount);
         require(maxFee >= 0);
 
         require(tx.inputs.length == 3 && tx.outputs.length == 3);
@@ -88,7 +89,7 @@ contract AjoCircleV2Fee(
 
     function payout() {
         require(memberCount >= 2 && memberCount <= 5);
-        require(contribution > 0);
+        require(contribution >= 200000);
         require(contribution <= 9223372036854775807 / memberCount);
         require(maxFee >= 0);
         require(this.activeInputIndex >= 0 && this.activeInputIndex <= memberCount);
