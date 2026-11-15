@@ -10,6 +10,7 @@ import {
 } from 'cashscript';
 import { hexToBin } from '@bitauth/libauth';
 import artifactJson from '../../contracts/AjoCircleV2Fee.json' with { type: 'json' };
+import escrowArtifactJson from '../../contracts/AjoCircleV2FeeEscrow.json' with { type: 'json' };
 import { classicAddressToPkh, getClassicProvider, type ClassicNetwork } from "./classic-bch";
 
 const addressToPkh = (address: string) => classicAddressToPkh(address, "chipnet");
@@ -20,6 +21,7 @@ const assertNewBchContribution = (amount: bigint) => {
 const getProvider = getClassicProvider;
 
 const artifact = artifactJson as unknown as Artifact;
+const escrowArtifact = escrowArtifactJson as unknown as Artifact;
 const STATE_DUST = 1_000n;
 const RECEIPT_DUST = 1_000n;
 const CHANGE_DUST = 546n;
@@ -27,7 +29,7 @@ const CASH_SCRIPT_INT_MAX = 0x7fffffffffffffffn;
 
 export interface V2FeeCircleParams {
   version: 2;
-  covenant: 'fee-v1';
+  covenant: 'fee-v1' | 'fee-v2-escrow';
   name: string;
   network: ClassicNetwork;
   members: string[];
@@ -43,7 +45,7 @@ const hex = (v: Uint8Array) => Array.from(v, b => b.toString(16).padStart(2, '0'
 const feeEstimate = (memberCount: number) => 6_000n + BigInt(memberCount) * 500n;
 
 function validate(p: V2FeeCircleDraft | V2FeeCircleParams): void {
-  if (p.version !== 2 || p.covenant !== 'fee-v1' || !p.name.trim()) throw new Error('Invalid V2 fee-circle details');
+  if (p.version !== 2 || (p.covenant !== 'fee-v1' && p.covenant !== 'fee-v2-escrow') || !p.name.trim()) throw new Error('Invalid V2 fee-circle details');
   if (p.network !== 'chipnet') throw new Error('The V2 fee covenant is Chipnet-only.');
   if (p.members.length < 2 || p.members.length > 5) throw new Error('A V2 fee circle needs 2–5 members');
   const members = p.members.map(a => hex(treasuryAddressToPkh(a, p.network)));
@@ -65,7 +67,7 @@ function contractFor(p: V2FeeCircleParams, provider: NetworkProvider): Contract 
   validate(p);
   const pkhs = p.members.map(addressToPkh);
   while (pkhs.length < 5) pkhs.push(new Uint8Array(20));
-  return new Contract(artifact, [
+  return new Contract(p.covenant === 'fee-v2-escrow' ? escrowArtifact : artifact, [
     pkhs[0], pkhs[1], pkhs[2], pkhs[3], pkhs[4],
     BigInt(p.members.length), p.contribution, p.maxFee,
     hexToBin(p.stateCategory).reverse(),
@@ -75,13 +77,84 @@ function contractFor(p: V2FeeCircleParams, provider: NetworkProvider): Contract 
 }
 
 export function v2FeeStateCommitment(round: number, hasPaid: boolean): string {
-  if (!Number.isInteger(round) || round < 0 || round > 4) throw new Error('Invalid V2 fee state round');
+  if (!Number.isInteger(round) || round < 0 || round > 5) throw new Error('Invalid V2 fee state round');
   return '54' + round.toString(16).padStart(2, '0') + (hasPaid ? '01' : '00');
 }
 
 export function v2FeeReceiptCommitment(index: number, credit: bigint): string {
   if (!Number.isInteger(index) || index < 0 || index > 4 || credit < 0n || credit > CASH_SCRIPT_INT_MAX) throw new Error('Invalid V2 member receipt data');
   return '52' + index.toString(16).padStart(2, '0') + credit.toString(16).padStart(16, '0').match(/../g)!.reverse().join('');
+}
+
+
+export interface V2FeeMemberAccounting {
+  index: number;
+  address: string;
+  currentCredit: bigint;
+  requiredForNextPayout: bigint;
+  shortfallForNextPayout: bigint;
+  contributionsAlreadyConsumed: bigint;
+  totalPaidIn: bigint | null;
+  totalCycleContribution: bigint;
+  remainingContributionCommitment: bigint | null;
+  prepaidRounds: number;
+  payoutReceived: boolean | null;
+  payoutAmountReceived: bigint;
+  fullySecured: boolean;
+  status: string;
+}
+
+export function summarizeV2FeeMemberAccounting(
+  params: V2FeeCircleParams,
+  round: number,
+  credits: readonly bigint[],
+): V2FeeMemberAccounting[] {
+  const memberCount = params.members.length;
+  const completed = params.covenant === 'fee-v2-escrow' && round === memberCount;
+  if (!Number.isSafeInteger(round) || round < 0 || round > memberCount || credits.length !== memberCount) {
+    throw new Error('Member accounting snapshot does not match the on-chain circle state.');
+  }
+  if (params.covenant === 'fee-v1' && round === memberCount) {
+    throw new Error('Legacy rolling-credit state has an invalid round.');
+  }
+  const remainingRounds = completed ? 0 : memberCount - round;
+  const contributionAlreadyConsumed = BigInt(round) * params.contribution;
+  const fullCycleContribution = BigInt(memberCount) * params.contribution;
+  const grossPot = BigInt(memberCount) * params.contribution;
+  const payoutAmount = grossPot - grossPot / 100n;
+  return params.members.map((address, index) => {
+    const currentCredit = credits[index];
+    const requiredForNextPayout = params.covenant === 'fee-v2-escrow'
+      ? BigInt(remainingRounds) * params.contribution
+      : (completed ? 0n : params.contribution);
+    const shortfallForNextPayout = requiredForNextPayout > currentCredit
+      ? requiredForNextPayout - currentCredit : 0n;
+    const totalPaidIn = params.covenant === 'fee-v2-escrow'
+      ? contributionAlreadyConsumed + currentCredit : null;
+    const remainingContributionCommitment = totalPaidIn === null
+      ? null
+      : (fullCycleContribution > totalPaidIn ? fullCycleContribution - totalPaidIn : 0n);
+    const payoutReceived = params.covenant === 'fee-v2-escrow' ? index < round : null;
+    const prepaidRounds = Number(currentCredit / params.contribution);
+    const fullySecured = completed || currentCredit >= requiredForNextPayout;
+    const status = completed
+      ? 'Circle complete'
+      : params.covenant === 'fee-v2-escrow'
+        ? payoutReceived
+          ? fullySecured ? 'Received payout · future rounds escrowed' : 'Received payout · shortfall'
+          : fullySecured ? 'Fully escrowed · awaiting turn' : 'Must fund remaining rounds'
+        : currentCredit >= params.contribution
+          ? 'Next round funded · legacy rolling mode'
+          : 'Contribution due · legacy rolling mode';
+    return {
+      index, address, currentCredit, requiredForNextPayout, shortfallForNextPayout,
+      contributionsAlreadyConsumed: contributionAlreadyConsumed,
+      totalPaidIn, totalCycleContribution: fullCycleContribution,
+      remainingContributionCommitment, prepaidRounds, payoutReceived,
+      payoutAmountReceived: payoutReceived ? payoutAmount : 0n,
+      fullySecured, status,
+    };
+  });
 }
 
 export function v2FeeCreditFromCommitment(commitment: string): bigint {
@@ -92,7 +165,7 @@ export function v2FeeCreditFromCommitment(commitment: string): bigint {
 }
 
 function findState(utxos: SpendableUtxo[], category: string) {
-  const matches = utxos.filter(u => u.token?.category === category && u.token.nft?.capability === 'minting' && /^54[0-4][01]$/.test(u.token.nft.commitment));
+  const matches = utxos.filter(u => u.token?.category === category && u.token.nft?.capability === 'minting' && /^54[0-5][01]$/.test(u.token.nft.commitment));
   if (matches.length !== 1) throw new Error(matches.length ? 'Multiple V2 fee state NFTs found; stop and investigate.' : 'V2 fee state NFT not found or has an invalid commitment.');
   if (matches[0].token!.amount !== 0n) throw new Error('V2 fee state NFT unexpectedly carries fungible tokens.');
   return matches[0];
@@ -162,6 +235,10 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
   const all = await contract.getUtxos();
   assertUtxoSet(all, params.stateCategory, params.members.length);
   const state = findState(all, params.stateCategory);
+  const currentRound = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
+  if (params.covenant === 'fee-v2-escrow' && currentRound >= params.members.length) {
+    throw new Error('This circle has completed every scheduled payout. No further deposits are accepted.');
+  }
   const allReceipts = params.members.map((_, i) => findReceipt(all, params.stateCategory, i));
   const allCredits = allReceipts.map(u => v2FeeCreditFromCommitment(u.token!.nft!.commitment));
   if (state.satoshis !== allCredits.reduce((sum, credit) => sum + credit, STATE_DUST)) throw new Error('State BCH does not match the exact member-credit total. Stop and investigate.');
@@ -194,15 +271,22 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
   const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
   const hasPaid = state.token!.nft!.commitment.slice(4) === "01";
   if (!Number.isInteger(round) || round < 0 || round >= params.members.length) {
-    throw new Error("Invalid V2 fee payout round.");
+    throw new Error(params.covenant === 'fee-v2-escrow' && round === params.members.length
+      ? "This circle has completed every scheduled payout."
+      : "Invalid V2 fee payout round.");
   }
   const receipts = params.members.map((_, i) => findReceipt(all, params.stateCategory, i));
   const credits = receipts.map((u) => v2FeeCreditFromCommitment(u.token!.nft!.commitment));
   if (state.satoshis !== credits.reduce((sum, credit) => sum + credit, STATE_DUST)) {
     throw new Error("State BCH does not match the exact member-credit total. Stop and investigate.");
   }
-  if (credits.some((credit) => credit < params.contribution)) {
-    throw new Error("Payout is blocked until every member has one full contribution in their own receipt.");
+  const requiredPerMember = params.covenant === 'fee-v2-escrow'
+    ? BigInt(params.members.length - round) * params.contribution
+    : params.contribution;
+  if (credits.some((credit) => credit < requiredPerMember)) {
+    throw new Error(params.covenant === 'fee-v2-escrow'
+      ? "Payout blocked: every member must have the full remaining circle commitment locked in their own receipt."
+      : "Payout is blocked until every member has one full contribution in their own receipt.");
   }
   const pot = BigInt(params.members.length) * params.contribution;
   const projectFee = pot / 100n;
@@ -227,7 +311,10 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
       to: contract.tokenAddress,
       amount: state.satoshis - pot,
       token: { category: params.stateCategory, amount: 0n,
-        nft: { capability: "minting", commitment: v2FeeStateCommitment((round + 1) % params.members.length, true) } },
+        nft: { capability: "minting", commitment: v2FeeStateCommitment(
+          params.covenant === 'fee-v2-escrow' ? round + 1 : (round + 1) % params.members.length,
+          true,
+        ) } },
     });
   receipts.forEach((receipt, index) => {
     builder.addOutput({
@@ -257,6 +344,8 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
     payout: pot - projectFee,
     hasPaid,
     feePayerAddress,
+    requiredPerMember,
+    remainingRounds: params.covenant === 'fee-v2-escrow' ? params.members.length - round : null,
   };
 }
 
@@ -306,18 +395,31 @@ export async function readV2FeeCircle(params: V2FeeCircleParams) {
   const state = findState(utxos, params.stateCategory);
   const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
   const hasPaid = state.token!.nft!.commitment.slice(4) === '01';
-  if (!Number.isInteger(round) || round < 0 || round >= params.members.length) throw new Error('Invalid V2 fee payout round.');
+  const completed = params.covenant === 'fee-v2-escrow' && round === params.members.length;
+  if (!Number.isInteger(round) || round < 0 ||
+      (params.covenant === 'fee-v2-escrow' ? round > params.members.length : round >= params.members.length)) {
+    throw new Error('Invalid V2 fee payout round.');
+  }
+  if (completed && !hasPaid) throw new Error('Completed circle state is missing its irreversible payout marker.');
   const receipts = params.members.map((_, i) => findReceipt(utxos, params.stateCategory, i));
   const credits = receipts.map(u => v2FeeCreditFromCommitment(u.token!.nft!.commitment));
   if (state.satoshis !== credits.reduce((sum, credit) => sum + credit, STATE_DUST)) throw new Error('State BCH does not match the exact member-credit total. Stop and investigate.');
+  const memberAccounting = summarizeV2FeeMemberAccounting(params, round, credits);
+  const requiredPerMember = params.covenant === 'fee-v2-escrow'
+    ? BigInt(params.members.length - round) * params.contribution
+    : params.contribution;
   return {
     contract,
     utxos,
     round,
     hasPaid,
+    completed,
     stateSatoshis: state.satoshis,
     credits,
-    ready: credits.every(c => c >= params.contribution),
-    recipient: params.members[round],
+    memberAccounting,
+    requiredPerMember,
+    remainingRounds: params.members.length - round,
+    ready: !completed && credits.every(c => c >= requiredPerMember),
+    recipient: completed ? null : params.members[round],
   };
 }
