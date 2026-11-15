@@ -49,7 +49,7 @@ function decodeCircle(encoded: string): V2FeeCircleParams {
   }
   return {
     version: 2,
-    covenant: "fee-v1",
+    covenant: value.covenant as V2FeeCircleParams["covenant"],
     name: value.name,
     network: "chipnet",
     members: value.members as string[],
