@@ -18,10 +18,10 @@ This repository is the **independent BCH BLAZE build**. It is not a copy, mirror
 - Responsive dashboard and local circle-preview form.
 - Local circle drafts persist in the current browser and can be edited or deleted; they are not on-chain records.
 - WizardConnect dapp relay integration with encrypted saved-session resume, mobile focus/visibility recovery, overlap protection, Selene receive-index matching and signed-transaction intent verification.
-- BCH/Chipnet network selection and a basic CashAddress prefix sanity guard.
+- BCH/Chipnet network selection and full CashAddress checksum + network-prefix validation.
 - Member-level round-credit model with partial top-ups, member-owned carry-forward, duplicate protection and payout blocking until every member has funded their own round.
 - Ported BCH V2 member-receipt covenant source in `contracts/AjoCircleV2.cash`; each payout consumes one round contribution from every member receipt, including the previous payout recipient.
-- Unit tests for the member ledger, V2 CashScript member-receipt covenant, circle draft validation, network prefix guard and transaction-intent comparison.
+- Unit tests cover the member ledger, circle draft validation, checksummed network addresses and transaction-intent comparison. CashScript compilation and covenant execution still require CI verification.
 - Circle previews are local UI drafts only; they are not persisted to a contract or broadcast to the network.
 
 **Important:** the address prefix helper is not a full CashAddress checksum validator. The transaction-intent comparator consumes an already decoded transaction summary; it is not a raw transaction decoder. Neither one is sufficient to authorize a real transaction.
