@@ -1,0 +1,17 @@
+import { describe, expect, it } from "vitest";
+import {
+  assertBchTransactionBroadcastAllowed,
+  BCH_MAINNET_OPERATIONS_ENABLED,
+} from "./bch-mainnet-guard";
+
+describe("BCH Mainnet transaction gate", () => {
+  it("remains closed until the Classic covenant and wallet path are independently reviewed", () => {
+    expect(BCH_MAINNET_OPERATIONS_ENABLED).toBe(false);
+    expect(() => assertBchTransactionBroadcastAllowed("mainnet"))
+      .toThrow(/BCH Mainnet broadcasting is still locked/);
+  });
+
+  it("continues to allow Chipnet test transactions", () => {
+    expect(() => assertBchTransactionBroadcastAllowed("chipnet")).not.toThrow();
+  });
+});
