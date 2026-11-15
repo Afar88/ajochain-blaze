@@ -401,10 +401,13 @@ describe("post-payout obligation", () => {
     underfunded.addOutput({ to: pkhToAddress(members[1].pkh, "chipnet"), amount: 190_000n });
     await expect(underfunded.send()).rejects.toThrow();
 
-    // The former recipient (member 0) must make a new deposit; member 1's
-    // receipt already has no credit left after the first payout.
-    await deposit(provider, contract, 0);
+    // Member 1 contributes, but the former recipient (member 0) has not
+    // replenished their own receipt. The next payout must still be blocked.
     await deposit(provider, contract, 1);
+    await expect(payoutRound(provider, contract, 1)).rejects.toThrow();
+
+    // Once member 0 also contributes again, the next round can proceed.
+    await deposit(provider, contract, 0);
     await expect(payoutRound(provider, contract, 1)).resolves.toBeUndefined();
   });
 });
