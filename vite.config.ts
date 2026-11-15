@@ -6,5 +6,10 @@ export default defineConfig(({ mode }) => {
   return {
     base: env.GITHUB_PAGES === "true" ? "/ajochain-blaze/" : "/",
     plugins: [react()],
+    // libauth initializes embedded BCH cryptography modules with top-level
+    // await. Preserve that syntax rather than targeting older browser engines.
+    build: {
+      target: "esnext",
+    },
   };
 });
