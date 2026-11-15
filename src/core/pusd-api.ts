@@ -1,5 +1,6 @@
 import { binToHex, decodeCashAddress } from "@bitauth/libauth";
 import { PUSD_ASSET } from "./assets";
+import { assertPusdMainnetSpendingAllowed } from "./pusd-mainnet-guard";
 import { validatePusdProviderSnapshot } from "./pusd-provider-guard";
 import { authenticatePusdUtxo } from "./pusd-utxo-auth";
 import { verifySignedPusdTransaction } from "./pusd-signed-transaction";
@@ -253,6 +254,7 @@ export async function fetchPusdFeeQuote(): Promise<PusdFeeQuote> {
  * still reject this request while mainnet broadcast remains disabled.
  */
 export async function verifyAndBroadcastPusdTransfer(options: {
+  // Defense in depth: callers cannot bypass the Mainnet spend lock by invoking this API directly.
   signedTransactionHex: string;
   walletAddress: string;
   recipientAddress: string;
@@ -262,6 +264,7 @@ export async function verifyAndBroadcastPusdTransfer(options: {
   maxFeeSatoshis: bigint;
   rawPreviousTransactions: Record<string, string>;
 }): Promise<PusdBroadcastResult> {
+  assertPusdMainnetSpendingAllowed({ network: "mainnet", asset: "PUSD" });
   const {
     signedTransactionHex,
     walletAddress,
