@@ -15,9 +15,10 @@ pragma cashscript ^0.14.0;
 // payout inputs: 0 state NFT, 1..N receipt NFTs in member-index order
 // payout outputs: 0 updated state NFT, 1..N updated receipts, N+1 round recipient
 //
-// PORTED FROM THE FROZEN RELEASE AS A SEPARATE V2 CONTRACT SOURCE.
-// Experimental BCH member-credit design. Not compiled, deployed or audited in this repo.
-// Mainnet use remains disabled pending independent contract and transaction review.
+// PORTED FROM THE FROZEN RELEASE AS A SEPARATE V2 CONTRACT.
+// This source is compiled by the Blaze CI/build pipeline and has a Chipnet planner
+// and UI. It remains an experimental, unaudited prototype; it is not deployed
+// to Mainnet and Mainnet use remains disabled pending independent review.
 
 contract AjoCircleV2(
     bytes20 m0,
