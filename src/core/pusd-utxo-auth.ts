@@ -5,7 +5,7 @@ import {
   hexToBin,
 } from "@bitauth/libauth";
 import { PUSD_ASSET, isPusdCategoryId } from "./assets";
-import type { PusdUtxo } from "./pusd-utxo";
+import type { AuthenticatedPusdUtxo, PusdUtxo } from "./pusd-utxo";
 
 export interface PusdOutpoint {
   txid: string;
@@ -15,16 +15,6 @@ export interface PusdOutpoint {
 export interface PusdUnspentEvidence {
   /** Must be produced by the configured chain-state adapter, not provider JSON copied by the caller. */
   isUnspent(outpoint: PusdOutpoint): Promise<boolean>;
-}
-
-export interface AuthenticatedPusdUtxo extends PusdUtxo {
-  lockingBytecode: string;
-  provenance: {
-    rawTransactionVerified: true;
-    txid: string;
-    vout: number;
-    unspentChecked: true;
-  };
 }
 
 export interface AuthenticatePusdUtxoOptions {
@@ -55,7 +45,7 @@ export async function authenticatePusdUtxo(
   if (!/^(?:[0-9a-f]{2})+$/i.test(rawPreviousTransactionHex)) {
     throw new Error("Previous transaction must be complete raw hexadecimal bytes.");
   }
-  if (!/^(?:[0-9a-f]{2})*$/i.test(expectedLockingBytecode)) {
+  if (!/^(?:[0-9a-f]{2})+$/i.test(expectedLockingBytecode)) {
     throw new Error("Expected wallet locking bytecode is malformed.");
   }
 
