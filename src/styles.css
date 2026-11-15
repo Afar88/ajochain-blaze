@@ -383,3 +383,92 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .pusd-plan-summary > div strong { color: #344d39; font-size: 10px; text-align: right; }
 .pusd-plan-summary > small { color: #849286; font-size: 8px; line-height: 1.6; }
 @media(max-width:760px) { .pusd-transfer-fields { grid-template-columns: 1fr; } }
+
+
+/* Full-cycle member escrow accounting */
+.fee-accounting-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 22px 0 12px;
+}
+.fee-accounting-heading > div {
+  display: grid;
+  gap: 4px;
+}
+.fee-accounting-heading > div > b {
+  font-size: 0.96rem;
+}
+.fee-accounting-heading > div > span {
+  color: var(--muted, #718096);
+  font-size: 0.82rem;
+}
+.fee-accounting-status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.fee-accounting-status.safe,
+.fee-accounting-member-safe {
+  color: #087443;
+}
+.fee-accounting-status.safe {
+  background: rgba(8, 116, 67, 0.1);
+}
+.fee-accounting-status.blocked {
+  color: #a33a22;
+  background: rgba(163, 58, 34, 0.1);
+}
+.fee-accounting-table {
+  display: grid;
+  gap: 0;
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border, rgba(120, 130, 150, 0.22));
+  border-radius: 12px;
+}
+.fee-accounting-row {
+  display: grid;
+  grid-template-columns: minmax(145px, 1.35fr) repeat(4, minmax(110px, 0.9fr)) minmax(190px, 1.4fr);
+  align-items: center;
+  gap: 12px;
+  min-width: 860px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border, rgba(120, 130, 150, 0.16));
+  font-size: 0.82rem;
+}
+.fee-accounting-row:last-child {
+  border-bottom: 0;
+}
+.fee-accounting-header {
+  color: var(--muted, #718096);
+  background: var(--surface-subtle, rgba(120, 130, 150, 0.07));
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+.fee-accounting-row > span {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.fee-accounting-row small {
+  color: var(--muted, #718096);
+  overflow-wrap: anywhere;
+  font-size: 0.72rem;
+}
+.fee-accounting-member-safe {
+  font-size: 0.76rem;
+}
+.fee-accounting-member-blocked {
+  color: #a33a22;
+  font-size: 0.76rem;
+}
+@media (max-width: 720px) {
+  .fee-accounting-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
