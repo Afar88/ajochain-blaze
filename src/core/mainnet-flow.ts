@@ -73,17 +73,21 @@ export function evaluateMainnetFlow(
   const canBroadcast = missing.length === 0;
 
   let phase: MainnetFlowPhase = "read-only";
-  if (gates.networkIdentityVerified && gates.walletSessionVerified) {
-    phase = "state-reconciliation";
-  } else if (gates.networkIdentityVerified || gates.walletSessionVerified) {
+  const walletReady = gates.networkIdentityVerified && gates.walletSessionVerified;
+  const stateReady = walletReady && gates.circleStateReconciled && gates.memberAccountingVerified;
+  const policyReady = stateReady && gates.contractAuditApproved && gates.tokenPolicyVerified;
+  const planReady = policyReady && gates.transactionPlanReviewed;
+  const signatureReady = planReady && gates.signedTransactionInspected;
+
+  if (gates.networkIdentityVerified || gates.walletSessionVerified) {
     phase = "wallet-verification";
   }
-  if (gates.circleStateReconciled && gates.memberAccountingVerified &&
-      gates.contractAuditApproved && gates.tokenPolicyVerified) {
-    phase = "transaction-review";
+  if (walletReady) phase = "state-reconciliation";
+  if (policyReady) phase = "transaction-review";
+  if (planReady) phase = "signature-inspection";
+  if (canBroadcast && signatureReady && gates.relayAndConfirmationVerified) {
+    phase = "broadcast-eligible";
   }
-  if (gates.transactionPlanReviewed) phase = "signature-inspection";
-  if (canBroadcast) phase = "broadcast-eligible";
 
   return { phase, gates, missing, canBroadcast };
 }
