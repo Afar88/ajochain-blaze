@@ -2,6 +2,7 @@ import { binToHex, decodeCashAddress } from "@bitauth/libauth";
 import { PUSD_ASSET } from "./assets";
 import { validatePusdProviderSnapshot } from "./pusd-provider-guard";
 import { authenticatePusdUtxo } from "./pusd-utxo-auth";
+import { verifySignedPusdTransaction } from "./pusd-signed-transaction";
 import type { AuthenticatedPusdUtxo, PusdUtxo } from "./pusd-utxo";
 
 type ApiError = { error?: string };
@@ -17,6 +18,25 @@ export interface PusdWalletBalance {
   walletUtxoCount: number;
   unconfirmedUtxoCount: number;
   unsupportedTokenUtxos: number;
+  rawPreviousTransactions: Record<string, string>;
+}
+
+export interface PusdFeeQuote {
+  feeRateSatoshisPerKb: bigint;
+  source: string;
+  serversResponding: number;
+  serversConfigured: number;
+}
+
+export interface PusdBroadcastResult {
+  txid: string;
+  feeSatoshis: bigint;
+  inputPusdAmount: bigint;
+  recipientPusdAmount: bigint;
+  changePusdAmount: bigint;
+  network: "mainnet";
+  tipHeight: number;
+  broadcast: true;
 }
 
 interface RawPusdUtxo {
@@ -198,5 +218,118 @@ export async function fetchPusdWalletBalance(address: string): Promise<PusdWalle
     walletUtxoCount: snapshot.walletUtxoCount,
     unconfirmedUtxoCount: snapshot.unconfirmedUtxoCount,
     unsupportedTokenUtxos: snapshot.unsupportedTokenUtxos?.length ?? 0,
+    rawPreviousTransactions: snapshot.rawPreviousTransactions,
+  };
+}
+
+/** Get a fee quote that has been checked against the configured Electrum quorum. */
+export async function fetchPusdFeeQuote(): Promise<PusdFeeQuote> {
+  const quote = await requestJson<{
+    network: string;
+    feeRateSatoshisPerKb: string;
+    source: string;
+    serversResponding: number;
+    serversConfigured: number;
+  }>("/api/fees");
+  if (quote.network !== "mainnet" || !/^\d+$/.test(quote.feeRateSatoshisPerKb) ||
+      !Number.isSafeInteger(quote.serversResponding) || quote.serversResponding < 2 ||
+      quote.serversResponding > quote.serversConfigured) {
+    throw new Error("PUSD fee estimate did not pass the mainnet Electrum quorum checks.");
+  }
+  const feeRateSatoshisPerKb = BigInt(quote.feeRateSatoshisPerKb);
+  if (feeRateSatoshisPerKb <= 0n || feeRateSatoshisPerKb > 1_000_000_000n) {
+    throw new Error("PUSD fee quote is outside the permitted range.");
+  }
+  return {
+    feeRateSatoshisPerKb,
+    source: quote.source,
+    serversResponding: quote.serversResponding,
+    serversConfigured: quote.serversConfigured,
+  };
+}
+
+/**
+ * Re-verify a Selene-signed transfer locally, then ask the backend to repeat
+ * all checks against fresh chain state before broadcasting. The backend can
+ * still reject this request while mainnet broadcast remains disabled.
+ */
+export async function verifyAndBroadcastPusdTransfer(options: {
+  signedTransactionHex: string;
+  walletAddress: string;
+  recipientAddress: string;
+  changeAddress: string;
+  walletLockingBytecodes: readonly string[];
+  requiredPusdAmount: bigint;
+  maxFeeSatoshis: bigint;
+  rawPreviousTransactions: Record<string, string>;
+}): Promise<PusdBroadcastResult> {
+  const {
+    signedTransactionHex,
+    walletAddress,
+    recipientAddress,
+    changeAddress,
+    walletLockingBytecodes,
+    requiredPusdAmount,
+    maxFeeSatoshis,
+    rawPreviousTransactions,
+  } = options;
+  const recipientLockingBytecode = cashAddressToExpectedLockingBytecode(recipientAddress);
+  const changeLockingBytecode = cashAddressToExpectedLockingBytecode(changeAddress);
+  const verified = await verifySignedPusdTransaction({
+    signedTransactionHex,
+    rawPreviousTransactions,
+    walletLockingBytecodes,
+    recipientLockingBytecode,
+    changeLockingBytecode,
+    requiredPusdAmount,
+    maxFeeSatoshis,
+    unspentEvidence: {
+      async isUnspent(outpoint) {
+        const result = await requestJson<{
+          network: string;
+          unspent: Record<string, boolean>;
+        }>("/api/pusd/unspent", {
+          method: "POST",
+          body: JSON.stringify({ walletAddresses: [walletAddress], outpoints: [outpoint] }),
+        });
+        return result.network === "mainnet" &&
+          result.unspent?.[outpoint.txid + ":" + outpoint.vout] === true;
+      },
+    },
+  });
+
+  const broadcast = await requestJson<{
+    txid: string;
+    feeSatoshis: string;
+    inputPusdAmount: string;
+    recipientPusdAmount: string;
+    changePusdAmount: string;
+    network: "mainnet";
+    tipHeight: number;
+    broadcast: true;
+  }>("/api/pusd/broadcast", {
+    method: "POST",
+    body: JSON.stringify({
+      signedTransactionHex,
+      walletAddresses: [walletAddress],
+      recipientAddress,
+      changeAddress,
+      requiredPusdAmount: requiredPusdAmount.toString(),
+      maxFeeSatoshis: maxFeeSatoshis.toString(),
+    }),
+  });
+  if (broadcast.network !== "mainnet" || broadcast.txid.toLowerCase() !== verified.txid.toLowerCase() ||
+      broadcast.recipientPusdAmount !== requiredPusdAmount.toString()) {
+    throw new Error("Mainnet backend confirmation does not match the locally verified signed transaction.");
+  }
+  return {
+    txid: broadcast.txid,
+    feeSatoshis: BigInt(broadcast.feeSatoshis),
+    inputPusdAmount: BigInt(broadcast.inputPusdAmount),
+    recipientPusdAmount: BigInt(broadcast.recipientPusdAmount),
+    changePusdAmount: BigInt(broadcast.changePusdAmount),
+    network: "mainnet",
+    tipHeight: broadcast.tipHeight,
+    broadcast: true,
   };
 }
