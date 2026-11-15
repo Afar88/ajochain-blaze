@@ -15,7 +15,7 @@ import {
 } from "../core/v2-fee-bch";
 
 const STORAGE_KEY = "ajochain-blaze:v2-fee-circles:v1";
-const DEFAULT_TREASURY = "bchtest:zpn8rsua556gewluc0gf5mq4v343w8vc9";
+const DEFAULT_TREASURY = "bchtest:zpn8rsua556gewluc0gf5mq4v343w8vc9vfcnq22v6";
 
 type SavedCircle = { encoded: string; savedAt: number };
 type Snapshot = Awaited<ReturnType<typeof readV2FeeCircle>>;
