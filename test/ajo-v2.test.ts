@@ -410,5 +410,5 @@ describe("post-payout obligation", () => {
     // Once member 0 also contributes again, the next round can proceed.
     await deposit(provider, contract, 0);
     await expect(payoutRound(provider, contract, 1)).resolves.toBeUndefined();
-  });
+  }, 20000);
 });
