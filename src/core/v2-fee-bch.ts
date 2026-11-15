@@ -263,7 +263,15 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
     .addOutput({ to: contract.tokenAddress, amount: state.satoshis + amount, token: { category: params.stateCategory, amount: 0n, nft: { capability: 'minting', commitment: state.token!.nft!.commitment } } })
     .addOutput({ to: contract.tokenAddress, amount: receipt.satoshis, token: { category: params.stateCategory, amount: 0n, nft: { capability: 'none', commitment: v2FeeReceiptCommitment(memberIndex, oldCredit + amount) } } })
     .addOutput({ to: walletAddress, amount: funding.satoshis - amount - fee });
-  return { wc: builder.generateWcTransactionObject({ broadcast: false, userPrompt: 'Add credit to your V2 member receipt' }), walletInputs: [2], memberIndex, credited: amount, newCredit: oldCredit + amount };
+  return {
+    wc: builder.generateWcTransactionObject({ broadcast: false, userPrompt: 'Add credit to your V2 member receipt' }),
+    walletInputs: [2],
+    memberIndex,
+    credited: amount,
+    newCredit: oldCredit + amount,
+    shortfall: maximumEscrow > oldCredit ? maximumEscrow - oldCredit : 0n,
+    requiredCredit: maximumEscrow,
+  };
 }
 
 /** Any circle participant can trigger payout and sponsor miner fees from a separate BCH input. */
