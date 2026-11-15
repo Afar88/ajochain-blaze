@@ -18,7 +18,7 @@ This checklist is a release control, not a list of UI switches. A checkbox may b
 ## BCH V2 member-credit covenant
 
 - [ ] Port a separately versioned Mainnet-compatible artifact; do not change the Chipnet-only contract's network validation in place.
-- [ ] Independent review of state NFT and each member receipt transition, including payout recipient debit, overpayment carry-forward, cancellation lock, and final-circle completion.
+- [ ] Independent review of the full-cycle escrow state/receipt transition, exact remaining-round threshold, member deposit cap, payout recipient debit, cancellation lock, and terminal completion. Existing fee-v1 circles are separate legacy rolling-credit deployments.
 - [ ] Verified funding-address registration and chain-derived receipt attribution. Browser-saved member addresses are not proof of ownership or funding.
 - [ ] Test reorgs, duplicate observations, conflicting events, malformed receipts, unknown tokens, and all member-order edge cases.
 - [ ] External audit before any real-value deployment.
