@@ -57,6 +57,11 @@ describe("plain PUSD transaction verifier", () => {
     expect(verifyDecodedPusdTransfer(intent, valueCreation)).toMatchObject({ ok: false, reason: "Reported miner fee does not match BCH input/output accounting." });
   });
 
+  it("rejects unapproved BCH-only outputs that could siphon wallet funds", () => {
+    const siphon = { ...valid, outputs: [...valid.outputs, { address: "bitcoincash:attacker", satoshis: 1n }] };
+    expect(verifyDecodedPusdTransfer(intent, siphon)).toMatchObject({ ok: false, reason: "BCH output is directed to an unapproved address." });
+  });
+
   it("rejects a false or excessive fee and a wrong recipient amount", () => {
     expect(verifyDecodedPusdTransfer(intent, { ...valid, feeSatoshis: 499n })).toMatchObject({ ok: false, reason: "Reported miner fee does not match BCH input/output accounting." });
     expect(verifyDecodedPusdTransfer({ ...intent, maxFeeSatoshis: 499n }, valid)).toMatchObject({ ok: false, reason: "Miner fee exceeds the approved maximum." });
