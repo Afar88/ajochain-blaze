@@ -20,7 +20,7 @@ export default defineConfig(({ mode }) => {
             if (id.includes("/qrcode/") || id.includes("/pngjs/") ||
                 id.includes("/dijkstrajs/")) return "vendor-qrcode";
             if (id.includes("/@wizardconnect/")) return "vendor-wallet-connect";
-            if (id.includes("/@bitauth/") || id.includes("/cashscript/") ||
+            if (id.includes("/@bitauth/") || id.includes("/@electrum-cash/") || id.includes("/cashscript/") ||
                 id.includes("/cashc/")) return "vendor-bitcoin-cash";
           },
         },
