@@ -83,3 +83,8 @@ A mainnet-ready release requires all of the following:
 8. Independent end-to-end testing, monitoring and a documented incident/rollback plan.
 
 Until those gates pass, transaction signing, broadcasting and real-value circle operations remain disabled.
+
+
+## BCH, PUSD and member accounting
+
+See [BCH, PUSD and member accounting](docs/BCH_PUSD_MEMBER_ACCOUNTING.md) for the 1% fee covenant, member-owned round-credit rules, verified receipt ledger, PUSD read-only balance API and current Mainnet safety gates.
