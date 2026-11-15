@@ -17,7 +17,7 @@ export interface PusdMainnetSpendContext {
 /** Fail closed for every PUSD spend while the mainnet release is unapproved. */
 export function assertPusdMainnetSpendingAllowed(context: PusdMainnetSpendContext): void {
   if (context.asset === "PUSD" && context.network === "mainnet" &&
-      PUSD_MAINNET_SPENDING_ENABLED !== true) {
+      !PUSD_MAINNET_SPENDING_ENABLED) {
     throw new Error(
       "PUSD mainnet spending is disabled: raw CashTokens verification, authenticated UTXO provenance, independent security review, and release approval are incomplete.",
     );
