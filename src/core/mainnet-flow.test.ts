@@ -55,4 +55,13 @@ describe("mainnet release flow", () => {
       transactionPlanReviewed: true,
     }).phase).toBe("state-reconciliation");
   });
+
+  it("keeps transaction review blocked until the active BCH consensus VM is verified", () => {
+    const evidence = { ...CLOSED_MAINNET_GATES };
+    for (const key of MAINNET_GATE_KEYS) evidence[key] = true;
+    evidence.consensusVmVerified = false;
+    expect(evaluateMainnetFlow(evidence).canBroadcast).toBe(false);
+    expect(evaluateMainnetFlow(evidence).missing).toContain("consensusVmVerified");
+    expect(() => assertMainnetBroadcastEligible(evidence)).toThrow(/Current BCH Mainnet consensus VM/);
+  });
 });
