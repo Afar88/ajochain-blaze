@@ -609,7 +609,10 @@ const RATE_LIMIT_MAX = 60;
 function setCors(request, response) {
   const origin = request.headers.origin;
   if (!origin) return true;
-  if (!allowedOrigins.has(origin)) return false;
+  const protocol = String(request.headers["x-forwarded-proto"] ?? "https").split(",")[0].trim();
+  const host = String(request.headers["x-forwarded-host"] ?? request.headers.host ?? "").split(",")[0].trim();
+  const sameOrigin = Boolean(host) && origin === protocol + "://" + host;
+  if (!sameOrigin && !allowedOrigins.has(origin)) return false;
   response.setHeader("Access-Control-Allow-Origin", origin);
   response.setHeader("Vary", "Origin");
   response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
