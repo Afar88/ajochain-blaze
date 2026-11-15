@@ -11,8 +11,9 @@ pragma cashscript ^0.14.0;
 // addCredit inputs: 0 state NFT, 1 member receipt NFT, 2 member funding P2PKH input
 // addCredit outputs: 0 updated state NFT, 1 updated receipt NFT, 2 member change
 //
-// payout inputs: 0 state NFT, 1..N receipt NFTs in member-index order
-// payout outputs: 0 updated state NFT, 1..N updated receipts, N+1 treasury fee, N+2 round recipient
+// payout inputs: 0 state NFT, 1..N receipt NFTs, N+1 token-free caller fee input
+// payout outputs: 0 state, 1..N updated receipts, N+1 treasury fee,
+//                 N+2 gross-minus-project-fee recipient, N+3 caller fee change
 //
 // Chipnet prototype only. The fee and pre-first-payout cancellation branches are
 // implemented in this versioned covenant and exposed in the Chipnet workspace.
@@ -94,8 +95,8 @@ contract AjoCircleV2Fee(
         require(contribution <= 9223372036854775807 / memberCount);
         require(maxFee >= 0);
         require(this.activeInputIndex >= 0 && this.activeInputIndex <= memberCount);
-        require(tx.inputs.length == memberCount + 1);
-        require(tx.outputs.length == memberCount + 3);
+        require(tx.inputs.length == memberCount + 2);
+        require(tx.outputs.length == memberCount + 4);
         require(tx.inputs[0].lockingBytecode == tx.inputs[this.activeInputIndex].lockingBytecode);
         require(tx.inputs[0].tokenCategory == stateCategory + 0x02);
         require(tx.inputs[0].tokenAmount == 0);
@@ -152,8 +153,18 @@ contract AjoCircleV2Fee(
         require(tx.outputs[memberCount + 1].value == projectFee);
         require(tx.outputs[memberCount + 2].lockingBytecode == new LockingBytecodeP2PKH(recipient));
         require(tx.outputs[memberCount + 2].tokenCategory == 0x);
-        require(tx.outputs[memberCount + 2].value <= pot - projectFee);
-        require(tx.outputs[memberCount + 2].value >= pot - projectFee - maxFee);
+        require(tx.outputs[memberCount + 2].value == pot - projectFee);
+
+        // Miner fee is paid by the caller from a separate token-free BCH input.
+        // It must not be deducted from the member pot or the fixed 1% project fee.
+        int feeInput = memberCount + 1;
+        int feeChangeOutput = memberCount + 3;
+        require(tx.inputs[feeInput].tokenCategory == 0x);
+        require(tx.outputs[feeChangeOutput].lockingBytecode == tx.inputs[feeInput].lockingBytecode);
+        require(tx.outputs[feeChangeOutput].tokenCategory == 0x);
+        require(tx.outputs[feeChangeOutput].value >= 546);
+        require(tx.outputs[feeChangeOutput].value <= tx.inputs[feeInput].value);
+        require(tx.outputs[feeChangeOutput].value >= tx.inputs[feeInput].value - maxFee);
     }
     /**
      * Initiator-only cancellation before the first payout.
