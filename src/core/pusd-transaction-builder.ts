@@ -146,10 +146,18 @@ export function buildPusdTransferPlan(options: PusdTransferPlanOptions): PusdTra
     throw new Error("Recipient and wallet change locking scripts must be different.");
   }
 
+  if (!/^(?:[0-9a-f]{2})+$/i.test(recipientLockingBytecode) ||
+      !/^(?:[0-9a-f]{2})+$/i.test(changeLockingBytecode)) {
+    throw new Error("Recipient or change locking bytecode is malformed.");
+  }
+
   const candidates = [...authenticatedUtxos];
   const seen = new Set<string>();
   for (const utxo of candidates) {
     assertAuthenticated(utxo);
+    if (utxo.lockingBytecode.toLowerCase() !== changeLockingBytecode.toLowerCase()) {
+      throw new Error("PUSD inputs and change must use the same verified wallet locking script in this release path.");
+    }
     const key = utxo.txid.toLowerCase() + ":" + utxo.vout;
     if (seen.has(key)) throw new Error("PUSD transfer contains duplicate input outpoints.");
     seen.add(key);
