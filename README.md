@@ -83,3 +83,8 @@ A mainnet-ready release requires all of the following:
 8. Independent end-to-end testing, monitoring and a documented incident/rollback plan.
 
 Until those gates pass, transaction signing, broadcasting and real-value circle operations remain disabled.
+
+
+### PUSD covenant work
+
+The experimental PUSD-aware covenant is tracked in [draft PR #4](https://github.com/Afar88/ajochain-blaze/pull/4). Read the [PUSD covenant v1 prototype specification](docs/PUSD_COVENANT_V1_SPEC.md) before reviewing it. It is not deployable and must not be used to lock funds.
