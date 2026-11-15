@@ -23,6 +23,11 @@ type Snapshot = Awaited<ReturnType<typeof readV2FeeCircle>>;
 function bytesToHex(bytes: Uint8Array) {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
+function bchInputAmount(satoshis: bigint) {
+  const whole = satoshis / 100_000_000n;
+  const fraction = (satoshis % 100_000_000n).toString().padStart(8, "0").replace(/0+$/, "");
+  return fraction ? whole.toString() + "." + fraction : whole.toString();
+}
 function encodeCircle(params: V2FeeCircleParams) {
   const json = JSON.stringify({
     ...params,
@@ -215,7 +220,7 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
       const plan = await planV2FeeDeposit(active, memberIndex, units, address);
       if (!window.confirm(
         "Add " + formatBch(units) + " to Member " + (memberIndex + 1) + "'s own receipt?\n" +
-        "Additional escrow needed to unlock every remaining payout: " + formatBch(snapshot?.memberAccounting[memberIndex]?.shortfallForNextPayout ?? 0n) + "\\n" +
+        "Additional escrow needed to unlock every remaining payout: " + formatBch(plan.shortfall) + "\\n" +
         "Only this member's registered wallet can fund this slot.",
       )) return;
       const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Add my V2 AjoChain member credit");
@@ -400,7 +405,7 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
           <p className="field-hint">{snapshot.hasPaid ? "The first payout has happened. Cancellation is permanently locked; remaining escrow cannot be withdrawn." : "No payout has happened yet. Only the initiator may cancel and refund recorded member credit."}</p>
         </> : <p className="classic-empty">Reading the state NFT and all member receipts from Chipnet. Refresh if the transaction is still confirming.</p>}
         <label className="classic-deposit-field">Your BCH escrow deposit<input value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} inputMode="decimal" /></label>
-        {memberIndex >= 0 && snapshot?.memberAccounting[memberIndex] && <p className="field-hint">Your receipt holds {formatBch(snapshot.memberAccounting[memberIndex].currentCredit)}. Additional amount needed to secure every remaining payout: <b>{formatBch(snapshot.memberAccounting[memberIndex].shortfallForNextPayout)}</b>.</p>}
+        {memberIndex >= 0 && snapshot?.memberAccounting[memberIndex] && <p className="field-hint">Your receipt holds {formatBch(snapshot.memberAccounting[memberIndex].currentCredit)}. Additional amount needed to secure every remaining payout: <b>{formatBch(snapshot.memberAccounting[memberIndex].shortfallForNextPayout)}</b>. <button type="button" className="fee-exact-amount-button" onClick={() => setDepositAmount(bchInputAmount(snapshot.memberAccounting[memberIndex].shortfallForNextPayout))}>Use exact amount due</button></p>}
         <div className="classic-actions">
           <button type="button" className="secondary-button" disabled={busy} onClick={() => void refresh()}><RefreshCw size={14} /> Refresh</button>
           <button type="button" className="secondary-button" disabled={busy || memberIndex < 0 || network !== "chipnet" || Boolean(snapshot?.completed)} onClick={() => void deposit()}>
