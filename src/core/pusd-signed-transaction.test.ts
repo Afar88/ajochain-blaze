@@ -27,7 +27,7 @@ function previousOutput(script = walletScript) {
   return { rawHex: binToHex(raw), txid: hashTransaction(raw) };
 }
 
-function signedSpend(outputScript = recipientScript, outputAmount = 90n, outputSatoshis = 2000n, previousScript = walletScript) {
+function signedSpend(outputScript = recipientScript, outputAmount = 90n, outputSatoshis = 1000n, previousScript = walletScript) {
   const previous = previousOutput(previousScript);
   const signed = encodeTransactionBCH({
     version: 2,
@@ -39,7 +39,7 @@ function signedSpend(outputScript = recipientScript, outputAmount = 90n, outputS
       unlockingBytecode: new Uint8Array(),
     }],
     outputs: [{
-      valueSatoshis: 1000n,
+      valueSatoshis: BigInt(outputSatoshis),
       lockingBytecode: hexToBin(outputScript),
       token: { category: hexToBin(PUSD_ASSET.categoryId), amount: outputAmount },
     }, ...(outputAmount < 100n ? [{
