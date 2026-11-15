@@ -95,6 +95,8 @@ contract AjoCircleV2(
         require(tx.inputs[0].tokenAmount == 0);
 
         int pot = memberCount * contribution;
+        // Keep at least dust-safe value for the round recipient after miner fees.
+        require(maxFee <= pot - 1000);
         for (int i = 0; i < memberCount; i++) {
             int receiptInput = i + 1;
             require(tx.inputs[receiptInput].lockingBytecode == tx.inputs[0].lockingBytecode);
