@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import {
-  Activity, ArrowRight, Check, ChevronDown, Coins, Home, LockKeyhole,
+  Activity, ArrowRight, Check, ChevronDown, Coins, Home,
   Menu, ShieldCheck, Users, Wallet, X,
 } from "lucide-react";
 import { wallet } from "./core/wizard-wallet";
