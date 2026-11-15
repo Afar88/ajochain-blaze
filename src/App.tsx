@@ -5,7 +5,7 @@ import {
   CircleDollarSign, Clock3, CreditCard, LockKeyhole, Plus, ShieldCheck,
   Sparkles, Users, Wallet, X,
 } from "lucide-react";
-import { wallet, type WalletState } from "./core/wizard-wallet";
+import { wallet } from "./core/wizard-wallet";
 import { NETWORKS, type NetworkId } from "./core/network";
 import { validateCircleDraft, type ContributionFrequency } from "./core/circle";
 import type { CircleAsset } from "./core/member-ledger";
