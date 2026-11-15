@@ -21,7 +21,8 @@ The category ID is pinned in `src/core/assets.ts`. A ticker or token name is nev
 - Case-insensitive canonical category ID comparison helper.
 - UI hint explaining PUSD precision and that the current selection is only a local draft.
 - Chipnet draft guard: PUSD cannot be selected for a Chipnet draft because no verified Chipnet category ID is configured.
-- Tests for amount parsing, formatting, precision, category identity, network scope, and maximum amount.
+- Strict PUSD UTXO selection helper: exact category only, deterministic smallest-sufficient selection, duplicate outpoint rejection, and NFT-bearing UTXO rejection.
+- Tests for amount parsing, formatting, precision, category identity, byte order, network scope, maximum amount, and UTXO selection.
 
 ## Not yet implemented — deliberately blocked
 
