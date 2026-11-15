@@ -121,6 +121,6 @@ test("raw previous transaction bytes must agree across the Electrum quorum", () 
   const raw = "01000000" + "00".repeat(10);
   assert.equal(assertPreviousTransactionsAgree([{ hex: raw }, { hex: raw.toUpperCase() }]), raw);
   assert.throws(() => assertPreviousTransactionsAgree([{ hex: raw }, { hex: "02000000" + "00".repeat(10) }]), /disagree/);
-  assert.throws(() => assertPreviousTransactionsAgree([{ hex: raw }]), /at least two/);
+  assert.throws(() => assertPreviousTransactionsAgree([{ hex: raw }]), /at least two/i);
   assert.throws(() => assertPreviousTransactionsAgree([{ hex: "not-hex" }, { hex: raw }]), /malformed/);
 });
