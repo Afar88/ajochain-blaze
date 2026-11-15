@@ -14,8 +14,12 @@ export interface MemberBalance {
   walletAddress: string;
   asset: CircleAsset;
   creditedBaseUnits: bigint;
-  contributedBaseUnits: bigint;
+  /** Credit currently available toward the next unpaid round. */
+  currentRoundCreditBaseUnits: bigint;
+  /** Excess credit retained for this member's later rounds only. */
   leftoverBaseUnits: bigint;
+  /** Total credit consumed by completed payouts. */
+  contributedBaseUnits: bigint;
   paymentIds: string[];
 }
 
@@ -23,11 +27,11 @@ export type LedgerResult =
   | { ok: true; duplicate: boolean; balances: MemberBalance[] }
   | { ok: false; reason: string };
 
-/**
- * Applies one confirmed contribution to the individual member's ledger.
- * Payment IDs are namespaced by period for safe retries. A period can be
- * credited only once per member, wallet and asset. Amounts stay in base units.
- */
+export type PayoutResult =
+  | { ok: true; balances: MemberBalance[] }
+  | { ok: false; reason: string };
+
+/** Add a verified member payment. Multiple partial payments in one round are allowed. */
 export function applyMemberPayment(
   current: MemberBalance[],
   payment: MemberPayment,
@@ -43,47 +47,79 @@ export function applyMemberPayment(
 
   const paymentKey = `${payment.periodId}:${payment.paymentId}`;
   const existing = current.find(
-    (entry) => entry.memberId === payment.memberId &&
+    (entry) => entry.memberId === payment.memberId.trim() &&
       entry.walletAddress.trim().toLowerCase() === walletAddress &&
       entry.asset === payment.asset,
   );
-
   if (existing?.paymentIds.includes(paymentKey)) {
     return { ok: true, duplicate: true, balances: current };
   }
 
-  const periodAlreadyCredited = current.some(
-    (entry) => entry.memberId === payment.memberId &&
-      entry.walletAddress === payment.walletAddress &&
-      entry.asset === payment.asset &&
-      entry.paymentIds.some((id) => id.startsWith(`${payment.periodId}:`)),
-  );
-  if (periodAlreadyCredited) {
-    return { ok: false, reason: "Contribution period already credited" };
-  }
-
-  const priorCredit = existing?.leftoverBaseUnits ?? 0n;
-  const available = priorCredit + payment.amountBaseUnits;
-  const contributed = available >= contributionDueBaseUnits
+  const available = (existing?.currentRoundCreditBaseUnits ?? 0n) +
+    (existing?.leftoverBaseUnits ?? 0n) + payment.amountBaseUnits;
+  const currentRoundCredit = available >= contributionDueBaseUnits
     ? contributionDueBaseUnits
     : available;
-  const leftover = available - contributed;
+  const leftover = available - currentRoundCredit;
 
   const next: MemberBalance = {
-    memberId: payment.memberId,
+    memberId: payment.memberId.trim(),
     walletAddress,
     asset: payment.asset,
     creditedBaseUnits: (existing?.creditedBaseUnits ?? 0n) + payment.amountBaseUnits,
-    contributedBaseUnits: (existing?.contributedBaseUnits ?? 0n) + contributed,
+    currentRoundCreditBaseUnits: currentRoundCredit,
     leftoverBaseUnits: leftover,
+    contributedBaseUnits: existing?.contributedBaseUnits ?? 0n,
     paymentIds: [...(existing?.paymentIds ?? []), paymentKey],
   };
-
   return {
     ok: true,
     duplicate: false,
     balances: [...current.filter((entry) => entry !== existing), next],
   };
+}
+
+/**
+ * Apply one completed payout round. Every registered member must independently
+ * have a full round contribution. Excess credit rolls forward only for its owner.
+ */
+export function applyMemberPayout(
+  current: MemberBalance[],
+  registeredMembers: Array<{ memberId: string; walletAddress: string }>,
+  asset: CircleAsset,
+  contributionDueBaseUnits: bigint,
+): PayoutResult {
+  if (contributionDueBaseUnits <= 0n) return { ok: false, reason: "Contribution must be positive" };
+  if (registeredMembers.length < MIN_CIRCLE_MEMBERS) return { ok: false, reason: "A circle needs at least two members" };
+
+  const matched = registeredMembers.map((member) => current.find((entry) =>
+    entry.memberId === member.memberId &&
+    entry.walletAddress.trim().toLowerCase() === member.walletAddress.trim().toLowerCase() &&
+    entry.asset === asset,
+  ));
+  if (matched.some((entry) => !entry || entry.currentRoundCreditBaseUnits < contributionDueBaseUnits)) {
+    return { ok: false, reason: "Payout blocked: every member must fund their own contribution for this round" };
+  }
+
+  const balances = current.map((entry) => {
+    if (entry.asset !== asset) return entry;
+    const isRegistered = registeredMembers.some((member) =>
+      member.memberId === entry.memberId &&
+      member.walletAddress.trim().toLowerCase() === entry.walletAddress.trim().toLowerCase(),
+    );
+    if (!isRegistered) return entry;
+    const remainingAfterRound = entry.currentRoundCreditBaseUnits - contributionDueBaseUnits + entry.leftoverBaseUnits;
+    const nextRoundCredit = remainingAfterRound >= contributionDueBaseUnits
+      ? contributionDueBaseUnits
+      : remainingAfterRound;
+    return {
+      ...entry,
+      currentRoundCreditBaseUnits: nextRoundCredit,
+      leftoverBaseUnits: remainingAfterRound - nextRoundCredit,
+      contributedBaseUnits: entry.contributedBaseUnits + contributionDueBaseUnits,
+    };
+  });
+  return { ok: true, balances };
 }
 
 export const MIN_CIRCLE_MEMBERS = 2;
