@@ -317,7 +317,7 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
             <>
               <div className="classic-account-summary classic-chain-stats">
                 <div><b>{status.round === null ? "Not started" : status.completed ? "Complete" : (status.round + 1) + " / " + activeCircle.members.length}</b><span>Current round</span></div>
-                <div><b>{formatBch(status.available)}</b><span>Confirmed pot contributions</span></div>
+                <div><b>{formatBch(status.available)}</b><span>Observed pot (single provider)</span></div>
                 <div><b>{status.ready ? "Ready" : formatBch(status.shortfall) + " short"}</b><span>Next payout condition</span></div>
               </div>
               {status.issues.length > 0 && <ul className="classic-issues">{status.issues.map((item) => <li key={item}>{item}</li>)}</ul>}
