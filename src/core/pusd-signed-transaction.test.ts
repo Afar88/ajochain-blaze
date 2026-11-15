@@ -19,7 +19,7 @@ function previousOutput() {
       unlockingBytecode: hexToBin("01"),
     }],
     outputs: [{
-      valueSatoshis: 2000n,
+      valueSatoshis: 3000n,
       lockingBytecode: hexToBin(walletScript),
       token: { category: hexToBin(PUSD_ASSET.categoryId), amount: 100n },
     }],
@@ -39,7 +39,7 @@ function signedSpend(outputScript = recipientScript, outputAmount = 90n, outputS
       unlockingBytecode: new Uint8Array(),
     }],
     outputs: [{
-      valueSatoshis: BigInt(outputSatoshis),
+      valueSatoshis: 1000n,
       lockingBytecode: hexToBin(outputScript),
       token: { category: hexToBin(PUSD_ASSET.categoryId), amount: outputAmount },
     }, ...(outputAmount < 100n ? [{
