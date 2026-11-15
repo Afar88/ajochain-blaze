@@ -9,6 +9,7 @@ import { wallet } from "./core/wizard-wallet";
 import { NETWORKS, type NetworkId } from "./core/network";
 import { validateCircleDraft, type ContributionFrequency } from "./core/circle";
 import type { CircleAsset } from "./core/member-ledger";
+import { CLOSED_MAINNET_GATES, MAINNET_GATE_KEYS, MAINNET_GATE_LABELS, evaluateMainnetFlow } from "./core/mainnet-flow";
 
 type CircleDraftView = {
   name: string;
@@ -87,6 +88,7 @@ export default function App() {
     return () => { active = false; };
   }, [walletView.qrUri]);
 
+  const mainnetReadiness = evaluateMainnetFlow(CLOSED_MAINNET_GATES);
   const walletAddress = wallet.address(network);
   const connectWallet = () => {
     if (wallet.state === "disconnected") {
@@ -235,6 +237,32 @@ export default function App() {
             </div>
             <span className="read-only-pill"><LockKeyhole size={11} /> READ ONLY</span>
           </section>
+          {network === "mainnet" && (
+            <section className="mainnet-readiness section-card" aria-labelledby="mainnet-readiness-title">
+              <div className="mainnet-readiness-heading">
+                <div>
+                  <span className="section-kicker">BCH BLAZE · MAINNET RELEASE CONTROL</span>
+                  <h2 id="mainnet-readiness-title">Mainnet transaction readiness</h2>
+                  <p>This build is in read-only mode. No user action can mark a safety gate as passed.</p>
+                </div>
+                <span className="mainnet-blocked"><LockKeyhole size={13} /> BROADCAST BLOCKED</span>
+              </div>
+              <div className="mainnet-progress">
+                <span>Verified release gates</span><strong>{MAINNET_GATE_KEYS.length - mainnetReadiness.missing.length} / {MAINNET_GATE_KEYS.length}</strong>
+                <div className="mainnet-progress-track"><span style={{ width: "0%" }} /></div>
+              </div>
+              <ul className="mainnet-gate-list">
+                {MAINNET_GATE_KEYS.map((key, index) => (
+                  <li key={key}>
+                    <span className="mainnet-gate-number">{String(index + 1).padStart(2, "0")}</span>
+                    <span>{MAINNET_GATE_LABELS[key]}</span>
+                    <span className="mainnet-gate-status"><LockKeyhole size={12} /> Pending</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mainnet-readiness-foot">The release guard is fail-closed. Wallet connection, a local circle draft, or selecting Mainnet does not authorize signing or broadcasting.</p>
+            </section>
+          )}
           {walletView.error && (
             <section className="wallet-error" role="alert">
               <ShieldCheck size={17} /><div><b>Wallet connection needs attention</b><span>{walletView.error}</span></div>
