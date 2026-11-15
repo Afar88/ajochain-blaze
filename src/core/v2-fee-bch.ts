@@ -286,10 +286,10 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
     memberIndex,
     credited: amount,
     newCredit: oldCredit + amount,
-    shortfall: params.covenant === 'fee-v2-escrow'
-      ? (maximumEscrow > oldCredit ? maximumEscrow - oldCredit : 0n)
-      : (params.contribution > oldCredit ? params.contribution - oldCredit : 0n),
-    requiredCredit: params.covenant === 'fee-v2-escrow' ? maximumEscrow : params.contribution,
+    shortfall: (params.covenant !== 'fee-v1' ? maximumEscrow : params.contribution) > oldCredit
+      ? (params.covenant !== 'fee-v1' ? maximumEscrow : params.contribution) - oldCredit
+      : 0n,
+    requiredCredit: params.covenant !== 'fee-v1' ? maximumEscrow : params.contribution,
   };
 }
 
@@ -306,7 +306,7 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
   const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
   const hasPaid = state.token!.nft!.commitment.slice(4) === "01";
   if (!Number.isInteger(round) || round < 0 || round >= params.members.length) {
-    throw new Error(params.covenant === 'fee-v2-escrow' && round === params.members.length
+    throw new Error(params.covenant !== 'fee-v1' && round === params.members.length
       ? "This circle has completed every scheduled payout."
       : "Invalid V2 fee payout round.");
   }
@@ -356,7 +356,7 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
       amount: state.satoshis - pot + autoReserve,
       token: { category: params.stateCategory, amount: 0n,
         nft: { capability: "minting", commitment: v2FeeStateCommitment(
-          params.covenant === 'fee-v2-escrow' ? round + 1 : (round + 1) % params.members.length,
+          params.covenant !== 'fee-v1' ? round + 1 : (round + 1) % params.members.length,
           true,
         ) } },
     });
