@@ -1,0 +1,206 @@
+pragma cashscript ^0.14.0;
+
+// Experimental PUSD-aware AjoChain covenant. This is a separate contract
+// from the BCH-only AjoCircleV2 and must not be deployed before independent
+// review. All token quantities are CashToken base units (not display decimals).
+//
+// PUSD is a separate token category from the circle state/receipt category.
+// The covenant therefore keeps three contract UTXOs under the same locking
+// bytecode: state NFT (input 0), member receipt NFT (input 1), and PUSD pool
+// UTXO (input 2). A member's PUSD funding UTXO is input 3.
+//
+// addPusdCredit outputs: state 0, receipt 1, pool 2, optional member token
+// change 3, optional BCH-only change at 3 or 4.
+//
+// payoutPusd inputs: state 0, receipts 1..N, PUSD pool N+1.
+// payoutPusd outputs: state 0, receipts 1..N, pool N+1 (or empty vault
+// UTXO when depleted), recipient PUSD output N+2, optional BCH-only change N+3.
+
+contract AjoCirclePusdV1(
+    bytes20 m0,
+    bytes20 m1,
+    bytes20 m2,
+    bytes20 m3,
+    bytes20 m4,
+    int memberCount,
+    int contribution,
+    int maxFee,
+    bytes32 circleCategory,
+    bytes32 pusdCategory
+) {
+    function addPusdCredit(int memberIndex, int amount) {
+        require(this.activeInputIndex >= 0 && this.activeInputIndex <= 2);
+        require(memberCount >= 2 && memberCount <= 5);
+        require(memberIndex >= 0 && memberIndex < memberCount);
+        require(amount > 0 && amount <= 9223372036854775807);
+        require(maxFee >= 0);
+        require(tx.inputs.length == 4);
+        require(tx.outputs.length >= 3 && tx.outputs.length <= 5);
+
+        // The three covenant inputs must be the same locking script.
+        require(tx.inputs[0].lockingBytecode == tx.inputs[1].lockingBytecode);
+        require(tx.inputs[0].lockingBytecode == tx.inputs[2].lockingBytecode);
+        require(tx.inputs[0].lockingBytecode == tx.inputs[this.activeInputIndex].lockingBytecode);
+
+        // State NFT and immutable member receipt use the circle's own category.
+        require(tx.inputs[0].tokenCategory == circleCategory + 0x02);
+        require(tx.inputs[0].tokenAmount == 0);
+        require(tx.inputs[1].tokenCategory == circleCategory);
+        require(tx.inputs[1].tokenAmount == 0);
+
+        // PUSD pool is a separate CashToken UTXO under this covenant.
+        require(tx.inputs[2].tokenCategory == pusdCategory || tx.inputs[2].tokenCategory == 0x);
+        require(tx.inputs[2].nftCommitment == 0x);
+        int oldPool = tx.inputs[2].tokenAmount;
+        require(oldPool >= 0 && oldPool <= 9223372036854775807 - amount);
+
+        // Member funding input must be PUSD, not another token category or
+        // a minting-capability NFT. BCH signature validation is consensus-level.
+        require(tx.inputs[3].tokenCategory == pusdCategory);
+        require(tx.inputs[3].tokenAmount >= amount);
+        require(tx.inputs[3].tokenAmount <= 9223372036854775807);
+        if (memberIndex == 0) { require(tx.inputs[3].lockingBytecode == new LockingBytecodeP2PKH(m0)); }
+        if (memberIndex == 1) { require(tx.inputs[3].lockingBytecode == new LockingBytecodeP2PKH(m1)); }
+        if (memberIndex == 2) { require(tx.inputs[3].lockingBytecode == new LockingBytecodeP2PKH(m2)); }
+        if (memberIndex == 3) { require(tx.inputs[3].lockingBytecode == new LockingBytecodeP2PKH(m3)); }
+        if (memberIndex == 4) { require(tx.inputs[3].lockingBytecode == new LockingBytecodeP2PKH(m4)); }
+
+        // State cannot advance during a contribution.
+        bytes statePrefix, bytes stateRound = tx.inputs[0].nftCommitment.split(1);
+        require(statePrefix == 0x53 && stateRound.length == 1);
+        require(int(stateRound) >= 0 && int(stateRound) < memberCount);
+        require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
+        require(tx.outputs[0].tokenCategory == circleCategory + 0x02);
+        require(tx.outputs[0].tokenAmount == 0);
+        require(tx.outputs[0].nftCommitment == tx.inputs[0].nftCommitment);
+        require(tx.outputs[0].value == tx.inputs[0].value);
+
+        // Credit is held in the member's receipt NFT, in PUSD base units.
+        bytes receiptPrefix, bytes receiptData = tx.inputs[1].nftCommitment.split(1);
+        bytes receiptMember, bytes receiptCredit = receiptData.split(1);
+        require(receiptPrefix == 0x52);
+        require(int(receiptMember) == memberIndex);
+        require(receiptCredit.length == 8);
+        int oldCredit = int(receiptCredit);
+        require(oldCredit >= 0 && oldCredit <= 9223372036854775807 - amount);
+        require(tx.outputs[1].lockingBytecode == tx.inputs[1].lockingBytecode);
+        require(tx.outputs[1].tokenCategory == circleCategory);
+        require(tx.outputs[1].tokenAmount == 0);
+        require(tx.outputs[1].nftCommitment == 0x52 + toPaddedBytes(memberIndex, 1) + toPaddedBytes(oldCredit + amount, 8));
+        require(tx.outputs[1].value == tx.inputs[1].value);
+
+        // Pool receives exactly the credited PUSD amount.
+        require(tx.outputs[2].lockingBytecode == tx.inputs[2].lockingBytecode);
+        require(tx.outputs[2].tokenCategory == pusdCategory);
+        require(tx.outputs[2].tokenAmount == oldPool + amount);
+        require(tx.outputs[2].nftCommitment == 0x);
+        require(tx.outputs[2].value == tx.inputs[2].value);
+
+        // Any member token change must return to the same member and preserve
+        // exactly the remainder. With no token-change output, input must be exact.
+        int memberRemainder = tx.inputs[3].tokenAmount - amount;
+        if (tx.outputs.length > 3 && tx.outputs[3].tokenCategory == pusdCategory) {
+            require(memberRemainder > 0);
+            require(tx.outputs[3].lockingBytecode == tx.inputs[3].lockingBytecode);
+            require(tx.outputs[3].tokenAmount == memberRemainder);
+            require(tx.outputs[3].value == tx.inputs[3].value);
+            if (tx.outputs.length == 5) {
+                require(tx.outputs[4].tokenCategory == 0x);
+                require(tx.outputs[4].value <= maxFee);
+            }
+        } else {
+            require(memberRemainder == 0);
+            if (tx.outputs.length > 3) {
+                require(tx.outputs[3].tokenCategory == 0x);
+                require(tx.outputs[3].value <= maxFee);
+            }
+        }
+    }
+
+    function payoutPusd() {
+        require(memberCount >= 2 && memberCount <= 5);
+        require(contribution > 0 && maxFee >= 0);
+        require(this.activeInputIndex >= 0 && this.activeInputIndex <= memberCount + 1);
+        require(tx.inputs.length == memberCount + 2);
+        require(tx.outputs.length >= memberCount + 3 && tx.outputs.length <= memberCount + 4);
+
+        // All contract state, receipt and pool inputs share this covenant.
+        for (int i = 0; i < memberCount + 2; i++) {
+            require(tx.inputs[i].lockingBytecode == tx.inputs[0].lockingBytecode);
+            if (i == 0) {
+                require(tx.inputs[i].tokenCategory == circleCategory + 0x02);
+                require(tx.inputs[i].tokenAmount == 0);
+            } else if (i <= memberCount) {
+                require(tx.inputs[i].tokenCategory == circleCategory);
+                require(tx.inputs[i].tokenAmount == 0);
+            }
+        }
+        require(tx.inputs[memberCount + 1].tokenCategory == pusdCategory);
+        require(tx.inputs[memberCount + 1].nftCommitment == 0x);
+
+        bytes statePrefix, bytes stateRound = tx.inputs[0].nftCommitment.split(1);
+        require(statePrefix == 0x53 && stateRound.length == 1);
+        int round = int(stateRound);
+        require(round >= 0 && round < memberCount);
+
+        // Every member must have contributed the full round amount. Deduct
+        // only that round amount; any member-owned excess remains as credit.
+        for (int j = 0; j < memberCount; j++) {
+            bytes receiptPrefix, bytes receiptData = tx.inputs[j + 1].nftCommitment.split(1);
+            bytes receiptMember, bytes receiptCredit = receiptData.split(1);
+            require(receiptPrefix == 0x52);
+            require(int(receiptMember) == j);
+            require(receiptCredit.length == 8);
+            int credit = int(receiptCredit);
+            require(credit >= contribution);
+            require(tx.outputs[j + 1].lockingBytecode == tx.inputs[j + 1].lockingBytecode);
+            require(tx.outputs[j + 1].tokenCategory == circleCategory);
+            require(tx.outputs[j + 1].tokenAmount == 0);
+            require(tx.outputs[j + 1].nftCommitment == 0x52 + toPaddedBytes(j, 1) + toPaddedBytes(credit - contribution, 8));
+            require(tx.outputs[j + 1].value == tx.inputs[j + 1].value);
+        }
+
+        int payoutAmount = memberCount * contribution;
+        require(tx.inputs[memberCount + 1].tokenAmount >= payoutAmount);
+        require(tx.inputs[memberCount + 1].tokenAmount <= 9223372036854775807);
+
+        // Advance state, closing after the final member rather than wrapping.
+        require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
+        require(tx.outputs[0].tokenCategory == circleCategory + 0x02);
+        require(tx.outputs[0].tokenAmount == 0);
+        if (round + 1 == memberCount) {
+            require(tx.outputs[0].nftCommitment == 0x54);
+        } else {
+            require(tx.outputs[0].nftCommitment == 0x53 + toPaddedBytes(round + 1, 1));
+        }
+        require(tx.outputs[0].value == tx.inputs[0].value);
+
+        // Pool is recreated at the same index. It may become token-empty
+        // when the exact balance is paid out; the next deposit can refill it.
+        int remainingPool = tx.inputs[memberCount + 1].tokenAmount - payoutAmount;
+        require(tx.outputs[memberCount + 1].lockingBytecode == tx.inputs[memberCount + 1].lockingBytecode);
+        require(tx.outputs[memberCount + 1].tokenAmount == remainingPool);
+        require(tx.outputs[memberCount + 1].value == tx.inputs[memberCount + 1].value);
+        if (remainingPool > 0) {
+            require(tx.outputs[memberCount + 1].tokenCategory == pusdCategory);
+            require(tx.outputs[memberCount + 1].nftCommitment == 0x);
+        } else {
+            require(tx.outputs[memberCount + 1].tokenCategory == 0x);
+        }
+
+        bytes20 recipient = m0;
+        if (round == 1) { recipient = m1; }
+        if (round == 2) { recipient = m2; }
+        if (round == 3) { recipient = m3; }
+        if (round == 4) { recipient = m4; }
+        require(tx.outputs[memberCount + 2].lockingBytecode == new LockingBytecodeP2PKH(recipient));
+        require(tx.outputs[memberCount + 2].tokenCategory == pusdCategory);
+        require(tx.outputs[memberCount + 2].tokenAmount == payoutAmount);
+        require(tx.outputs[memberCount + 2].value == 1000);
+
+        if (tx.outputs.length == memberCount + 4) {
+            require(tx.outputs[memberCount + 3].tokenCategory == 0x);
+            require(tx.outputs[memberCount + 3].value <= maxFee);
+        }
+    }
+}
