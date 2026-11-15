@@ -19,7 +19,8 @@ This repository is the **independent BCH BLAZE build**. It is not a copy, mirror
 - Local circle drafts persist in the current browser and can be edited or deleted; they are not on-chain records.
 - WizardConnect pairing UI and session persistence.
 - BCH/Chipnet network selection and a basic CashAddress prefix sanity guard.
-- Member-level contribution ledger using integer base units, with leftover credit and idempotent payment keys.
+- Member-level round-credit model with partial top-ups, member-owned carry-forward, duplicate protection and payout blocking until every member has funded their own round.
+- Ported BCH V2 member-receipt covenant source in `contracts/AjoCircleV2.cash`; each payout consumes one round contribution from every member receipt, including the previous payout recipient.
 - Unit tests for the ledger, circle draft validation, network prefix guard and transaction-intent comparison.
 - Circle previews are local UI drafts only; they are not persisted to a contract or broadcast to the network.
 
@@ -55,6 +56,8 @@ The GitHub Actions workflow runs the same checks on pushes to `main` and pull re
 
 A separate workflow builds and deploys the static app to GitHub Pages on pushes to `main`. The Pages build uses the `/ajochain-blaze/` base path; local development and root-hosted deployments use `/`. The public Pages URL becomes available after the first successful deployment run.
 
+See [member accounting and circle completion](docs/MEMBER_ACCOUNTING_AND_CIRCLE_COMPLETION.md) for the rule that members must continue contributing after receiving a payout, and the V2 covenant design that blocks a round when any member is short.
+
 ## Network and safety policy
 
 Mainnet compatibility is a product goal; it is not permission to expose users to unaudited contracts or unsafe transactions.
@@ -74,8 +77,9 @@ A mainnet-ready release requires all of the following:
 2. Full CashAddress checksum and network validation using a maintained BCH library.
 3. WizardConnect/Selene tests covering pairing, app switching, refresh, reconnect and relay interruption.
 4. Independent decoding of the exact signed transaction bytes, including inputs, outputs, fee, change, CashToken and NFT data.
-5. Contract review and accounting-invariant tests.
-6. PUSD token category/decimals verification and wallet compatibility tests.
-7. Independent end-to-end testing, monitoring and a documented incident/rollback plan.
+5. Compile and adversarially test the ported V2 member-receipt covenant, including post-payout obligations and member-specific carry-forward.
+6. Independent contract review and accounting-invariant tests.
+7. PUSD token category/decimals verification and wallet compatibility tests.
+8. Independent end-to-end testing, monitoring and a documented incident/rollback plan.
 
 Until those gates pass, transaction signing, broadcasting and real-value circle operations remain disabled.
