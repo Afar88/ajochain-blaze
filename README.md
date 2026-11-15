@@ -21,10 +21,10 @@ This repository is the **independent BCH BLAZE build**. It is not a copy, mirror
 - BCH/Chipnet network selection and full CashAddress checksum + network-prefix validation.
 - Member-level round-credit model with partial top-ups, member-owned carry-forward, duplicate protection and payout blocking until every member has funded their own round.
 - Ported BCH V2 member-receipt covenant source in `contracts/AjoCircleV2.cash`; each payout consumes one round contribution from every member receipt, including the previous payout recipient.
-- Unit tests cover the member ledger, circle draft validation, checksummed network addresses and transaction-intent comparison. CashScript compilation and covenant execution still require CI verification.
+- Unit tests are written for the member ledger, circle draft validation, checksummed network addresses and raw signed-transaction intent comparison. Their execution status, TypeScript build and CashScript compilation must be confirmed by a successful CI run.
 - Circle previews are local UI drafts only; they are not persisted to a contract or broadcast to the network.
 
-**Important:** the address prefix helper is not a full CashAddress checksum validator. The transaction-intent comparator consumes an already decoded transaction summary; it is not a raw transaction decoder. Neither one is sufficient to authorize a real transaction.
+**Important:** checksum validation and signed-transaction decoding are implemented, but neither alone authorizes a real transaction. The current comparator checks transaction version, locktime, input outpoints/order/sequences, and serialized outputs. It does not yet independently verify prevout scripts and values, fee/change policy, wallet input-path ownership, or all covenant-specific invariants. It must not be used as a broadcast authorization gate.
 
 ## Requirements
 
