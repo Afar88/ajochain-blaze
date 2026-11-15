@@ -78,13 +78,9 @@ contract AjoCircleV3AutoReserve(
         int oldCredit = int(receiptCredit);
         require(oldCredit >= 0 && oldCredit <= 9223372036854775807 - amount);
         int currentRound = int(stateRound);
+        // Each member carries at most one next-installment reserve at a time.
+        // It is consumed at the next payout round, then can be replenished.
         int maximumCredit = contribution;
-        // Members who have already received their payout may only top up their
-        // on-chain reserve for every future contribution. Members awaiting payout
-        // fund only the current installment.
-        if (memberIndex < currentRound) {
-            maximumCredit = contribution * (memberCount - currentRound);
-        }
         require(oldCredit + amount <= maximumCredit);
         require(tx.outputs[1].lockingBytecode == tx.inputs[1].lockingBytecode);
         require(tx.outputs[1].tokenCategory == stateCategory);
@@ -119,8 +115,10 @@ contract AjoCircleV3AutoReserve(
         require(int(hasPaid) == 0 || int(hasPaid) == 1);
         int round = int(stateRound);
         require(round >= 0 && round < memberCount);
-        int remainingRounds = memberCount - round;
-        int recipientReserve = contribution * (remainingRounds - 1);
+        int recipientReserve = 0;
+        // Withhold exactly one next contribution from each recipient's payout,
+        // except the final recipient, whose cycle ends with this payout.
+        if (round + 1 < memberCount) { recipientReserve = contribution; }
         for (int i = 0; i < memberCount; i++) {
             int receiptInput = i + 1;
             require(tx.inputs[receiptInput].lockingBytecode == tx.inputs[0].lockingBytecode);
@@ -132,11 +130,10 @@ contract AjoCircleV3AutoReserve(
             require(receiptMember.length == 1);
             require(int(receiptMember) == i);
             require(receiptCredit.length == 8);
-            // Already-paid members must retain every future installment. Members who
-            // have not yet received their payout fund only this current round.
-            int minimumCredit = contribution;
-            if (i < round) { minimumCredit = contribution * remainingRounds; }
-            require(int(receiptCredit) >= minimumCredit);
+            // Every member must have one contribution available for this round.
+            // For earlier recipients this may be the one installment reserved
+            // from their last payout, or a fresh deposit after it was consumed.
+            require(int(receiptCredit) >= contribution);
             require(int(receiptCredit) <= 9223372036854775807 - totalCredits);
             totalCredits = totalCredits + int(receiptCredit);
 
