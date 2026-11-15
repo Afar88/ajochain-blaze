@@ -48,10 +48,18 @@ export function formatAssetAmount(asset: CircleAsset, baseUnits: bigint): string
   return decimals === 0 ? whole.toString() : `${whole}.${fraction}`;
 }
 
-/** Exact canonical category ID comparison; callers must normalize byte order first. */
+/** Exact canonical category ID comparison for wallet/explorer display order. */
 export function isPusdCategoryId(categoryId: string): boolean {
   return /^[0-9a-f]{64}$/i.test(categoryId) &&
     categoryId.toLowerCase() === PUSD_ASSET.categoryId;
+}
+
+/** Convert a displayed CashToken category ID to CashScript introspection byte order. */
+export function toCashScriptCategoryId(displayCategoryId: string): string {
+  if (!/^[0-9a-f]{64}$/i.test(displayCategoryId)) {
+    throw new Error("CashToken category ID must be exactly 32 bytes of hexadecimal.");
+  }
+  return displayCategoryId.match(/../g)!.reverse().join("").toLowerCase();
 }
 
 export function isAssetAvailableOnNetwork(asset: CircleAsset, network: "mainnet" | "chipnet"): boolean {
