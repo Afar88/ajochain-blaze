@@ -395,7 +395,7 @@ describe("post-payout obligation", () => {
       underfunded.addOutput({
         to: contract.tokenAddress,
         amount: receipts[i].satoshis,
-        token: { category: CATEGORY, amount: 0n, nft: { capability: "none", commitment: creditCommitment(i, credit - CONTRIBUTION) } },
+        token: { category: CATEGORY, amount: 0n, nft: { capability: "none", commitment: receipts[i].token!.nft!.commitment } },
       });
     }
     underfunded.addOutput({ to: pkhToAddress(members[1].pkh, "chipnet"), amount: 190_000n });
