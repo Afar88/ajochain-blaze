@@ -9,12 +9,14 @@ pragma cashscript ^0.14.0;
 // bytecode: state NFT (input 0), member receipt NFT (input 1), and PUSD pool
 // UTXO (input 2). A member's PUSD funding UTXO is input 3.
 //
-// addPusdCredit outputs: state 0, receipt 1, pool 2, optional member token
-// change 3, optional BCH-only change at 3 or 4.
+// addPusdCredit inputs: state 0, receipt 1, pool 2, member PUSD 3,
+// member BCH fee input 4. Outputs: state 0, receipt 1, pool 2, then either
+// PUSD change 3 + BCH fee change 4, or BCH fee change 3.
 //
 // payoutPusd inputs: state 0, receipts 1..N, PUSD pool N+1.
 // payoutPusd outputs: state 0, receipts 1..N, pool N+1 (or empty vault
-// UTXO when depleted), recipient PUSD output N+2, optional BCH-only change N+3.
+// UTXO when depleted), recipient PUSD output N+2. Pool BCH reserve funds
+// the recipient's 1,000-sat CashToken carrier and a bounded miner fee.
 
 contract AjoCirclePusdV1(
     bytes20 m0,
@@ -212,7 +214,5 @@ contract AjoCirclePusdV1(
         require(tx.outputs[memberCount + 2].tokenCategory == pusdCategory);
         require(tx.outputs[memberCount + 2].tokenAmount == payoutAmount);
         require(tx.outputs[memberCount + 2].value == 1000);
-
-
     }
 }
