@@ -41,7 +41,6 @@ export type V2FeeCircleDraft = Omit<V2FeeCircleParams, 'stateCategory'>;
 
 const hex = (v: Uint8Array) => Array.from(v, b => b.toString(16).padStart(2, '0')).join('');
 const feeEstimate = (memberCount: number) => 6_000n + BigInt(memberCount) * 500n;
-const genesisFeeEstimate = (inputs: number, outputs: number) => BigInt(10 + inputs * 150 + outputs * 100 + 100);
 
 function validate(p: V2FeeCircleDraft | V2FeeCircleParams): void {
   if (p.version !== 2 || p.covenant !== 'fee-v1' || !p.name.trim()) throw new Error('Invalid V2 fee-circle details');
@@ -133,16 +132,15 @@ export async function planV2FeeGenesis(draft: V2FeeCircleDraft, walletAddress: s
   if (!genesis) throw new Error('V2 fee creation needs a non-token BCH UTXO at vout 0 for its CashTokens category. Check wallet funding before sending more BCH.');
   const params: V2FeeCircleParams = { ...paramsBase, stateCategory: genesis.txid };
   const contract = contractFor(params, provider);
-  const outputs = params.members.length + 2;
   const inputs: SpendableUtxo[] = [genesis];
   let total = genesis.satoshis;
+  const fee = feeEstimate(params.members.length);
   for (const coin of coins) {
     if (coin.txid === genesis.txid && coin.vout === genesis.vout) continue;
-    if (total >= STATE_DUST + BigInt(params.members.length) * RECEIPT_DUST + genesisFeeEstimate(inputs.length, outputs) + CHANGE_DUST) break;
+    if (total >= STATE_DUST + BigInt(params.members.length) * RECEIPT_DUST + fee + CHANGE_DUST) break;
     inputs.push(coin);
     total += coin.satoshis;
   }
-  const fee = genesisFeeEstimate(inputs.length, outputs);
   const change = total - STATE_DUST - BigInt(params.members.length) * RECEIPT_DUST - fee;
   if (change < CHANGE_DUST) throw new Error('Not enough BCH to create the V2 fee state, receipts, and change.');
   const builder = new TransactionBuilder({ provider });
