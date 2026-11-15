@@ -367,7 +367,7 @@ export default function App() {
                   <select id="circle-asset" className="form-control" value={asset} onChange={(event) => setAsset(event.target.value as CircleAsset)}>
                     <option value="BCH">Bitcoin Cash (BCH)</option><option value="PUSD">ParyonUSD (PUSD)</option>
                   </select>
-                  {asset === "PUSD" && <small className="field-hint">PUSD mainnet CashToken · 2 decimals · verified category ID. This is a draft preview only; PUSD contract transfers are not enabled.</small>}
+                  {asset === "PUSD" && <small className="field-hint">PUSD mainnet CashToken · 2 decimals · category ${PUSD_ASSET.categoryId.slice(0, 10)}… verified. Draft preview only; transfers are not enabled.</small>}
                 </div>
                 <div><label className="field-label" htmlFor="circle-amount">Contribution per member</label>
                   <input id="circle-amount" className="form-control" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder={asset === "PUSD" ? "10.00" : "0.01"} />
