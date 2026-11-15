@@ -113,17 +113,18 @@ contract AjoCirclePusdV1(
             require(memberRemainder > 0);
             require(tx.outputs[3].lockingBytecode == tx.inputs[3].lockingBytecode);
             require(tx.outputs[3].tokenAmount == memberRemainder);
+            require(tx.outputs[3].nftCommitment == 0x);
             require(tx.outputs[3].value == tx.inputs[3].value);
             require(tx.outputs[4].tokenCategory == 0x);
             require(tx.outputs[4].lockingBytecode == tx.inputs[4].lockingBytecode);
             require(tx.outputs[4].value >= tx.inputs[4].value - maxFee);
-            require(tx.outputs[4].value <= tx.inputs[4].value);
+            require(tx.outputs[4].value < tx.inputs[4].value);
         } else {
             require(memberRemainder == 0);
             require(tx.outputs[3].tokenCategory == 0x);
             require(tx.outputs[3].lockingBytecode == tx.inputs[4].lockingBytecode);
             require(tx.outputs[3].value >= tx.inputs[4].value - maxFee);
-            require(tx.outputs[3].value <= tx.inputs[4].value);
+            require(tx.outputs[3].value < tx.inputs[4].value);
         }
     }
 
@@ -170,6 +171,7 @@ contract AjoCirclePusdV1(
             require(tx.outputs[j + 1].value == tx.inputs[j + 1].value);
         }
 
+        require(contribution <= 9223372036854775807 / memberCount);
         int payoutAmount = memberCount * contribution;
         require(tx.inputs[memberCount + 1].tokenAmount >= payoutAmount);
         require(tx.inputs[memberCount + 1].tokenAmount <= 9223372036854775807);
