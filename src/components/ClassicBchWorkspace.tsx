@@ -65,7 +65,7 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
     let current = true;
     setStatus(null);
     void readClassicCircle(activeCircle).then((snapshot) => {
-      if (current) setStatus(snapshot.status);
+      if (current) { setStatus(snapshot.status); setContractAddress(snapshot.contract.address); }
     }).catch((cause: unknown) => {
       if (current) setError(message(cause));
     });
