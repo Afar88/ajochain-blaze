@@ -156,3 +156,5 @@
   width: 100%; padding: 11px 12px; border: 1px solid var(--border, #d8dde3);
   border-radius: 10px; color: inherit; background: var(--surface, #fff); font: inherit; font-weight: 400;
 }
+
+.wallet-address-chip{height:38px;max-width:190px;display:flex;align-items:center;gap:8px;padding:0 11px;border:1px solid #dce8d8;border-radius:10px;background:#f5f9f1;color:#34533b;font:700 10px 'DM Sans';cursor:pointer;white-space:nowrap}.wallet-address-chip:hover{border-color:#9fbd98;background:#eef6e8}.wallet-address-live-dot{width:7px;height:7px;flex:0 0 7px;border-radius:50%;background:#58a968;box-shadow:0 0 0 3px #dcefdc}.wallet-address-chip span:last-child{overflow:hidden;text-overflow:ellipsis}@media(max-width:760px){.wallet-address-chip{height:34px;max-width:118px;padding:0 7px;font-size:9px;gap:6px}.wallet-address-live-dot{width:6px;height:6px;flex-basis:6px}}
