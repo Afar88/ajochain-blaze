@@ -45,6 +45,16 @@ describe("member contribution and payout accounting", () => {
     if (retry.ok) expect(retry.balances[0].creditedBaseUnits).toBe(150n);
   });
 
+  it("does not let one transaction credit two different members", () => {
+    const first = applyMemberPayment([], payment, 100n);
+    if (!first.ok) throw new Error(first.reason);
+    const replay = applyMemberPayment(first.balances, {
+      ...payment, memberId: "member-b", walletAddress: "bitcoincash:qother",
+    }, 100n);
+    expect(replay).toMatchObject({ ok: true, duplicate: true });
+    if (replay.ok) expect(replay.balances).toHaveLength(1);
+  });
+
   it("does not credit the same transaction again under a different period label", () => {
     const first = applyMemberPayment([], payment, 100n);
     if (!first.ok) throw new Error(first.reason);
