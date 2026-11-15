@@ -131,7 +131,7 @@ export function summarizeV2FeeMemberAccounting(
     if (params.covenant === 'fee-v2-escrow') {
       requiredForNextPayout = BigInt(remainingRounds) * params.contribution;
     } else if (params.covenant === 'fee-v3-auto-reserve' && index < round) {
-      requiredForNextPayout = BigInt(remainingRounds) * params.contribution;
+      requiredForNextPayout = params.contribution;
     }
     const shortfallForNextPayout = requiredForNextPayout > currentCredit
       ? requiredForNextPayout - currentCredit : 0n;
@@ -142,8 +142,8 @@ export function summarizeV2FeeMemberAccounting(
       : (fullCycleContribution > totalPaidIn ? fullCycleContribution - totalPaidIn : 0n);
     const prepaidRounds = Number(currentCredit / params.contribution);
     const fullySecured = completed || currentCredit >= requiredForNextPayout;
-    const futureReserve = params.covenant === 'fee-v3-auto-reserve'
-      ? BigInt(memberCount - index - 1) * params.contribution
+    const futureReserve = params.covenant === 'fee-v3-auto-reserve' && index < memberCount - 1
+      ? params.contribution
       : 0n;
     const historicalPayout = params.covenant === 'fee-v3-auto-reserve'
       ? grossPot - projectFee - futureReserve
@@ -262,7 +262,7 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
   const maximumEscrow = params.covenant === 'fee-v2-escrow'
     ? BigInt(remainingRounds) * params.contribution
     : params.covenant === 'fee-v3-auto-reserve'
-      ? BigInt(memberIndex < currentRound ? remainingRounds : 1) * params.contribution
+      ? params.contribution
       : CASH_SCRIPT_INT_MAX;
   const fee = feeEstimate(params.members.length);
   if (fee > params.maxFee) throw new Error('The configured maxFee is too low for a safe V2 member deposit.');
@@ -318,9 +318,7 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
   const remainingRounds = params.members.length - round;
   const requiredCredits = credits.map((_, index) => params.covenant === 'fee-v2-escrow'
     ? BigInt(remainingRounds) * params.contribution
-    : params.covenant === 'fee-v3-auto-reserve' && index < round
-      ? BigInt(remainingRounds) * params.contribution
-      : params.contribution);
+    : params.contribution);
   if (credits.some((credit, index) => credit < requiredCredits[index])) {
     throw new Error(params.covenant === 'fee-v2-escrow'
       ? "Payout blocked: every member must have the full remaining circle commitment locked in their own receipt."
@@ -329,8 +327,8 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
         : "Payout is blocked until every member has one full contribution in their own receipt.");
   }
   const pot = BigInt(params.members.length) * params.contribution;
-  const autoReserve = params.covenant === 'fee-v3-auto-reserve'
-    ? BigInt(params.members.length - round - 1) * params.contribution
+  const autoReserve = params.covenant === 'fee-v3-auto-reserve' && round < params.members.length - 1
+    ? params.contribution
     : 0n;
   const recipientPayout = pot - pot / 100n - autoReserve;
   const projectFee = pot / 100n;
@@ -388,7 +386,7 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
     minerFee,
     payout: recipientPayout,
     autoReserve,
-    futureContributionCount: params.members.length - round - 1,
+    futureContributionCount: params.covenant === 'fee-v3-auto-reserve' && round < params.members.length - 1 ? 1 : 0,
     hasPaid,
     feePayerAddress,
     requiredPerMember: params.covenant === 'fee-v2-escrow' ? BigInt(remainingRounds) * params.contribution : params.contribution,
