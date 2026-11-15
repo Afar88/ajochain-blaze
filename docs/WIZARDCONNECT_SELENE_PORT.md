@@ -38,3 +38,13 @@ Never store or request wallet seed phrases or private keys. The saved WizardConn
 8. Confirm network switching changes the derived CashAddress prefix and refuses a pasted address from the other network.
 
 These are acceptance tests; they have not yet been run against a live Selene wallet from this new repository.
+
+
+## Protocol API alignment
+
+The adapter now follows the current WizardConnect dapp API:
+- Uses `DappConnectionManager.sendSignRequest()` and `nextSequence()` for signing request/response correlation.
+- Uses the protocol `sign_transaction_request` envelope with `time`, `inputPaths`, and BCH transaction/source-output data.
+- Requests signatures only; `broadcast: false` remains explicit.
+- Requires `SIGHASH_ALL | SIGHASH_FORKID | SIGHASH_UTXOS` on every wallet-signed input. The wallet's enforcement must be confirmed with Selene integration tests before any signing flow is enabled.
+- The app's wallet modal displays the derived address for the selected network and supports matching the receive address shown in Selene across indices 0–50.
