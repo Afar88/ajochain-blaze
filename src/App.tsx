@@ -297,8 +297,9 @@ export default function App() {
               <h2>Good habits.<br /><em>Shared momentum.</em></h2>
               <div className="guide-step"><span>01</span><div><b>Bring your people</b><small>Start with at least two members.</small></div></div>
               <div className="guide-step"><span>02</span><div><b>Agree on the rhythm</b><small>Choose BCH or PUSD and a schedule.</small></div></div>
-              <div className="guide-step"><span>03</span><div><b>Track every contribution</b><small>Each member gets their own clear credit record.</small></div></div>
-              <div className="guide-foot"><ShieldCheck size={15} /> Member-level accounting is built into the foundation.</div>
+              <div className="guide-step"><span>03</span><div><b>Every member keeps contributing</b><small>Receiving a payout does not cancel your next-round obligation.</small></div></div>
+              <div className="guide-step"><span>04</span><div><b>No payout if someone falls behind</b><small>Each member must fund their own round credit before the pot can move.</small></div></div>
+              <div className="guide-foot"><ShieldCheck size={15} /> Your credit stays yours; one member cannot cover another member\’s shortfall.</div>
             </aside>
           </section>
 
