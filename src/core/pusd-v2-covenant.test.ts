@@ -14,7 +14,7 @@ const STATE = 'ab'.repeat(32);
 const PUSD = 'cd'.repeat(32);
 const DUST = 1000n;
 const CONTRIBUTION = 100n;
-const MAX_FEE = 5000n;
+const MAX_FEE = 10_000n;
 
 function key(n: number) {
   const priv = new Uint8Array(32);
@@ -118,7 +118,7 @@ async function payout(provider: MockNetworkProvider, contract: Contract, escrows
     return (utxos.find(u => u.token?.category === PUSD) ?? utxos[0]) as SpendableUtxo;
   }));
   const reserveAddress = pkhToAddress(initiator.pkh, 'chipnet');
-  const reserve = provider.addUtxo(reserveAddress, randomUtxo({ satoshis: 20_000n }));
+  const reserve = provider.addUtxo(reserveAddress, randomUtxo({ satoshis: 25_000n }));
   const unlock = contract.unlock.payout();
   const builder = new TransactionBuilder({ provider })
     .addInput(state, unlock)
