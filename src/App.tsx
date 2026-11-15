@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import QRCode from "qrcode";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   Activity, ArrowRight, ArrowUpRight, Check, ChevronDown,
   CircleDollarSign, Clock3, CreditCard, LockKeyhole, Plus, ShieldCheck,
@@ -12,8 +11,29 @@ import type { CircleAsset } from "./core/member-ledger";
 import { CLOSED_MAINNET_GATES, MAINNET_GATE_KEYS, MAINNET_GATE_LABELS, evaluateMainnetFlow } from "./core/mainnet-flow";
 import { formatAssetAmount, isAssetAvailableOnNetwork, parseAssetAmount, PUSD_ASSET } from "./core/assets";
 import { fetchPusdWalletBalance } from "./core/pusd-api";
-import ClassicBchWorkspace from "./components/ClassicBchWorkspace";
-import V2BchWorkspace from "./components/V2BchWorkspace";
+const ClassicBchWorkspace = lazy(() => import("./components/ClassicBchWorkspace"));
+const V2BchWorkspace = lazy(() => import("./components/V2BchWorkspace"));
+
+function DeferredWorkspace({ children, label }: { children: ReactNode; label: string }) {
+  const host = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const node = host.current;
+    if (!node || visible) return;
+    if (typeof IntersectionObserver === "undefined") { setVisible(true); return; }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setVisible(true);
+        observer.disconnect();
+      }
+    }, { rootMargin: "240px 0px" });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [visible]);
+  return <div ref={host} className="deferred-workspace">
+    {visible ? <Suspense fallback={<div className="workspace-loading"><span className="loading-orb" />Preparing {label}…</div>}>{children}</Suspense> : <div className="workspace-loading"><span className="loading-orb" />{label} loads when you need it</div>}
+  </div>;
+}
 
 type CircleDraftView = {
   name: string;
@@ -93,7 +113,7 @@ export default function App() {
   useEffect(() => {
     let active = true;
     if (walletView.qrUri) {
-      void QRCode.toDataURL(walletView.qrUri, { errorCorrectionLevel: "M", margin: 1, width: 240 })
+      void import("qrcode").then(({ default: QRCode }) => QRCode.toDataURL(walletView.qrUri!, { errorCorrectionLevel: "M", margin: 1, width: 240 }))
         .then((url) => { if (active) setQrDataUrl(url); })
         .catch(() => { if (active) setQrDataUrl(""); });
     } else {
@@ -357,8 +377,8 @@ export default function App() {
             </article>
           </section>
 
-          <ClassicBchWorkspace network={network} walletConnected={walletView.state === "connected"} />
-          <V2BchWorkspace network={network} walletConnected={walletView.state === "connected"} />
+          <DeferredWorkspace label="Classic BCH workspace"><ClassicBchWorkspace network={network} walletConnected={walletView.state === "connected"} /></DeferredWorkspace>
+          <DeferredWorkspace label="V2 member-credit workspace"><V2BchWorkspace network={network} walletConnected={walletView.state === "connected"} /></DeferredWorkspace>
 
           <section className="workspace-grid">
             <div className="section-card circles-card" id="circles">
