@@ -386,8 +386,8 @@ class WizardWallet {
     if (typeof signedTransaction !== 'string' || !/^(?:[0-9a-f]{2})+$/i.test(signedTransaction)) {
       throw new Error('Selene did not return a valid signed transaction. The transaction was not broadcast.');
     }
-    verifySignedTransaction(signedTransaction, wcObject?.transaction);
-    return { signedTransaction, decoded: verifySignedTransaction(signedTransaction, wcObject?.transaction) };
+    const decoded = verifySignedTransaction(signedTransaction, wcObject?.transaction);
+    return { signedTransaction, decoded };
   }
 }
 
