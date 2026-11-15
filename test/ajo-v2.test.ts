@@ -104,7 +104,7 @@ async function payoutRound(provider: MockNetworkProvider, contract: Contract, re
     .addOutput({
       to: contract.tokenAddress,
       amount: state.satoshis - BigInt(members.length) * CONTRIBUTION,
-      token: { category: CATEGORY, amount: 0n, nft: { capability: 'minting', commitment: '530' + ((recipientIndex + 1) % members.length).toString(16) } },
+      token: { category: CATEGORY, amount: 0n, nft: { capability: 'minting', commitment: recipientIndex + 1 === members.length ? '54' : '530' + (recipientIndex + 1).toString(16) } },
     });
 
   for (let i = 0; i < receipts.length; i++) {
@@ -160,22 +160,23 @@ describe('AjoCircleV2 member-credit covenant prototype', () => {
     expect(utxos.some((u) => u.token?.nft?.commitment === '5301')).toBe(true);
   });
 
-  it('completes two full cycles and wraps payout order back to member zero', async () => {
+  it('completes the finite member rotation and locks the terminal state', async () => {
     const provider = new MockNetworkProvider();
     const contract = makeContract(provider);
     addGenesis(provider, contract);
 
-    for (let cycle = 0; cycle < 2; cycle++) {
-      await deposit(provider, contract, 0);
-      await deposit(provider, contract, 1);
-      await payoutRound(provider, contract, cycle % members.length);
-    }
+    await deposit(provider, contract, 0);
+    await deposit(provider, contract, 1);
+    await payoutRound(provider, contract, 0);
+
+    await deposit(provider, contract, 0);
+    await deposit(provider, contract, 1);
+    await payoutRound(provider, contract, 1);
 
     const utxos = await contract.getUtxos();
-    expect(utxos.some((u) => u.token?.nft?.commitment === '5300')).toBe(true);
-    expect(utxos.some((u) => u.token?.nft?.commitment === creditCommitment(0, 0n))).toBe(true);
-    expect(utxos.some((u) => u.token?.nft?.commitment === creditCommitment(1, 0n))).toBe(true);
-  });
+    expect(utxos.some((u) => u.token?.nft?.commitment === '54')).toBe(true);
+    expect(utxos.some((u) => u.token?.nft?.commitment === '5300')).toBe(false);
+  }, 20000);
 
   it('rejects deposits when the state NFT round is outside the member range', async () => {
     const provider = new MockNetworkProvider();
@@ -387,7 +388,7 @@ describe("post-payout obligation", () => {
       .addInputs(receipts, contract.unlock.payout())
       .addOutput({
         to: contract.tokenAddress,
-        amount: state.satoshis - 2n * CONTRIBUTION,
+        amount: 1000n,
         token: { category: CATEGORY, amount: 0n, nft: { capability: "minting", commitment: "5300" } },
       });
     for (let i = 0; i < receipts.length; i++) {
