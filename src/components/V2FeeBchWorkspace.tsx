@@ -393,7 +393,7 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
                 <span><b>Member {account.index + 1}{memberIndex === account.index ? " · You" : ""}</b><small>{account.address}</small></span>
                 <span>{account.totalPaidIn === null ? "Legacy history" : formatBch(account.totalPaidIn)}</span>
                 <span>{formatBch(account.currentCredit)}<small>of {formatBch(account.requiredForNextPayout)}</small></span>
-                <span>{account.payoutReceived === null ? "Not tracked" : account.payoutReceived ? "Yes" : "Not yet"}</span>
+                <span>{account.payoutReceived === null ? "Not tracked" : account.payoutReceived ? formatBch(account.payoutAmountReceived) : "Not yet"}</span>
                 <span>{formatBch(account.shortfallForNextPayout)}</span>
                 <span><b className={account.fullySecured ? "fee-accounting-member-safe" : "fee-accounting-member-blocked"}>{account.status}</b></span>
               </div>
