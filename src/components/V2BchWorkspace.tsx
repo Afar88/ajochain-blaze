@@ -308,7 +308,7 @@ export default function V2BchWorkspace({ network, walletConnected }: Props) {
         <p className="classic-contract-address">State token category: <code>{active.stateCategory}</code></p>
         {snapshot ? <>
           <div className="classic-account-summary classic-chain-stats">
-            <div><b>{snapshot.round + 1} / {active.members.length}</b><span>Current payout round</span></div>
+            <div><b>{snapshot.completed ? "Complete" : (snapshot.round + 1) + " / " + active.members.length}</b><span>Current payout round</span></div>
             <div><b>{formatBch(snapshot.stateSatoshis)}</b><span>State reserve</span></div>
             <div><b>{snapshot.ready ? "Ready" : "Waiting"}</b><span>All member credits</span></div>
           </div>
@@ -319,16 +319,16 @@ export default function V2BchWorkspace({ network, walletConnected }: Props) {
               <span>{formatBch(credit)} credited · {formatBch(credit >= active.contribution ? active.contribution : credit)} toward next round</span>
             </div>)}
           </div>
-          <p className="classic-recipient">Next payout recipient: <b>Member {snapshot.round + 1}</b> · {snapshot.recipient}</p>
+          <p className="classic-recipient">{snapshot.completed ? "All scheduled V2 payouts are complete." : <>Next payout recipient: <b>Member {snapshot.round + 1}</b> · {snapshot.recipient}</>}</p>
         </> : <p className="classic-empty">Reading the state NFT and every member receipt from Chipnet. Refresh after confirmation if the genesis transaction is still pending.</p>}
         <label className="classic-deposit-field">Deposit amount (BCH)<input value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} inputMode="decimal" /></label>
         <div className="classic-actions">
           <button type="button" className="secondary-button" disabled={busy} onClick={() => void refresh()}>Refresh</button>
-          <button type="button" className="secondary-button" disabled={busy || memberIndex < 0 || network !== "chipnet"} onClick={() => void deposit()}>
+          <button type="button" className="secondary-button" disabled={busy || memberIndex < 0 || network !== "chipnet" || Boolean(snapshot?.completed)} onClick={() => void deposit()}>
             {memberIndex < 0 ? "Connect a member wallet" : "Add my member credit"}
           </button>
           <button type="button" className="primary-button" disabled={busy || !snapshot?.ready || network !== "chipnet"} onClick={() => void payout()}>
-            {snapshot && snapshot.round + 1 >= active.members.length ? "Circle complete" : "Payout next round"}
+            {snapshot?.completed ? "Circle complete" : "Payout next round"}
           </button>
         </div>
       </div>}
