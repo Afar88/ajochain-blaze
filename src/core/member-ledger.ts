@@ -45,7 +45,7 @@ export function applyMemberPayment(
     return { ok: false, reason: "Amounts must be positive" };
   }
 
-  const paymentKey = `${payment.periodId}:${payment.paymentId}`;
+  const paymentKey = payment.paymentId.trim();
   const existing = current.find(
     (entry) => entry.memberId === payment.memberId.trim() &&
       entry.walletAddress.trim().toLowerCase() === walletAddress &&
@@ -92,6 +92,13 @@ export function applyMemberPayout(
   if (contributionDueBaseUnits <= 0n) return { ok: false, reason: "Contribution must be positive" };
   if (registeredMembers.length < MIN_CIRCLE_MEMBERS) return { ok: false, reason: "A circle needs at least two members" };
 
+  const memberKeys = registeredMembers.map((member) =>
+    member.memberId.trim() + ":" + member.walletAddress.trim().toLowerCase(),
+  );
+  if (memberKeys.some((key) => key.startsWith(":") || key.endsWith(":")) ||
+      new Set(memberKeys).size !== memberKeys.length) {
+    return { ok: false, reason: "Registered members must have unique identities and wallets" };
+  }
   const matched = registeredMembers.map((member) => current.find((entry) =>
     entry.memberId === member.memberId &&
     entry.walletAddress.trim().toLowerCase() === member.walletAddress.trim().toLowerCase() &&
