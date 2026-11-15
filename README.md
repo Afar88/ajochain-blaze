@@ -20,13 +20,13 @@ This repository is the **independent BCH BLAZE build**. It is not a copy, mirror
 - WizardConnect dapp relay integration with encrypted saved-session resume, mobile focus/visibility recovery, overlap protection, Selene receive-index matching and signed-transaction intent verification.
 - BCH/Chipnet network selection and full CashAddress checksum + network-prefix validation.
 - Member-level round-credit model with partial top-ups, member-owned carry-forward, duplicate protection and payout blocking until every member has funded their own round.
-- Ported BCH V2 member-receipt covenant source in `contracts/AjoCircleV2.cash`; each payout consumes one round contribution from every member receipt, including the previous payout recipient.
+- Ported BCH V2 member-receipt covenant, transaction planner and separate Chipnet workspace. Each payout consumes one round contribution from every member receipt; excess credit stays with that member, and the final payout sets the dedicated `0x54` completion state.
 - Unit tests are written for the member ledger, circle draft validation, checksummed network addresses and raw signed-transaction intent comparison. Their execution status, TypeScript build and CashScript compilation must be confirmed by a successful CI run.
 - Classic BCH v1 has been ported as a separate workspace: contract compilation, network-aware member validation, circle genesis planning, wallet-funded contributions, covenant payout construction, live Electrum reads, and read-only state inspection.
 - The dashboard includes a browser-local circle account index and invite-link restore/copy flow. This is not a cloud account or cross-device sync; the blockchain remains the source of truth for circle funds and state.
 - Chipnet is the functional path for live transaction testing. Mainnet circle planning and read-only inspection are available for review, but all Mainnet BCH signing/broadcast is blocked by a compile-time kill-switch pending independent audit and real-wallet end-to-end approval.
 - PUSD wallet verification foundations remain separate from PUSD circle spending. PUSD circle transactions are not ported as Mainnet features; the old PUSD circle implementation was explicitly experimental and Chipnet-only.
-- V2 member-credit covenant source is present, but the old V2 application planner and lifecycle are still experimental/Chipnet-only and must not be relabeled as Mainnet ready.
+- V2 member-credit remains an experimental, unaudited Chipnet-only prototype. It is not Mainnet-ready, and PUSD/cancellation are not supported.
 - Classic v1 is an aggregate pool and does not prove which member funded each contribution. The local account index and member ledger are informational, not on-chain receipts.
 
 
@@ -56,7 +56,7 @@ npm test
 npm run build
 ```
 
-The GitHub Actions workflow runs the same checks on pushes to `main` and pull requests targeting `main`.
+The GitHub Actions workflow runs the same checks on pushes to `main`, the Mainnet BCH operations branch, and pull requests targeting `main`.
 
 ## GitHub Pages preview
 
