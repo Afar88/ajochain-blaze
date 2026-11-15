@@ -166,7 +166,7 @@ describe("AjoChain V3 automatic future-contribution reserve covenant", () => {
     await expect(triggerPayout(provider, contract)).rejects.toThrow();
   });
 
-  it("reserves all four remaining contributions for the first recipient in a five-member circle", () => {
+  it("reserves exactly one next contribution for the first recipient in a five-member circle", () => {
     const params = {
       version: 2 as const,
       covenant: "fee-v3-auto-reserve" as const,
@@ -181,17 +181,17 @@ describe("AjoChain V3 automatic future-contribution reserve covenant", () => {
     };
     const gross = 5n * CONTRIBUTION;
     const projectFee = gross / 100n;
-    const futureReserve = 4n * CONTRIBUTION;
+    const nextInstallmentReserve = CONTRIBUTION;
     const ledger = summarizeV2FeeMemberAccounting(
       params,
       1,
-      [futureReserve, 0n, 0n, 0n, 0n],
+      [nextInstallmentReserve, 0n, 0n, 0n, 0n],
     );
-    expect(ledger[0].requiredForNextPayout).toBe(futureReserve);
+    expect(ledger[0].requiredForNextPayout).toBe(CONTRIBUTION);
     expect(ledger[0].fullySecured).toBe(true);
-    expect(ledger[0].payoutAmountReceived).toBe(gross - projectFee - futureReserve);
-    expect(ledger[0].payoutAmountReceived).toBe(190_000n);
-    expect(ledger[0].remainingContributionCommitment).toBe(0n);
+    expect(ledger[0].payoutAmountReceived).toBe(gross - projectFee - nextInstallmentReserve);
+    expect(ledger[0].payoutAmountReceived).toBe(790_000n);
+    expect(ledger[0].remainingContributionCommitment).toBe(3n * CONTRIBUTION);
     expect(ledger.slice(1).every((member) =>
       member.requiredForNextPayout === CONTRIBUTION && !member.fullySecured,
     )).toBe(true);
