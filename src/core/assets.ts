@@ -23,7 +23,7 @@ export const CASH_TOKEN_MAX_AMOUNT = 9_223_372_036_854_775_807n;
 export function parseAssetAmount(asset: CircleAsset, value: string): bigint {
   const decimals = ASSET_DECIMALS[asset];
   const normalized = value.trim();
-  const match = /^(0|[1-9]\\d*)(?:\\.(\\d+))?$/.exec(normalized);
+  const match = /^(0|[1-9]\d*)(?:\.(\d+))?$/.exec(normalized);
   if (!match) throw new Error("Enter a valid positive decimal amount.");
   const fraction = match[2] ?? "";
   if (fraction.length > decimals) {
