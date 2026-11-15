@@ -11,6 +11,7 @@ import { validateCircleDraft, type ContributionFrequency } from "./core/circle";
 import type { CircleAsset } from "./core/member-ledger";
 import { CLOSED_MAINNET_GATES, MAINNET_GATE_KEYS, MAINNET_GATE_LABELS, evaluateMainnetFlow } from "./core/mainnet-flow";
 import { formatAssetAmount, isAssetAvailableOnNetwork, parseAssetAmount, PUSD_ASSET } from "./core/assets";
+import { fetchPusdWalletBalance } from "./core/pusd-api";
 
 type CircleDraftView = {
   name: string;
@@ -39,6 +40,13 @@ export default function App() {
   const [pusdRecipient, setPusdRecipient] = useState("");
   const [pusdAmount, setPusdAmount] = useState("");
   const [pusdReview, setPusdReview] = useState("");
+  const [pusdRefresh, setPusdRefresh] = useState(0);
+  const [pusdBalanceView, setPusdBalanceView] = useState<{
+    status: "idle" | "loading" | "ready" | "error";
+    amount: bigint;
+    detail: string;
+    utxoCount: number;
+  }>({ status: "idle", amount: 0n, detail: "Connect a wallet on Mainnet to check PUSD.", utxoCount: 0 });
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [circleName, setCircleName] = useState("");
   const [asset, setAsset] = useState<CircleAsset>("BCH");
@@ -94,6 +102,50 @@ export default function App() {
 
   const mainnetReadiness = evaluateMainnetFlow(CLOSED_MAINNET_GATES);
   const walletAddress = wallet.address(network);
+
+  useEffect(() => {
+    let active = true;
+    if (network !== "mainnet" || walletView.state !== "connected" || !walletAddress) {
+      setPusdBalanceView({
+        status: "idle",
+        amount: 0n,
+        detail: network !== "mainnet"
+          ? "PUSD is available only on Bitcoin Cash Mainnet."
+          : "Connect a wallet on Mainnet to check PUSD.",
+        utxoCount: 0,
+      });
+      return () => { active = false; };
+    }
+
+    setPusdBalanceView({
+      status: "loading",
+      amount: 0n,
+      detail: "Checking raw PUSD outputs and current unspent state across the configured Electrum quorum…",
+      utxoCount: 0,
+    });
+    void fetchPusdWalletBalance(walletAddress)
+      .then((result) => {
+        if (!active) return;
+        setPusdBalanceView({
+          status: "ready",
+          amount: result.balance,
+          detail: result.providerConfidence + " Electrum servers agreed · block " +
+            result.tipHeight.toLocaleString() + " · " + result.utxos.length + " authenticated PUSD UTXOs",
+          utxoCount: result.utxos.length,
+        });
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setPusdBalanceView({
+          status: "error",
+          amount: 0n,
+          detail: error instanceof Error ? error.message : "PUSD balance verification failed.",
+          utxoCount: 0,
+        });
+      });
+
+    return () => { active = false; };
+  }, [network, walletView.state, walletAddress, pusdRefresh]);
   const connectWallet = () => {
     if (wallet.state === "disconnected") {
       if (!wallet.tryResume()) wallet.connect();
@@ -421,8 +473,16 @@ export default function App() {
                     <div><span className="section-kicker">CASH TOKENS · MAINNET ONLY</span><h2 id="pusd-wallet-title">ParyonUSD wallet</h2><p>Token category is pinned to the issuer-published PUSD ID.</p></div>
                   </div>
                   <div className="wallet-address-card">
-                    <span>PUSD balance</span><strong>Not yet verified</strong>
-                    <small>Wallet connection does not establish token balance. A trusted, fresh CashTokens indexer is still required.</small>
+                    <span>PUSD balance</span>
+                    <strong>{pusdBalanceView.status === "ready"
+                      ? formatAssetAmount("PUSD", pusdBalanceView.amount) + " PUSD"
+                      : pusdBalanceView.status === "loading" ? "Checking…" :
+                        pusdBalanceView.status === "error" ? "Unavailable" : "Not yet verified"}</strong>
+                    <small>{pusdBalanceView.detail}</small>
+                    <button className="text-action" disabled={pusdBalanceView.status === "loading"}
+                      onClick={() => setPusdRefresh((value) => value + 1)}>
+                      Refresh verified balance <ArrowRight size={13} />
+                    </button>
                   </div>
                   <div className="wallet-address-card">
                     <span>Canonical PUSD category</span>
@@ -444,7 +504,7 @@ export default function App() {
                     }
                   }}>Validate transfer details</button>
                   {pusdReview && <p className="wallet-match-message" role="status">{pusdReview}</p>}
-                  <p className="wallet-match-message">Signing is deliberately unavailable until trusted UTXO discovery, transaction construction, full signed-byte decoding and final intent verification are connected.</p>
+                  <p className="wallet-match-message">PUSD balance and UTXOs are verified through raw previous transactions and a live Electrum quorum when the API is configured. Spending remains disabled until fee/carrier planning, transaction signing tests, deployment checks and independent release review are complete.</p>
                 </section>
                 <button className="secondary-button" onClick={() => void wallet.disconnect()}>Disconnect wallet</button>
               </div>
