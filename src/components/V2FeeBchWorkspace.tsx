@@ -175,7 +175,6 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
       };
       if (!/^\d+$/.test(maxFee.trim())) throw new Error("Maximum miner fee must be a whole number of satoshis.");
       const plan = await planV2FeeGenesis(draft, initiator);
-      const gross = BigInt(members.length) * draft.contribution;
       if (!window.confirm(
         "Create new V2 fee circle on Chipnet?\n\n" +
         plan.contract.address + "\n" +
