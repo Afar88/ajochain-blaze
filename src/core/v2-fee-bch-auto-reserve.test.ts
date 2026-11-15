@@ -166,6 +166,37 @@ describe("AjoChain V3 automatic future-contribution reserve covenant", () => {
     await expect(triggerPayout(provider, contract)).rejects.toThrow();
   });
 
+  it("reserves all four remaining contributions for the first recipient in a five-member circle", () => {
+    const params = {
+      version: 2 as const,
+      covenant: "fee-v3-auto-reserve" as const,
+      name: "Five-member reserve test",
+      network: "chipnet" as const,
+      members: ["member-0", "member-1", "member-2", "member-3", "member-4"],
+      contribution: CONTRIBUTION,
+      maxFee: MAX_FEE,
+      stateCategory: CATEGORY,
+      initiator: "initiator",
+      treasury: "treasury",
+    };
+    const gross = 5n * CONTRIBUTION;
+    const projectFee = gross / 100n;
+    const futureReserve = 4n * CONTRIBUTION;
+    const ledger = summarizeV2FeeMemberAccounting(
+      params,
+      1,
+      [futureReserve, 0n, 0n, 0n, 0n],
+    );
+    expect(ledger[0].requiredForNextPayout).toBe(futureReserve);
+    expect(ledger[0].fullySecured).toBe(true);
+    expect(ledger[0].payoutAmountReceived).toBe(gross - projectFee - futureReserve);
+    expect(ledger[0].payoutAmountReceived).toBe(190_000n);
+    expect(ledger[0].remainingContributionCommitment).toBe(0n);
+    expect(ledger.slice(1).every((member) =>
+      member.requiredForNextPayout === CONTRIBUTION && !member.fullySecured,
+    )).toBe(true);
+  });
+
   it("reports only current-round funding for unpaid members and all future reserves for recipients", () => {
     const params = {
       version: 2 as const,
