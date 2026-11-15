@@ -6,12 +6,11 @@ import {
   Sparkles, Users, Wallet, X,
 } from "lucide-react";
 import { wallet } from "./core/wizard-wallet";
-import { NETWORKS, type NetworkId } from "./core/network";
+import { isAddressForNetwork, NETWORKS, type NetworkId } from "./core/network";
 import { validateCircleDraft, type ContributionFrequency } from "./core/circle";
 import type { CircleAsset } from "./core/member-ledger";
 import { CLOSED_MAINNET_GATES, MAINNET_GATE_KEYS, MAINNET_GATE_LABELS, evaluateMainnetFlow } from "./core/mainnet-flow";
 import { formatAssetAmount, isAssetAvailableOnNetwork, parseAssetAmount, PUSD_ASSET } from "./core/assets";
-import { isAddressForNetwork } from "./core/network";
 
 type CircleDraftView = {
   name: string;
@@ -427,7 +426,7 @@ export default function App() {
                   </div>
                   <div className="wallet-address-card">
                     <span>Canonical PUSD category</span>
-                    <code>${PUSD_ASSET.categoryId}</code>
+                    <code>{PUSD_ASSET.categoryId}</code>
                     <small>2 decimal places · Mainnet only</small>
                   </div>
                   <label className="field-label" htmlFor="pusd-recipient">Recipient BCH address</label>
