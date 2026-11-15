@@ -330,8 +330,14 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
   const autoReserve = params.covenant === 'fee-v3-auto-reserve' && round < params.members.length - 1
     ? params.contribution
     : 0n;
-  const recipientPayout = pot - pot / 100n - autoReserve;
   const projectFee = pot / 100n;
+  const recipientPayoutBeforeReserve = pot - projectFee;
+  const recipientPayout = recipientPayoutBeforeReserve - autoReserve;
+  const autoReservePercentHundredths = autoReserve === 0n || recipientPayoutBeforeReserve <= 0n
+    ? 0n
+    : (autoReserve * 10_000n + recipientPayoutBeforeReserve / 2n) / recipientPayoutBeforeReserve;
+  const autoReservePercent = (autoReservePercentHundredths / 100n).toString() + "." +
+    (autoReservePercentHundredths % 100n).toString().padStart(2, "0");
   const minerFee = feeEstimate(params.members.length);
   if (minerFee > params.maxFee) throw new Error("Estimated miner fee exceeds this circle maxFee.");
   if (state.satoshis - pot + autoReserve < STATE_DUST) {
@@ -386,6 +392,7 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
     minerFee,
     payout: recipientPayout,
     autoReserve,
+    autoReservePercent,
     futureContributionCount: params.covenant === 'fee-v3-auto-reserve' && round < params.members.length - 1 ? 1 : 0,
     hasPaid,
     feePayerAddress,
