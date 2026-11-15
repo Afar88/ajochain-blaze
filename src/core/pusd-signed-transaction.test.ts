@@ -8,7 +8,7 @@ const recipientScript = "76a914" + "22".repeat(20) + "88ac";
 const attackerScript = "76a914" + "33".repeat(20) + "88ac";
 const reverseHex = (value: string) => value.match(/../g)!.reverse().join("");
 
-function previousOutput() {
+function previousOutput(script = walletScript) {
   const raw = encodeTransactionBCH({
     version: 2,
     locktime: 0,
@@ -20,15 +20,15 @@ function previousOutput() {
     }],
     outputs: [{
       valueSatoshis: 3000n,
-      lockingBytecode: hexToBin(walletScript),
+      lockingBytecode: hexToBin(script),
       token: { category: hexToBin(PUSD_ASSET.categoryId), amount: 100n },
     }],
   });
   return { rawHex: binToHex(raw), txid: hashTransaction(raw) };
 }
 
-function signedSpend(outputScript = recipientScript, outputAmount = 90n, outputSatoshis = 2000n) {
-  const previous = previousOutput();
+function signedSpend(outputScript = recipientScript, outputAmount = 90n, outputSatoshis = 2000n, previousScript = walletScript) {
+  const previous = previousOutput(previousScript);
   const signed = encodeTransactionBCH({
     version: 2,
     locktime: 0,
@@ -96,12 +96,11 @@ describe("verifySignedPusdTransaction", () => {
   });
 
   it("rejects inputs whose raw prevout is not controlled by the wallet scripts", async () => {
-    const fixture = signedSpend();
+    const fixture = signedSpend(recipientScript, 90n, 2000n, attackerScript);
     const isUnspent = vi.fn().mockResolvedValue(true);
     await expect(verify({
       signedHex: fixture.signedHex,
       previous: fixture.previous,
-      walletScripts: [attackerScript, walletScript],
       isUnspent,
     })).rejects.toThrow(/not locked to a locally derived wallet script/);
     expect(isUnspent).not.toHaveBeenCalled();
