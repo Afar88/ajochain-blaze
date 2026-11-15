@@ -38,7 +38,7 @@ Inputs: state NFT, every member receipt in index order, and PUSD pool.
 
 Outputs: state advanced (or terminal marker), each receipt reduced by exactly one round contribution, PUSD pool reduced by exactly `memberCount × contribution`, and exactly one PUSD output to the scheduled member. Any other output must be token-free and explicitly accounted for as BCH change/fees.
 
-The current contract file is a first compiler-checkable covenant sketch. It is **not** yet a complete economic transaction implementation. In particular, the current draft still needs a complete BCH carrier/fee funding design, full transaction-wide token-output accounting, initial state/receipt minting flow, and end-to-end tests with real CashTokens transactions. Do not create a contract address from it or use it to lock funds.
+The current contract file is an experimental covenant prototype. The contribution path includes an explicit BCH fee input and returns token change; the payout path funds the recipient's 1,000-sat CashToken carrier from the pool UTXO and bounds the BCH fee. These rules still require transaction-level tests and independent review. The prototype also needs a genesis/setup flow for state and receipt NFTs, exhaustive treatment of all token/NFT edge cases, and end-to-end tests with real CashTokens transactions. Do not create a contract address from it or use it to lock funds.
 
 ## Required gates before deployment
 
