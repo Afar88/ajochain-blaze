@@ -89,7 +89,7 @@ export default function App() {
 
   const walletAddress = wallet.address(network);
   const connectWallet = () => {
-    if (wallet.state === "disconnected") wallet.tryResume();
+    if (wallet.state === "disconnected") { if (!wallet.tryResume()) wallet.connect(); }
     else if (wallet.state === "idle") wallet.connect();
     setShowWallet(true);
   };
@@ -383,7 +383,7 @@ export default function App() {
                 {walletView.state === "connecting" && <p className="wallet-match-message">Waiting for Selene to approve the WizardConnect session. Keep this page open while switching apps.</p>}
                 {walletView.error && <p className="wallet-match-message" role="alert">{walletView.error}</p>}
                 <div className="wallet-modal-actions">
-                  <button className="primary-button" onClick={() => wallet.state === "disconnected" ? wallet.tryResume() : wallet.state === "idle" ? wallet.connect() : wallet.startFreshPairing()}>
+                  <button className="primary-button" onClick={() => wallet.state === "disconnected" ? (wallet.tryResume() || wallet.connect()) : wallet.state === "idle" ? wallet.connect() : wallet.startFreshPairing()}>
                     {walletView.state === "disconnected" ? "Retry saved session" : walletView.state === "connecting" || walletView.state === "reconnecting" ? "Start fresh pairing" : "Connect with WizardConnect"}
                   </button>
                   <button className="secondary-button" onClick={() => setShowWallet(false)}>Close</button>
