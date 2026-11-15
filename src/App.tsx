@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import QRCode from "qrcode";
 import {
   Activity, ArrowRight, ArrowUpRight, CalendarDays, Check, ChevronDown,
   CircleDollarSign, Clock3, CreditCard, LockKeyhole, Plus, ShieldCheck,
   Sparkles, Users, Wallet, X,
 } from "lucide-react";
-import { useWizardConnect, WizardConnectQRDialog } from "@wizardconnect/react";
+import { wallet, type WalletState } from "./core/wizard-wallet";
 import { NETWORKS, type NetworkId } from "./core/network";
 import { validateCircleDraft, type ContributionFrequency } from "./core/circle";
 import type { CircleAsset } from "./core/member-ledger";
@@ -29,6 +30,11 @@ export default function App() {
   const [showCreate, setShowCreate] = useState(false);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [activeNav, setActiveNav] = useState("overview");
+  const [walletView, setWalletView] = useState({ state: wallet.state, uri: wallet.uri, qrUri: wallet.qrUri, walletName: wallet.walletName, error: wallet.error, receiveIndex: wallet.receiveIndex });
+  const [showWallet, setShowWallet] = useState(false);
+  const [seleneAddress, setSeleneAddress] = useState("");
+  const [addressMatchMessage, setAddressMatchMessage] = useState("");
+  const [qrDataUrl, setQrDataUrl] = useState("");
   const [circleName, setCircleName] = useState("");
   const [asset, setAsset] = useState<CircleAsset>("BCH");
   const [amount, setAmount] = useState("0.01");
@@ -58,10 +64,35 @@ export default function App() {
     }
   }, [draft]);
 
-  const wc = useWizardConnect({
-    dappName: "AjoChain",
-    sessionKey: "ajochain-wizardconnect-session",
-  });
+  useEffect(() => {
+    const syncWallet = () => setWalletView({
+      state: wallet.state, uri: wallet.uri, qrUri: wallet.qrUri,
+      walletName: wallet.walletName, error: wallet.error, receiveIndex: wallet.receiveIndex,
+    });
+    const unsubscribe = wallet.onChange(syncWallet);
+    syncWallet();
+    wallet.tryResume();
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (walletView.qrUri) {
+      void QRCode.toDataURL(walletView.qrUri, { errorCorrectionLevel: "M", margin: 1, width: 240 })
+        .then((url) => { if (active) setQrDataUrl(url); })
+        .catch(() => { if (active) setQrDataUrl(""); });
+    } else {
+      setQrDataUrl("");
+    }
+    return () => { active = false; };
+  }, [walletView.qrUri]);
+
+  const walletAddress = wallet.address(network);
+  const connectWallet = () => {
+    if (wallet.state === "disconnected") wallet.tryResume();
+    else if (wallet.state === "idle") wallet.connect();
+    setShowWallet(true);
+  };
   const selected = NETWORKS[network];
   const members = useMemo(
     () => membersText.split("\n").map((name) => name.trim()).filter(Boolean),
@@ -134,8 +165,8 @@ export default function App() {
             <span><b>Built with care</b><small>Transactions stay locked until verification is complete.</small></span>
           </div>
           <div className="profile">
-            <div className="avatar">{wc.state === "connected" ? "W" : "A"}</div>
-            <span><b>{wc.walletName ?? "Personal workspace"}</b><small>{wc.state === "connected" ? "Wallet connected" : "No wallet connected"}</small></span>
+            <div className="avatar">{walletView.state === "connected" ? "W" : "A"}</div>
+            <span><b>{walletView.walletName ?? "Personal workspace"}</b><small>{walletView.state === "connected" ? "Wallet connected" : walletView.state === "reconnecting" ? "Restoring Selene session" : "No wallet connected"}</small></span>
           </div>
         </div>
       </aside>
@@ -160,15 +191,11 @@ export default function App() {
                 </div>
               )}
             </div>
-            {wc.state === "connected" ? (
-              <button className="connect-button connected" onClick={() => void wc.disconnect()}>
-                <Wallet size={16} /> <span>{wc.walletName ?? "Wallet connected"}</span><X size={14} />
-              </button>
-            ) : (
-              <button className="connect-button" onClick={() => wc.connect()} disabled={wc.state === "connecting"}>
-                <Wallet size={16} /><span>{wc.state === "connecting" ? "Waiting for wallet…" : "Connect wallet"}</span>
-              </button>
-            )}
+            <button className={walletView.state === "connected" ? "connect-button connected" : "connect-button"}
+              onClick={() => walletView.state === "connected" ? setShowWallet(true) : connectWallet()}>
+              <Wallet size={16} /><span>{walletView.state === "connected" ? (walletView.walletName ?? "Wallet connected") : walletView.state === "reconnecting" ? "Reconnecting…" : walletView.state === "connecting" ? "Waiting for Selene…" : "Connect wallet"}</span>
+              {walletView.state === "connected" && <ChevronDown size={14} />}
+            </button>
           </div>
         </header>
 
@@ -197,15 +224,18 @@ export default function App() {
             <div className="notice-icon"><ShieldCheck size={18} /></div>
             <div className="notice-copy">
               <b>{network === "mainnet" ? "Mainnet preview is protected" : "Chipnet preview is protected"}</b>
-              <span>{wc.state === "connected"
-                ? `Connected with ${wc.walletName ?? "a WizardConnect wallet"}. Address and network checks are still required before any transaction.`
-                : "Connect Selene or another WizardConnect wallet. No signing or funds movement is enabled in this build."}</span>
+              <span>{walletView.state === "connected"
+                ? "Connected with " + (walletView.walletName ?? "a WizardConnect wallet") + ". Receive address " + (walletAddress ? walletAddress.slice(0, 18) + "…" : "is being derived") + ". Transaction actions remain disabled pending verification."
+                : walletView.state === "reconnecting"
+                  ? "Selene session interrupted. AjoChain is trying to restore the saved session."
+                  : "Connect Selene or another WizardConnect wallet. Signing and broadcasting remain disabled in this build."}</span>
             </div>
             <span className="read-only-pill"><LockKeyhole size={11} /> READ ONLY</span>
           </section>
-          {wc.error && (
+          {walletView.error && (
             <section className="wallet-error" role="alert">
-              <ShieldCheck size={17} /><div><b>Wallet connection needs attention</b><span>{wc.error}</span></div>
+              <ShieldCheck size={17} /><div><b>Wallet connection needs attention</b><span>{walletView.error}</span></div>
+              {walletView.state !== "connected" && <button className="text-action" onClick={() => wallet.startFreshPairing()}>Fresh pairing</button>}
             </section>
           )}
 
@@ -324,15 +354,44 @@ export default function App() {
           </section>
         </div>
       )}
-      {wc.uri && wc.qrUri && (
-        <WizardConnectQRDialog
-          show={wc.state === "connecting"}
-          onClose={() => void wc.disconnect()}
-          uri={wc.uri}
-          qrUri={wc.qrUri}
-          title="Connect to AjoChain"
-          subtitle="Scan with Selene or another WizardConnect BCH wallet"
-        />
+      {showWallet && (
+        <div className="modal-backdrop wallet-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowWallet(false); }}>
+          <section className="create-modal wallet-modal" role="dialog" aria-modal="true" aria-labelledby="wallet-title">
+            <div className="modal-heading">
+              <div><span className="section-kicker">WIZARDCONNECT · SELENE</span><h2 id="wallet-title">{walletView.state === "connected" ? "Wallet details" : "Connect your wallet"}</h2>
+                <p>{walletView.state === "reconnecting" ? "Restoring your saved mobile wallet session…" : walletView.state === "connected" ? "Connected to " + (walletView.walletName ?? "your BCH wallet") + "." : "Pair with Selene. Your seed phrase and private keys stay in your wallet."}</p></div>
+              <button className="modal-close" onClick={() => setShowWallet(false)} aria-label="Close"><X size={19} /></button>
+            </div>
+            {walletView.state === "connected" ? (
+              <div className="wallet-detail-body">
+                <div className="wallet-address-card"><span>Selected network · {NETWORKS[network].label}</span><code>{walletAddress ?? "Address unavailable"}</code><small>Receive index {walletView.receiveIndex} · public address only</small></div>
+                <label className="field-label" htmlFor="selene-address">Match the receive address shown in Selene</label>
+                <input id="selene-address" className="form-control" value={seleneAddress} onChange={(event) => setSeleneAddress(event.target.value)} placeholder="Paste Selene BCH receive address" autoComplete="off" />
+                <button className="primary-button" onClick={() => {
+                  try {
+                    const index = wallet.matchReceiveAddress(seleneAddress, network, 50);
+                    setAddressMatchMessage(index === null ? "No match in receive indices 0–50. Do not send funds; check Selene’s selected network and public derivation details." : "Matched Selene receive address at index " + index + ".");
+                  } catch (error) { setAddressMatchMessage(error instanceof Error ? error.message : "Could not match address."); }
+                }}>Match Selene address</button>
+                {addressMatchMessage && <p className="wallet-match-message" role="status">{addressMatchMessage}</p>}
+                <button className="secondary-button" onClick={() => void wallet.disconnect()}>Disconnect wallet</button>
+              </div>
+            ) : (
+              <div className="wallet-detail-body">
+                {qrDataUrl && <img className="wallet-qr" src={qrDataUrl} alt="WizardConnect pairing QR code" />}
+                {walletView.uri && <a className="primary-button wallet-open-link" href={walletView.uri}>Open in Selene <ArrowUpRight size={15} /></a>}
+                {walletView.state === "connecting" && <p className="wallet-match-message">Waiting for Selene to approve the WizardConnect session. Keep this page open while switching apps.</p>}
+                {walletView.error && <p className="wallet-match-message" role="alert">{walletView.error}</p>}
+                <div className="wallet-modal-actions">
+                  <button className="primary-button" onClick={() => wallet.state === "disconnected" ? wallet.tryResume() : wallet.state === "idle" ? wallet.connect() : wallet.startFreshPairing()}>
+                    {walletView.state === "disconnected" ? "Retry saved session" : walletView.state === "connecting" || walletView.state === "reconnecting" ? "Start fresh pairing" : "Connect with WizardConnect"}
+                  </button>
+                  <button className="secondary-button" onClick={() => setShowWallet(false)}>Close</button>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
       )}
     </main>
   );
