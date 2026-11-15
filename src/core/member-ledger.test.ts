@@ -37,6 +37,21 @@ describe("member contribution ledger", () => {
     expect(second).toMatchObject({ ok: false, reason: "Contribution period already credited" });
   });
 
+  it("does not confuse the same payment identifier across different periods", () => {
+    const first = applyMemberPayment([], payment, 100n);
+    if (!first.ok) throw new Error(first.reason);
+    const nextPeriod = applyMemberPayment(
+      first.balances,
+      { ...payment, periodId: "week-2" },
+      100n,
+    );
+    expect(nextPeriod.ok).toBe(true);
+    if (nextPeriod.ok) {
+      expect(nextPeriod.duplicate).toBe(false);
+      expect(nextPeriod.balances[0].paymentIds).toEqual(["week-1:tx-001", "week-2:tx-001"]);
+    }
+  });
+
   it("keeps different members separate", () => {
     const first = applyMemberPayment([], payment, 100n);
     if (!first.ok) throw new Error(first.reason);
@@ -45,6 +60,13 @@ describe("member contribution ledger", () => {
     }, 100n);
     expect(second.ok).toBe(true);
     if (second.ok) expect(second.balances).toHaveLength(2);
+  });
+
+  it("rejects zero or negative contribution amounts", () => {
+    expect(applyMemberPayment([], { ...payment, amountBaseUnits: 0n }, 100n))
+      .toMatchObject({ ok: false, reason: "Amounts must be positive" });
+    expect(applyMemberPayment([], payment, 0n))
+      .toMatchObject({ ok: false, reason: "Amounts must be positive" });
   });
 
   it("sets the minimum circle size to two", () => expect(MIN_CIRCLE_MEMBERS).toBe(2));
