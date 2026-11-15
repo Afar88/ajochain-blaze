@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { encodeCashAddress } from "@bitauth/libauth";
 import {
+  decodeV2Circle,
+  encodeV2Circle,
   validateV2Circle,
   v2CreditFromCommitment,
   v2ReceiptCommitment,
@@ -43,6 +45,15 @@ describe("V2 member receipt encoding", () => {
 describe("V2 circle release boundary", () => {
   it("accepts a valid 2-member Chipnet draft", () => {
     expect(() => validateV2Circle(draft)).not.toThrow();
+  });
+
+  it("round-trips a V2 invite link with exact amounts and member order", () => {
+    const params = { ...draft, stateCategory: "cd".repeat(32) };
+    const restored = decodeV2Circle(encodeV2Circle(params));
+    expect(restored.members).toEqual(params.members);
+    expect(restored.contribution).toBe(params.contribution);
+    expect(restored.maxFee).toBe(params.maxFee);
+    expect(restored.stateCategory).toBe(params.stateCategory);
   });
 
   it("rejects Mainnet before a V2 plan can be built", () => {
