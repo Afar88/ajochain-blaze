@@ -5,8 +5,11 @@ import {
 } from "lucide-react";
 import { wallet } from "./core/wizard-wallet";
 import { NETWORKS, type NetworkId } from "./core/network";
-import { formatAssetAmount, PUSD_ASSET } from "./core/assets";
-import { fetchPusdWalletBalance } from "./core/pusd-api";
+import { formatAssetAmount, parseAssetAmount, PUSD_ASSET } from "./core/assets";
+import { buildPusdTransferPlan, type PusdTransferPlan } from "./core/pusd-transaction-builder";
+import { cashAddressToExpectedLockingBytecode, fetchPusdFeeQuote, fetchPusdWalletBalance } from "./core/pusd-api";
+import type { AuthenticatedPusdUtxo } from "./core/pusd-utxo";
+import { PUSD_MAINNET_SPENDING_ENABLED } from "./core/pusd-mainnet-guard";
 const ClassicBchWorkspace = lazy(() => import("./components/ClassicBchWorkspace"));
 const V2FeeBchWorkspace = lazy(() => import("./components/V2FeeBchWorkspace"));
 
@@ -26,6 +29,8 @@ type PusdView = {
   utxoCount: number;
   providerConfidence: number;
   tipHeight: number;
+  utxos: AuthenticatedPusdUtxo[];
+  rawPreviousTransactions: Record<string, string>;
 };
 
 const pageLabels: Record<Page, string> = {
@@ -50,8 +55,14 @@ export default function App() {
   const [pusdRefresh, setPusdRefresh] = useState(0);
   const [pusdView, setPusdView] = useState<PusdView>({
     status: "idle", amount: 0n, detail: "Connect a wallet on Mainnet to check PUSD.",
-    utxoCount: 0, providerConfidence: 0, tipHeight: 0,
+    utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
   });
+  const [pusdRecipient, setPusdRecipient] = useState("");
+  const [pusdAmount, setPusdAmount] = useState("0.02");
+  const [pusdMaxFee, setPusdMaxFee] = useState("20000");
+  const [pusdTransferPlan, setPusdTransferPlan] = useState<PusdTransferPlan | null>(null);
+  const [pusdPlanError, setPusdPlanError] = useState("");
+  const [pusdPlanBusy, setPusdPlanBusy] = useState(false);
 
   const walletAddress = wallet.address(network);
   const connected = walletView.state === "connected";
@@ -96,7 +107,7 @@ export default function App() {
         detail: network !== "mainnet"
           ? "PUSD is a Mainnet CashToken. Switch to Bitcoin Cash Mainnet to check your balance."
           : "Connect your wallet to check PUSD.",
-        utxoCount: 0, providerConfidence: 0, tipHeight: 0,
+        utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
       });
       return () => { active = false; };
     }
@@ -105,7 +116,7 @@ export default function App() {
     setPusdView({
       status: "loading", amount: 0n,
       detail: "Authenticating PUSD UTXOs, previous transactions and live unspent status through the configured provider quorum…",
-      utxoCount: 0, providerConfidence: 0, tipHeight: 0,
+      utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
     });
     void fetchPusdWalletBalance(address)
       .then((result) => {
@@ -118,18 +129,63 @@ export default function App() {
           utxoCount: result.utxos.length,
           providerConfidence: result.providerConfidence,
           tipHeight: result.tipHeight,
+          utxos: result.utxos,
+          rawPreviousTransactions: result.rawPreviousTransactions,
         });
+        setPusdTransferPlan(null);
+        setPusdPlanError("");
       })
       .catch((cause: unknown) => {
         if (!active) return;
         setPusdView({
           status: "error", amount: 0n,
           detail: cause instanceof Error ? cause.message : "PUSD balance verification failed.",
-          utxoCount: 0, providerConfidence: 0, tipHeight: 0,
+          utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
         });
       });
     return () => { active = false; };
   }, [network, walletView.state, walletView.receiveIndex, pusdRefresh]);
+
+  const preparePusdTransfer = async () => {
+    setPusdPlanError("");
+    setPusdTransferPlan(null);
+    if (!connected || wallet.state !== "connected") {
+      setPusdPlanError("Connect your wallet before preparing a PUSD transfer.");
+      return;
+    }
+    if (network !== "mainnet") {
+      setPusdPlanError("PUSD is Mainnet-only. Switch the app network to Mainnet first.");
+      return;
+    }
+    if (pusdView.status !== "ready") {
+      setPusdPlanError("A verified PUSD balance is required before planning a transfer.");
+      return;
+    }
+    const senderAddress = wallet.address("mainnet");
+    if (!senderAddress) {
+      setPusdPlanError("The connected wallet does not currently expose a verified Mainnet receive address.");
+      return;
+    }
+    setPusdPlanBusy(true);
+    try {
+      if (!/^\\d+$/.test(pusdMaxFee.trim())) throw new Error("Maximum miner fee must be entered as whole satoshis.");
+      const requiredPusdAmount = parseAssetAmount("PUSD", pusdAmount);
+      const feeQuote = await fetchPusdFeeQuote();
+      const plan = buildPusdTransferPlan({
+        authenticatedUtxos: pusdView.utxos,
+        requiredPusdAmount,
+        recipientLockingBytecode: cashAddressToExpectedLockingBytecode(pusdRecipient),
+        changeLockingBytecode: cashAddressToExpectedLockingBytecode(senderAddress),
+        feeRateSatoshisPerKb: feeQuote.feeRateSatoshisPerKb,
+        maxFeeSatoshis: BigInt(pusdMaxFee.trim()),
+      });
+      setPusdTransferPlan(plan);
+    } catch (cause) {
+      setPusdPlanError(cause instanceof Error ? cause.message : "Could not prepare the PUSD transfer.");
+    } finally {
+      setPusdPlanBusy(false);
+    }
+  };
 
   const openWallet = () => {
     setMenuOpen(false);
@@ -313,6 +369,40 @@ export default function App() {
                   {pusdView.status === "loading" ? "Verifying…" : !connected ? "Connect wallet" : network !== "mainnet" ? "Switch to Mainnet" : "Refresh verified balance"}
                 </button>
                 {pusdView.status === "ready" && <span className="field-hint">{pusdView.providerConfidence} providers · block {pusdView.tipHeight.toLocaleString()} · {pusdView.utxoCount} authenticated PUSD outputs</span>}
+              </div>
+              <div className="pusd-transfer-box">
+                <div><span className="section-kicker">TRANSFER PLANNER</span><h3>Prepare a PUSD transfer</h3>
+                  <p>Builds a transaction preview from authenticated PUSD UTXOs and a live fee quote. It does not sign or broadcast.</p></div>
+                <label>Recipient Bitcoin Cash address
+                  <input value={pusdRecipient} onChange={(event) => { setPusdRecipient(event.target.value); setPusdTransferPlan(null); setPusdPlanError(""); }} placeholder="bitcoincash:…" autoComplete="off" />
+                </label>
+                <div className="pusd-transfer-fields">
+                  <label>Amount (PUSD)
+                    <input value={pusdAmount} onChange={(event) => { setPusdAmount(event.target.value); setPusdTransferPlan(null); setPusdPlanError(""); }} inputMode="decimal" placeholder="0.02" />
+                  </label>
+                  <label>Maximum miner fee (sats)
+                    <input value={pusdMaxFee} onChange={(event) => { setPusdMaxFee(event.target.value); setPusdTransferPlan(null); setPusdPlanError(""); }} inputMode="numeric" />
+                  </label>
+                </div>
+                <button type="button" className="secondary-button" onClick={() => void preparePusdTransfer()} disabled={pusdPlanBusy || pusdView.status !== "ready" || network !== "mainnet"}>
+                  {pusdPlanBusy ? "Preparing preview…" : "Prepare transfer preview"}
+                </button>
+                {pusdPlanError && <p className="classic-error" role="alert">{pusdPlanError}</p>}
+                {pusdTransferPlan && (
+                  <div className="pusd-plan-summary" role="status">
+                    <b>Transfer plan ready · review only</b>
+                    <div><span>Recipient receives</span><strong>{formatAssetAmount("PUSD", pusdTransferPlan.recipientPusdAmount)} PUSD</strong></div>
+                    <div><span>PUSD returned to your wallet</span><strong>{formatAssetAmount("PUSD", pusdTransferPlan.changePusdAmount)} PUSD</strong></div>
+                    <div><span>Estimated BCH miner fee</span><strong>{pusdTransferPlan.minerFeeSatoshis.toString()} sats</strong></div>
+                    <div><span>Recipient token carrier</span><strong>{pusdTransferPlan.recipientCarrierSatoshis.toString()} sats</strong></div>
+                    <div><span>Selected authenticated inputs</span><strong>{pusdTransferPlan.selectedUtxos.length}</strong></div>
+                    <small>Estimated size {pusdTransferPlan.estimatedSizeBytes} bytes · fee rate {pusdTransferPlan.feeRateSatoshisPerKb.toString()} sats/kB. The plan must be rebuilt from fresh chain data before any signature.</small>
+                  </div>
+                )}
+                <button type="button" className="primary-button" disabled title="PUSD Mainnet spending is not yet approved by the security release gate">
+                  Send PUSD · Mainnet locked
+                </button>
+                <small className="field-hint">PUSD sending stays locked until raw transaction inspection, independent wallet testing, fee/carrier validation, and security review are completed. This preview is not a payment.</small>
               </div>
               <div className="asset-detail-row"><span>Token category</span><code>{PUSD_ASSET.categoryId}</code></div>
               <div className="asset-detail-row"><span>Display precision</span><b>2 decimals</b></div>
