@@ -105,7 +105,8 @@ describe("member contribution and payout accounting", () => {
     const next = applyMemberPayment(roundOne.balances, { ...payment, paymentId: "tx-a2", periodId: "round-2", amountBaseUnits: 50n }, 100n);
     if (!next.ok) throw new Error(next.reason);
     const nextBoth = addMemberB(next.balances, "tx-b2");
-    expect(applyMemberPayout(nextBoth, members, "BCH", 100n).ok).toBe(true);
+    const secondPayout = applyMemberPayout(nextBoth, members, "BCH", 100n);
+    expect(secondPayout.ok, secondPayout.ok ? undefined : secondPayout.reason).toBe(true);
   });
 
   it("keeps overpayment credit with the same member across payouts", () => {
