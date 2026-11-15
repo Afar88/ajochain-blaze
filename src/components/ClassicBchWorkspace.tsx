@@ -24,6 +24,7 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
   const [membersText, setMembersText] = useState("");
   const [restoreInput, setRestoreInput] = useState("");
   const [status, setStatus] = useState<ClassicCircleStatus | null>(null);
+  const [contractAddress, setContractAddress] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -46,6 +47,7 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
     try {
       const snapshot = await readClassicCircle(params);
       setStatus(snapshot.status);
+      setContractAddress(snapshot.contract.address);
       setNotice("Chain data refreshed from " + params.network + ". A provider response is not a substitute for an independent Mainnet verification quorum.");
     } catch (cause) {
       setStatus(null);
@@ -101,6 +103,7 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
       const draft = { version: 1 as const, name: name.trim(), network, members, contribution, maxFee: feeCap };
       setBusy(true);
       const plan = await planClassicGenesis(draft, walletAddress);
+      setContractAddress(plan.contract.address);
       try {
         assertBchTransactionBroadcastAllowed(network);
       } catch (gate) {
@@ -304,7 +307,7 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
             <div><span className="section-kicker">SELECTED CIRCLE · {activeCircle.network.toUpperCase()}</span><h3>{activeCircle.name}</h3></div>
             <button type="button" className="secondary-button" onClick={copyInvite}>Copy invite link</button>
           </div>
-          <p className="classic-contract-address">Contract address: <code>{status ? "" : "Loading…"}</code></p>
+          <p className="classic-contract-address">Contract address: <code>{contractAddress || "Loading…"}</code></p>
           <div className="classic-members">
             {activeCircle.members.map((member, index) => (
               <div key={member}><b>Member {index + 1}</b><code>{member}</code></div>
