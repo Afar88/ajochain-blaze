@@ -255,6 +255,13 @@ export default function App() {
                 </div>
               )}
             </div>
+            {walletView.state === "connected" && (
+              <button type="button" className="wallet-address-chip" onClick={() => setShowWallet(true)}
+                title={walletAddress ?? "Wallet connected; receive address is still syncing"} aria-label="View connected wallet address">
+                <span className="wallet-address-live-dot" />
+                <span>{walletAddress ? walletAddress.slice(0, 9) + "…" + walletAddress.slice(-6) : "Address syncing…"}</span>
+              </button>
+            )}
             <button className={walletView.state === "connected" ? "connect-button connected" : "connect-button"}
               onClick={() => walletView.state === "connected" ? setShowWallet(true) : connectWallet()}>
               <Wallet size={16} /><span>{walletView.state === "connected" ? (walletView.walletName ?? "Wallet connected") : walletView.state === "reconnecting" ? "Reconnecting…" : walletView.state === "connecting" ? "Waiting for Selene…" : "Connect wallet"}</span>
