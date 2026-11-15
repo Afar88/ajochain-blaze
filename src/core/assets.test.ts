@@ -6,6 +6,7 @@ import {
   isAssetAvailableOnNetwork,
   isPusdCategoryId,
   parseAssetAmount,
+  toCashScriptCategoryId,
 } from "./assets";
 
 describe("ParyonUSD CashToken metadata and amount units", () => {
@@ -41,6 +42,12 @@ describe("ParyonUSD CashToken metadata and amount units", () => {
     expect(isPusdCategoryId(PUSD_ASSET.categoryId.toUpperCase())).toBe(true);
     expect(isPusdCategoryId("0".repeat(64))).toBe(false);
     expect(isPusdCategoryId("not-a-category")).toBe(false);
+  });
+
+  it("converts displayed category bytes to CashScript introspection order", () => {
+    expect(toCashScriptCategoryId("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"))
+      .toBe("1f1e1d1c1b1a191817161514131211100f0e0d0c0b0a09080706050403020100");
+    expect(() => toCashScriptCategoryId("not-a-category")).toThrow("exactly 32 bytes");
   });
 
   it("does not pretend the mainnet PUSD category exists on Chipnet", () => {
