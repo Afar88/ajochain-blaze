@@ -376,3 +376,54 @@ export async function readV2Circle(params: V2CircleParams) {
     recipient: params.members[round],
   };
 }
+
+
+export function encodeV2Circle(params: V2CircleParams): string {
+  validateV2Circle(params);
+  const data = JSON.stringify({
+    version: params.version,
+    name: params.name,
+    network: params.network,
+    members: params.members,
+    contribution: params.contribution.toString(),
+    maxFee: params.maxFee.toString(),
+    stateCategory: params.stateCategory,
+  });
+  return btoa(unescape(encodeURIComponent(data)))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+export function decodeV2Circle(encoded: string): V2CircleParams {
+  if (!encoded || encoded.length > 4096 || !/^[A-Za-z0-9_-]+$/.test(encoded)) {
+    throw new Error("Invalid V2 circle invite link.");
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(decodeURIComponent(escape(atob(encoded.replace(/-/g, "+").replace(/_/g, "/")))));
+  } catch {
+    throw new Error("Could not read this V2 circle invite link.");
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Invalid V2 circle invite data.");
+  }
+  const data = value as Record<string, unknown>;
+  if (data.version !== 2 || data.network !== "chipnet" ||
+      typeof data.name !== "string" || !Array.isArray(data.members) ||
+      !data.members.every((member) => typeof member === "string") ||
+      typeof data.contribution !== "string" || !/^\d+$/.test(data.contribution) ||
+      typeof data.maxFee !== "string" || !/^\d+$/.test(data.maxFee) ||
+      typeof data.stateCategory !== "string") {
+    throw new Error("V2 circle invite data is incomplete or unsupported.");
+  }
+  const params: V2CircleParams = {
+    version: 2,
+    name: data.name,
+    network: "chipnet",
+    members: data.members as string[],
+    contribution: BigInt(data.contribution),
+    maxFee: BigInt(data.maxFee),
+    stateCategory: data.stateCategory,
+  };
+  validateV2Circle(params);
+  return params;
+}
