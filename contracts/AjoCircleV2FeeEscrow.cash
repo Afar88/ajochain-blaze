@@ -77,6 +77,9 @@ contract AjoCircleV2FeeEscrow(
         require(receiptCredit.length == 8);
         int oldCredit = int(receiptCredit);
         require(oldCredit >= 0 && oldCredit <= 9223372036854775807 - amount);
+        // Do not allow deposits beyond the exact remaining scheduled commitment:
+        // excess funds would otherwise be stranded when the circle reaches its terminal state.
+        require(oldCredit + amount <= contribution * (memberCount - int(stateRound)));
         require(tx.outputs[1].lockingBytecode == tx.inputs[1].lockingBytecode);
         require(tx.outputs[1].tokenCategory == stateCategory);
         require(tx.outputs[1].tokenAmount == 0);
