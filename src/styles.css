@@ -150,3 +150,9 @@
   .classic-chain-stats { grid-template-columns: 1fr; }
   .classic-account-summary { grid-template-columns: 1fr 1fr; }
 }
+
+.classic-deposit-field { display: grid; gap: 6px; max-width: 300px; margin-top: 14px; font-size: 12px; font-weight: 650; }
+.classic-deposit-field input {
+  width: 100%; padding: 11px 12px; border: 1px solid var(--border, #d8dde3);
+  border-radius: 10px; color: inherit; background: var(--surface, #fff); font: inherit; font-weight: 400;
+}
