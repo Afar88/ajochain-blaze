@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run compile && tsc -b && vite build",
     "preview": "vite preview",
-    "test": "vitest run",
-    "typecheck": "tsc -b"
+    "test": "npm run compile && vitest run",
+    "typecheck": "tsc -b",
+    "compile": "cashc contracts/AjoCircleV2.cash -o contracts/AjoCircleV2.json"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -18,7 +19,8 @@
     "@wizardconnect/core": "^0.2.5",
     "@wizardconnect/dapp": "^0.2.2",
     "@bitauth/libauth": "^3.0.0",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "cashscript": "^0.14.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",
@@ -27,6 +29,7 @@
     "typescript": "~5.6.2",
     "vite": "^6.0.1",
     "vitest": "^2.1.8",
-    "@types/qrcode": "^1.5.6"
+    "@types/qrcode": "^1.5.6",
+    "cashc": "^0.14.0"
   }
 }
