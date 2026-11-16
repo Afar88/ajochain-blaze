@@ -3,7 +3,6 @@ import {
   createVirtualMachineBch2026,
   decodeTransactionBCH,
   getDustThreshold,
-  getDustThreshold,
   hashTransaction,
   hexToBin,
 } from "@bitauth/libauth";
