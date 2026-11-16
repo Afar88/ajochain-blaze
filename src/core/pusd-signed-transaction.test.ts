@@ -1,12 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
 import { binToHex, encodeTransactionBCH, hashTransaction, hexToBin } from "@bitauth/libauth";
 import { PUSD_ASSET } from "./assets";
-import { verifySignedPusdTransaction } from "./pusd-signed-transaction";
+import { assertRequiredPusdSighash, verifySignedPusdTransaction } from "./pusd-signed-transaction";
 
 const walletScript = "76a914" + "11".repeat(20) + "88ac";
 const recipientScript = "76a914" + "22".repeat(20) + "88ac";
 const attackerScript = "76a914" + "33".repeat(20) + "88ac";
 const reverseHex = (value: string) => value.match(/../g)!.reverse().join("");
+
+const dummyP2pkhUnlocking = () => {
+  const signature = new Uint8Array([0x30, 0x01, 0x01, 0x61]);
+  const publicKey = new Uint8Array(33).fill(2);
+  return hexToBin([
+    signature.length.toString(16).padStart(2, "0"),
+    binToHex(signature),
+    publicKey.length.toString(16).padStart(2, "0"),
+    binToHex(publicKey),
+  ].join(""));
+};
 
 function previousOutput(script = walletScript) {
   const raw = encodeTransactionBCH({
@@ -36,7 +47,7 @@ function signedSpend(outputScript = recipientScript, outputAmount = 90n, outputS
       outpointTransactionHash: hexToBin(reverseHex(previous.txid)),
       outpointIndex: 0,
       sequenceNumber: 0xffffffff,
-      unlockingBytecode: new Uint8Array(),
+      unlockingBytecode: dummyP2pkhUnlocking(),
     }],
     outputs: [{
       valueSatoshis: BigInt(outputSatoshis),
@@ -73,6 +84,19 @@ const verify = (options: {
 });
 
 describe("verifySignedPusdTransaction", () => {
+  it("requires the WizardConnect 0x61 sighash on wallet P2PKH inputs", () => {
+    const signature = new Uint8Array([0x30, 0x01, 0x01, 0x61]);
+    const publicKey = new Uint8Array(33).fill(2);
+    const script = hexToBin(signature.length.toString(16).padStart(2, "0") + binToHex(signature) +
+      publicKey.length.toString(16).padStart(2, "0") + binToHex(publicKey));
+    expect(() => assertRequiredPusdSighash(script)).not.toThrow();
+    const weakSignature = new Uint8Array([0x30, 0x01, 0x01, 0x41]);
+    const weakScript = hexToBin(weakSignature.length.toString(16).padStart(2, "0") + binToHex(weakSignature) +
+      publicKey.length.toString(16).padStart(2, "0") + binToHex(publicKey));
+    expect(() => assertRequiredPusdSighash(weakScript)).toThrow(/0x61/);
+    expect(() => assertRequiredPusdSighash(hexToBin("51"))).toThrow(/exactly a signature and public-key/);
+  });
+
   it("rejects incomplete signed transaction hex", async () => {
     const fixture = signedSpend();
     await expect(verify({
@@ -145,10 +169,12 @@ describe("verifySignedPusdTransaction", () => {
   });
 
   it("executes the active BCH 2026 VM after prevouts and PUSD intent pass", async () => {
-    const fixture = signedSpend();
+    const loopScript = "6576667551";
+    const fixture = signedSpend(recipientScript, 90n, 1000n, loopScript);
     await expect(verify({
       signedHex: fixture.signedHex,
       previous: fixture.previous,
+      walletScripts: [loopScript, walletScript],
     })).rejects.toThrow(/failed virtual-machine validation/);
   });
 
