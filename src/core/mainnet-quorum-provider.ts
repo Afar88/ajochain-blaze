@@ -33,7 +33,7 @@ export function hashMainnetHeader(headerHex: string): string {
 export function validateMainnetTipQuorum(
   snapshots: readonly MainnetTipSnapshot[],
   nowMs = Date.now(),
-  maxTipAgeMs = 3 * 60 * 60 * 1000,
+  maxTipAgeMs = 30 * 60 * 1000,
 ): { height: number; hash: string } {
   if (snapshots.length < 2) {
     throw new Error("Mainnet chain verification requires at least two independent Electrum endpoints.");
