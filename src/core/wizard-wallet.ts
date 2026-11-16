@@ -169,6 +169,20 @@ export function assertRequiredWalletSighash(script: Uint8Array): void {
   }
 }
 
+/** Ensure every P2PKH prevout is explicitly included in the wallet signing request. */
+export function assertP2pkhWalletInputCoverage(
+  sourceOutputs: readonly { lockingBytecode: Uint8Array }[],
+  walletInputs: readonly number[],
+): void {
+  const requested = new Set(walletInputs);
+  for (let index = 0; index < sourceOutputs.length; index += 1) {
+    const script = binToHex(sourceOutputs[index]?.lockingBytecode ?? new Uint8Array()).toLowerCase();
+    if (/^76a914[0-9a-f]{40}88ac$/.test(script) && !requested.has(index)) {
+      throw new Error(`P2PKH funding input ${index} is missing from the wallet signing input indexes.`);
+    }
+  }
+}
+
 export function verifySignedTransaction(
   signedHex: string,
   expected: any,
@@ -221,6 +235,8 @@ export function verifySignedTransaction(
       assertRequiredWalletSighash(decoded.inputs[index].unlockingBytecode);
     }
   }
+
+  assertP2pkhWalletInputCoverage(expectedSourceOutputs, walletInputs);
 
   const vmResult = createVirtualMachineBch2026().verify({
     transaction: decoded,
