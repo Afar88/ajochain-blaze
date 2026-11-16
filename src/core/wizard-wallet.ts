@@ -3,7 +3,7 @@
 // derives receive addresses locally and asks the wallet to sign transactions.
 import { initiateDappRelay, RelayMsgAction, type DappRelayResult } from '@wizardconnect/core';
 import { DappConnectionManager, loadSession } from '@wizardconnect/dapp';
-import { binToHex, createVirtualMachineBCH2023, decodeTransactionBCH, encodeTransactionOutputs, hash160, hexToBin } from '@bitauth/libauth';
+import { binToHex, createVirtualMachineBch2026, decodeTransactionBCH, encodeTransactionOutputs, hash160, hexToBin } from '@bitauth/libauth';
 import { sourceOutputToRelay } from '@wizardconnect/core/hdwalletv1-serialize';
 import { pkhToAddress, type Net } from './bch-address';
 
@@ -222,12 +222,12 @@ export function verifySignedTransaction(
     }
   }
 
-  const vmResult = createVirtualMachineBCH2023().verify({
+  const vmResult = createVirtualMachineBch2026().verify({
     transaction: decoded,
     sourceOutputs: expectedSourceOutputs,
   });
   if (vmResult !== true) {
-    throw new Error('Signed BCH transaction failed local BCH 2023 VM verification: ' + String(vmResult));
+    throw new Error('Signed BCH transaction failed local BCH 2026 VM verification: ' + String(vmResult));
   }
   return decoded;
 }
