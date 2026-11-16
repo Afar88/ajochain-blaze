@@ -7,6 +7,7 @@ import {
   createVirtualMachineBch2026,
   decodeCashAddress,
   decodeTransactionBCH,
+  getDustThreshold,
   hashTransaction,
   hexToBin,
 } from "@bitauth/libauth";
@@ -457,6 +458,16 @@ async function getVerifiedAddressUtxos(sessions, tip, address) {
   };
 }
 
+export function assertPusdTokenOutputCarrier(output, outputIndex = 0) {
+  const minimumCarrier = getDustThreshold(output);
+  if (output.valueSatoshis < minimumCarrier) {
+    throw new Error(
+      "PUSD token output " + outputIndex + " carrier is below the serialized-output dust threshold of " +
+      minimumCarrier.toString() + " sats.",
+    );
+  }
+}
+
 function parsePositiveBigInt(value, label, allowZero = false) {
   if (typeof value !== "string" || !/^\d+$/.test(value)) {
     throw new Error(label + " must be an integer decimal string.");
@@ -553,6 +564,7 @@ async function verifyPusdSpendAndBroadcast(sessions, tip, body) {
       if (category !== PUSD_CATEGORY || output.token.nft || output.token.amount <= 0n) {
         throw new Error("Output " + index + " contains an unsupported token category, NFT or amount.");
       }
+      assertPusdTokenOutputCarrier(output, index);
       if (script === recipientScript) {
         recipientAmount += output.token.amount;
         recipientOutputs += 1;
