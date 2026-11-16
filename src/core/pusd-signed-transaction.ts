@@ -1,6 +1,6 @@
 import {
   binToHex,
-  createVirtualMachineBCH2023,
+  createVirtualMachineBch2026,
   decodeTransactionBCH,
   hashTransaction,
   hexToBin,
@@ -46,7 +46,7 @@ const reverseHex = (value: string) => value.match(/../g)!.reverse().join("").toL
 /**
  * Validate the exact signed BCH transaction against raw previous transactions.
  *
- * This executes the BCH 2023 authentication VM (including CashTokens consensus
+ * This executes the BCH 2026 authentication VM (including CashTokens consensus
  * checks) after independently resolving each input. It also enforces a narrow
  * PUSD transfer policy: only the requested recipient and this wallet's change
  * script may receive PUSD, no foreign token category/NFT is permitted, and BCH
@@ -234,7 +234,7 @@ export async function verifySignedPusdTransaction(
 
   // Libauth's BCH 2023 VM performs transaction-level CashTokens conservation,
   // consensus checks and every input's unlocking/locking script evaluation.
-  const vmResult = createVirtualMachineBCH2023().verify({
+  const vmResult = createVirtualMachineBch2026().verify({
     transaction,
     sourceOutputs,
   });
