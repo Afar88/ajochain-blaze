@@ -1,66 +1,91 @@
 # Member-level accounting and post-payout obligations
 
-## Why this is required
+## The default-prevention rule
 
-A rotating savings circle must not become a pooled wallet that pays the first recipient and then relies on goodwill for later rounds. Every member remains responsible for contributing in every round, including a member who has already received an earlier payout.
+A rotating savings circle must not depend on a recipient voluntarily paying future rounds after receiving the pot. For new circles, AjoChain uses a full-cycle escrow covenant: **every member locks all contributions for the remaining scheduled payouts before a payout can occur.**
 
-## Ported V2 covenant model
+This is deliberately stronger than a rolling monthly promise. It requires more funds up front, but it gives the covenant control over the entire future payout schedule.
 
-The V2 BCH covenant source is `contracts/AjoCircleV2.cash`. It is a separate contract version; it does not change the rules of existing V1 or pooled-pot circles.
+## New `fee-v2-escrow` BCH covenant
 
-Each circle has:
-- one mutable state NFT whose commitment records the current payout round;
-- one immutable member receipt NFT per registered member;
-- each receipt commitment stores the member index and that member's credit in base units;
-- the registered member order determines payout order.
+New circles use `contracts/AjoCircleV2FeeEscrow.cash`, a separately compiled contract artifact. Each circle has:
+- one mutable state NFT storing the current scheduled payout round and irreversible first-payout marker;
+- one immutable member receipt NFT storing each member's own credit;
+- an immutable member order and treasury destination in the contract constructor.
 
-### Contribution rule
+### Funding and escrow accounting
 
-A member contribution updates that member's receipt only. The funding input must be signed by the P2PKH address registered for that member. The contract increases the member's credit and preserves the state/receipt covenant outputs.
+For `N` members and contribution `C`:
+- Before the first payout, every member must lock `N × C` in their own receipt.
+- Before payout round `r` (zero-indexed), each member must have at least `(N - r) × C` remaining in that receipt.
+- Deposits are capped at the exact remaining commitment. This prevents excess funds from being trapped when the circle closes.
+- The state BCH reserve must equal the sum of all receipt credits plus the fixed 1,000-satoshi reserve.
 
-### Payout rule — the anti-abandonment safeguard
+### Payout and anti-abandonment protection
 
-A payout is valid only when **every member's receipt credit is at least one full round contribution**. The covenant then:
-1. deducts exactly one contribution from every member receipt;
-2. advances the state NFT's round counter;
-3. pays the full round pot (subject to the configured fee cap) to the member whose turn it is;
-4. keeps the member receipts alive with their remaining balances.
+A payout is valid only when every receipt covers every scheduled contribution that remains. The covenant then:
+1. debits exactly one contribution from every member's receipt, including the scheduled payout recipient;
+2. advances the state NFT to the next scheduled recipient;
+3. pays the round pot, less the immutable 1% project fee, to that recipient;
+4. leaves all future contributions locked in their original member receipts.
 
-This means the member who received an earlier payout must still fund their receipt for the next round. Receiving a payout does not discharge future contribution obligations. A member who stops contributing leaves their receipt below the required threshold and blocks the next payout rather than allowing the other members' funds to be distributed as if the circle were fully funded.
+This is the protection against an early recipient disappearing: their future contributions were already escrowed before they received the first pot. They cannot withdraw those funds after the first payout, and later payouts do not depend on them returning to make another manual deposit. A member whose receipt is underfunded blocks the payout before any member is paid.
 
-### Circle completion
+### Completion
 
-The contract marks the circle permanently completed after the final registered member receives a payout by changing the state NFT commitment to `0x54`. The contract's `addCredit` and `payout` paths require the active `0x53 | round` state marker, so a completed circle cannot accept further contributions or payouts.
+After the final scheduled payout, the state commitment records terminal round `memberCount` with the paid flag set. The contract permanently rejects any further deposits or payouts. This is a single finite rotation, not an automatic repeating cycle.
 
-This is a **finite rotation**, not an automatically repeating one. A repeating-cycle product requires a separately designed and reviewed state transition and must not be implied by this contract. Do not represent a completed circle as accepting another round.
+### Example
 
-## Credit and carry-forward
+For a 3-member circle with a 0.002 BCH contribution:
+- each member must lock 0.006 BCH before the first payout;
+- each round pays 0.006 BCH gross to the scheduled member;
+- after each payout, every receipt is debited by 0.002 BCH;
+- after three payouts, all member receipts have discharged the scheduled contribution commitment and the circle closes.
 
-Credits are per-member, not a group-wide balance. If a member contributes more than the current round requires, the extra amount remains with that member's receipt and can count toward a later round. The contract consumes one contribution from each receipt per payout, so overpayment by one member cannot silently cover another member's shortfall.
+## Member accountability ledger in the app
+
+The Chipnet workspace reads the state NFT and every member receipt from chain data and displays:
+- paid-in total (consumed contributions plus current receipt credit);
+- current BCH locked in each member's receipt;
+- amount required for all remaining payouts;
+- current shortfall, if any;
+- whether the member has already received their scheduled payout;
+- whether the member's future commitment is fully secured;
+- whether the circle is payout-locked, payout-unlocked, or complete.
+
+The UI is only a presentation of the chain state. The contract—not a local checkbox or browser-only ledger—enforces the escrow threshold, member attribution, per-payout debit, terminal state and no-withdrawal-after-first-payout rule.
+
+## Legacy compatibility
+
+Existing `fee-v1` invites and contract addresses are preserved. That earlier rolling-credit covenant requires one contribution per member per payout, but it does not pre-fund the whole future rotation. If a member disappears after receiving a payout, it can block subsequent rounds. The UI identifies fee-v1 circles as legacy rolling-credit and does not claim full-cycle default protection.
+
+The original `AjoCircleV2.cash` contract and Classic V1 aggregate-pot circles are also separate historical versions. No old circle is silently migrated or gains new accounting guarantees retroactively.
 
 ## Wallet and address binding
 
-The wallet integration must:
-- derive receive addresses from the WizardConnect public extended key;
-- let the member match the address displayed in Selene;
-- preserve the selected receive index across saved-session reconnects;
-- attribute a deposit only to the registered member address;
-- refuse a signing response if the wallet changes any input outpoint, sequence, output, token category, amount, or commitment.
+- The member receipt is indexed to the address registered at circle creation.
+- A deposit must be funded by that member's registered P2PKH address and signed through WizardConnect/Selene.
+- Pooled deposits from mixed or ambiguous funding addresses are not attributed as a member credit.
+- The wallet transaction must preserve exact inputs, outputs, CashToken categories, NFT commitments, fees and change.
+- No seed phrase or private key is requested, stored, logged or transmitted by AjoChain.
 
-## Scope and limitations
+## Scope and release status
 
-- This port is the BCH V2 prototype only. PUSD member receipts are not implemented by this covenant.
-- The original V2 prototype supports 2–5 members; the current product UI's minimum remains 2.
-- The contract source is carried over for review. It has **not** yet been compiled or tested in this new repository, deployed, independently audited, or proven safe for mainnet.
-- The new app's local ledger is informational and is not a substitute for the on-chain receipt covenant.
-- Do not enable real-value deposits, payouts, or contract deployment until contract compilation, adversarial tests, signed transaction inspection, Selene E2E tests, and independent review pass.
+- Full-cycle escrow is BCH-only and Chipnet-only in this release.
+- The covenant is experimental and unaudited. Passing automated tests is not independent security approval.
+- PUSD member receipts are not implemented by this BCH covenant.
+- Mainnet signing and broadcasting remain disabled pending the separate Mainnet release gates, current BCH consensus VM verification, external contract review, provider verification, and real Selene/WizardConnect Mainnet tests.
 
-## Acceptance tests required before enabling a circle
+## Acceptance tests
 
-- A 2-member and a 5-member circle complete every payout in order.
-- Each member must contribute again after receiving a prior payout.
-- One member below the round contribution blocks payout, even when the pooled BCH balance appears large enough.
-- One member's excess credit remains with that member and cannot satisfy another member's deficit.
-- Duplicate deposits cannot increase a receipt twice.
-- Wrong member funding address, altered member index, altered receipt commitment, missing receipt, wrong payout recipient, and incorrect round transition all fail.
-- After N payouts, the circle reaches the terminal state and rejects further deposits and payouts.
+- Two-member and five-member circles complete every scheduled payout in order.
+- The first payout cannot occur until every member has prefunded all scheduled payouts.
+- The first recipient's later contribution remains locked, so the next payout can proceed without any new deposit.
+- A short member receipt blocks payout even when pooled BCH value appears sufficient.
+- One member cannot fund another member's receipt.
+- Deposits greater than the exact remaining member commitment are rejected.
+- Payout debits one contribution from every member receipt, including the recipient.
+- Payout sends exactly gross pot minus the 1% project fee to the scheduled recipient; miner fees are separately funded.
+- Cancellation is available only before the first payout and refunds the exact recorded credits.
+- After N payouts, the terminal state rejects all further deposits and payouts.

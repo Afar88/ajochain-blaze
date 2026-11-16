@@ -7,9 +7,9 @@
     "dev": "vite",
     "build": "npm run compile && tsc -b && vite build",
     "preview": "vite preview",
-    "test": "npm run compile && vitest run --testTimeout=20000",
-    "typecheck": "tsc -b",
-    "compile": "cashc contracts/AjoCircleV2.cash -o contracts/AjoCircleV2.json"
+    "test": "node --test server/mainnet-api.node.mjs && npm run compile && vitest run --testTimeout=20000",
+    "typecheck": "npm run compile && tsc -b",
+    "compile": "cashc contracts/AjoCircle.cash -o contracts/AjoCircle.json && cashc contracts/AjoCircleV2.cash -o contracts/AjoCircleV2.json && cashc contracts/AjoCircleV2Fee.cash -o contracts/AjoCircleV2Fee.json && cashc contracts/AjoCircleV2FeeEscrow.cash -o contracts/AjoCircleV2FeeEscrow.json && cashc contracts/AjoCircleV3AutoReserve.cash -o contracts/AjoCircleV3AutoReserve.json && cashc contracts/AjoCirclePUSDV2.cash -o contracts/AjoCirclePUSDV2.json && cashc contracts/AjoPUSDMemberEscrow.cash -o contracts/AjoPUSDMemberEscrow.json"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -19,7 +19,9 @@
     "@wizardconnect/dapp": "^0.2.2",
     "@bitauth/libauth": "3.1.0-next.8",
     "qrcode": "^1.5.4",
-    "cashscript": "^0.14.0"
+    "cashscript": "^0.14.0",
+    "@electrum-cash/network": "^4.4.8",
+    "@electrum-cash/web-socket": "^4.2.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",
@@ -27,7 +29,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "~5.6.2",
     "vite": "^6.0.1",
-    "vitest": "^3.2.6",
+    "vitest": "^5.1.0",
     "@types/qrcode": "^1.5.6",
     "cashc": "^0.14.0"
   }

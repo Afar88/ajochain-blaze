@@ -19,12 +19,13 @@ This repository is the **independent BCH BLAZE build**. It is not a copy, mirror
 - Local circle drafts persist in the current browser and can be edited or deleted; they are not on-chain records.
 - WizardConnect dapp relay integration with encrypted saved-session resume, mobile focus/visibility recovery, overlap protection, Selene receive-index matching and signed-transaction intent verification.
 - BCH/Chipnet network selection and full CashAddress checksum + network-prefix validation.
-- Member-level round-credit model with partial top-ups, member-owned carry-forward, duplicate protection and payout blocking until every member has funded their own round.
+- New BCH fee circles use the `fee-v2-escrow` covenant: every member locks all contributions for the remaining scheduled payouts before anyone receives a pot; each payout debits every member receipt, including the recipient, and the final round writes a terminal state. The workspace includes a member accountability ledger showing paid-in, locked credit, received payout, remaining shortfall and payout lock status.
+- Existing `fee-v1` invites remain on their original rolling-credit contract and are clearly marked as legacy; they do not gain the full-cycle default guarantee retroactively.
 - Ported BCH V2 member-receipt covenant source in `contracts/AjoCircleV2.cash`; each payout consumes one round contribution from every member receipt, including the previous payout recipient.
 - Unit tests are written for the member ledger, circle draft validation, checksummed network addresses and raw signed-transaction intent comparison. Their execution status, TypeScript build and CashScript compilation must be confirmed by a successful CI run.
 - Circle previews are local UI drafts only; they are not persisted to a contract or broadcast to the network.
 
-**Important:** checksum validation and signed-transaction decoding are implemented, but neither alone authorizes a real transaction. The current comparator checks transaction version, locktime, input outpoints/order/sequences, and serialized outputs. It does not yet independently verify prevout scripts and values, fee/change policy, wallet input-path ownership, or all covenant-specific invariants. It must not be used as a broadcast authorization gate.
+**Important:** the WizardConnect signing path now compares the exact returned transaction against the approved inputs/outputs, requires the protocol's `0x61` sighash for P2PKH wallet inputs, and evaluates the signed transaction against the exact planned source outputs. The browser Mainnet reader cross-checks BCH Mainnet genesis/tip, UTXO sets and raw previous-transaction bytes across two Electrum endpoints. These are meaningful safeguards, not a complete Mainnet release certificate: the pinned stable Libauth 3.0.0 VM is BCH 2023, while the active Mainnet rules since 15 May 2026 require a BCH_2026_05-compatible verifier. Libauth's BCH 2026 implementation is in its 3.1.0-next prerelease line, so real-value signing/broadcast stays locked until a stable compatible verifier, independent contract review, provider-operator verification and Selene/WizardConnect Mainnet end-to-end tests are complete.
 
 ## Requirements
 
@@ -54,9 +55,17 @@ The GitHub Actions workflow runs the same checks on pushes to `main` and pull re
 
 ## Vercel deployment
 
-The only hosted deployment target for this repository is the dedicated Vercel project linked to `Afar88/ajochain-blaze`: https://ajochain-blaze.vercel.app. The legacy `Afar88/Ajochain` repository and its Vercel project/backend are separate. Do not use legacy deployments or databases for BLAZE verification.
+The active BLAZE application is deployed from this repository through the dedicated Vercel project **`ajochain-blaze`**, linked only to `Afar88/ajochain-blaze`. Its stable URL is https://ajochain-blaze.vercel.app. Use this project for BLAZE previews and release verification; check the deployed commit SHA before testing.
 
-See [the Mainnet readiness audit (16 Nov 2026)](docs/MAINNET_READINESS_AUDIT_2026-11-16.md) for the verified blockers and the BCH Mainnet opening sequence. See [PUSD CashToken integration status](docs/PUSD_CASHTOKEN_INTEGRATION.md) for the canonical ParyonUSD category and token transfer boundary. See [WizardConnect and Selene integration](docs/WIZARDCONNECT_SELENE_PORT.md) for mobile reconnect behaviour and signing safeguards. See [member accounting and circle completion](docs/MEMBER_ACCOUNTING_AND_CIRCLE_COMPLETION.md) for member-credit rules and the V2 covenant design.
+The legacy app is isolated in the separate Vercel project **`ajochain-legacy`** (legacy recovery preview: **`ajochain-legacy-recovery`**), both linked only to `Afar88/Ajochain`. Their domains and environment-variable stores are separate from BLAZE. Never use a legacy deployment as evidence that BLAZE has shipped.
+
+Backend separation is enforced too: BLAZE runs its own Vercel serverless API and has only its own `ELECTRUM_SERVERS` read-quorum configuration; it has no Neon/PostgreSQL connection. The legacy Vercel project alone has the legacy Neon/PostgreSQL integration. Never reuse its `DATABASE_URL`, `POSTGRES_*`, `PG*` or `NEON_*` variables for BLAZE. If BLAZE needs persistence later, provision a separate Neon project for BLAZE rather than pointing it at the legacy database. The legacy registry/recovery API remains design-only until implemented.
+
+See [legacy porting and deployment boundaries](docs/LEGACY_REPO_PORTING_AND_DEPLOYMENTS.md) for the project-to-repository map and compatibility decisions. See [Mainnet readiness audit (16 Nov 2026)](docs/MAINNET_READINESS_AUDIT_2026-11-16.md) for the current findings and BCH launch sequence. See [PUSD CashToken integration status](docs/PUSD_CASHTOKEN_INTEGRATION.md) for the verified ParyonUSD category, two-decimal base-unit rules, and the still-blocked token-aware covenant work. See [WizardConnect and Selene integration](docs/WIZARDCONNECT_SELENE_PORT.md) for the mobile reconnect behaviour and signing safeguards. See [member accounting and circle completion](docs/MEMBER_ACCOUNTING_AND_CIRCLE_COMPLETION.md) for member contribution and payout rules.
+
+## Mainnet launch status
+
+The current deployment is a **Mainnet read-only release**, not an approved real-value circles release. Classic BCH Mainnet signing/broadcast and PUSD Mainnet spending remain fail-closed; the V2 member-credit covenant remains Chipnet-only. The server cannot be switched to PUSD broadcasting with an environment variable. See [Mainnet release checklist](docs/MAINNET_RELEASE_CHECKLIST.md) and [PUSD Mainnet spending checklist](docs/PUSD_MAINNET_RELEASE_CHECKLIST.md) for the evidence required before any real-value release.
 
 ## Network and safety policy
 
@@ -83,3 +92,8 @@ A mainnet-ready release requires all of the following:
 8. Independent end-to-end testing, monitoring and a documented incident/rollback plan.
 
 Until those gates pass, transaction signing, broadcasting and real-value circle operations remain disabled.
+
+
+## BCH, PUSD and member accounting
+
+See [BCH, PUSD and member accounting](docs/BCH_PUSD_MEMBER_ACCOUNTING.md) for the 1% fee covenant, member-owned round-credit rules, verified receipt ledger, PUSD read-only balance API and current Mainnet safety gates.
