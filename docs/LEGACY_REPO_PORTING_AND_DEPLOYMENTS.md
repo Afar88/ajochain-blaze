@@ -39,3 +39,19 @@ Never deploy a BLAZE commit to either legacy project. Never deploy a legacy comm
 - Mainnet inspection does not mean Mainnet spending is enabled. BCH Mainnet signing/broadcast and PUSD Mainnet spending remain fail-closed until the documented verifier, independent review and end-to-end release gates pass.
 - Chipnet-only covenant prototypes must stay on Chipnet and must never be advertised as audited or production-ready.
 - A successful GitHub Actions run does not replace a successful Vercel deployment. Report the exact commit SHA and project for every deployment result.
+
+
+## Backend and database isolation
+
+The backend boundary is separate from the website boundary:
+
+- **BLAZE API:** `api/[...path].mjs` adapts the BLAZE-only `server/mainnet-api.mjs` handler into a Vercel serverless function. Its current server-side configuration is the BLAZE project's own `ELECTRUM_SERVERS` variable for a two-provider, read-only BCH Mainnet quorum. The application does not currently require PostgreSQL/Neon: the BLAZE Vercel project has no `DATABASE_URL`, `POSTGRES_URL`, `PG*`, or Neon integration environment variables.
+- **Legacy database:** the legacy Vercel project `ajochain-legacy` has its own Neon/PostgreSQL integration variables (including the `DATABASE_URL` / `POSTGRES_*` connection family). The corresponding Neon project is `neon-chestnut-ladder`; it has its own main branch and legacy Vercel preview branches. Keep this resource attached to the legacy project only.
+- **Legacy registry status:** the legacy `db/migrations` files describe metadata/recovery tables, but `docs/REGISTRY_API.md` explicitly marks the registry/recovery routes as design-only and not implemented or enabled. A provisioned database connection is not proof that those routes are live.
+
+Rules:
+1. Never copy legacy `DATABASE_URL`, `POSTGRES_*`, `PG*` or `NEON_*` values into the BLAZE Vercel project.
+2. Never connect BLAZE API code to the legacy Neon project or legacy preview branches.
+3. If BLAZE later needs persistence, provision a **new, separately named Neon project** and add its connection variables only to `ajochain-blaze`; do not reuse `neon-chestnut-ladder`.
+4. Keep the chain as the source of truth for BCH funds and covenant state. A database may store metadata/observations only, never authoritative balances.
+5. Keep API code, database migrations, secrets and deployment checks scoped to their own repository and Vercel project. For any deployment report, name both the frontend project and its backend/database resource (or explicitly state that no database is configured).
