@@ -4,6 +4,8 @@ import { createHash } from "node:crypto";
 import {
   assertPreviousTransactionsAgree,
   assertPusdTokenOutputCarrier,
+  assertPusdBchChangeCarrier,
+  assertRequiredPusdSighash,
   assertUnspentSnapshotsAgree,
   cashAddressToLockingBytecode,
   hashBlockHeader,
@@ -129,6 +131,33 @@ test("PUSD token outputs must meet the serialized CashTokens dust threshold", ()
   };
   assert.throws(() => assertPusdTokenOutputCarrier(output, 0), /below the serialized-output dust threshold/);
   assert.doesNotThrow(() => assertPusdTokenOutputCarrier({ ...output, valueSatoshis: 1000n }, 0));
+});
+
+test("PUSD server requires the wallet's 0x61 P2PKH sighash", () => {
+  const signature = Buffer.from([0x30, 0x01, 0x01, 0x61]);
+  const publicKey = Buffer.alloc(33, 2);
+  const script = Buffer.concat([
+    Buffer.from([signature.length]), signature,
+    Buffer.from([publicKey.length]), publicKey,
+  ]);
+  assert.doesNotThrow(() => assertRequiredPusdSighash(script, 0));
+
+  const weakSignature = Buffer.from([0x30, 0x01, 0x01, 0x41]);
+  const weakScript = Buffer.concat([
+    Buffer.from([weakSignature.length]), weakSignature,
+    Buffer.from([publicKey.length]), publicKey,
+  ]);
+  assert.throws(() => assertRequiredPusdSighash(weakScript, 1), /0x61/);
+  assert.throws(() => assertRequiredPusdSighash(Buffer.from([0x51]), 2), /exactly a signature and public-key/);
+});
+
+test("PUSD server rejects dust-sized BCH change outputs", () => {
+  const output = {
+    valueSatoshis: 500n,
+    lockingBytecode: Buffer.from("76a914" + "11".repeat(20) + "88ac", "hex"),
+  };
+  assert.throws(() => assertPusdBchChangeCarrier(output, 0), /BCH change output 0 is below/);
+  assert.doesNotThrow(() => assertPusdBchChangeCarrier({ ...output, valueSatoshis: 1000n }, 0));
 });
 
 test("raw previous transaction bytes must agree across the Electrum quorum", () => {
