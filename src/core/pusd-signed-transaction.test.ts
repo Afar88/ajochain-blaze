@@ -143,4 +143,55 @@ describe("verifySignedPusdTransaction", () => {
       previous: fixture.previous,
     })).rejects.toThrow(/failed virtual-machine validation/);
   });
+
+  it("accepts a wallet-controlled PUSD input whose prevout uses BCH 2026 bounded loops", async () => {
+    const loopScript = "6576667551"; // OP_BEGIN OP_DUP OP_UNTIL OP_DROP OP_1
+    const previousBytes = encodeTransactionBCH({
+      version: 2,
+      locktime: 0,
+      inputs: [{
+        outpointTransactionHash: new Uint8Array(32),
+        outpointIndex: 0xffffffff,
+        sequenceNumber: 0xffffffff,
+        unlockingBytecode: hexToBin("51"),
+      }],
+      outputs: [{
+        valueSatoshis: 10_000n,
+        lockingBytecode: hexToBin(loopScript),
+        token: { category: hexToBin(PUSD_ASSET.categoryId), amount: 100n },
+      }],
+    });
+    const previousHex = binToHex(previousBytes);
+    const previousTxid = hashTransaction(previousBytes);
+    const spendingBytes = encodeTransactionBCH({
+      version: 2,
+      locktime: 0,
+      inputs: [{
+        outpointTransactionHash: hexToBin(reverseHex(previousTxid)),
+        outpointIndex: 0,
+        sequenceNumber: 0xffffffff,
+        unlockingBytecode: hexToBin("51"),
+      }],
+      outputs: [{
+        valueSatoshis: 9_000n,
+        lockingBytecode: hexToBin(recipientScript),
+        token: { category: hexToBin(PUSD_ASSET.categoryId), amount: 100n },
+      }],
+    });
+
+    await expect(verifySignedPusdTransaction({
+      signedTransactionHex: binToHex(spendingBytes),
+      rawPreviousTransactions: { [previousTxid]: previousHex },
+      walletLockingBytecodes: [loopScript, walletScript],
+      recipientLockingBytecode: recipientScript,
+      changeLockingBytecode: walletScript,
+      requiredPusdAmount: 100n,
+      maxFeeSatoshis: 1_000n,
+      unspentEvidence: { isUnspent: async () => true },
+    })).resolves.toMatchObject({
+      inputPusdAmount: 100n,
+      recipientPusdAmount: 100n,
+      feeSatoshis: 1_000n,
+    });
+  });
 });
