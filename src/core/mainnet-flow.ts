@@ -1,9 +1,9 @@
 /**
  * Mainnet release gate.
  *
- * This is deliberately fail-closed: a UI selection or wallet connection alone
- * can never authorize a mainnet transaction. Every evidence item must be
- * independently produced by the relevant verification step.
+ * Evidence must be independently produced by the relevant verification step.
+ * Pre-broadcast prerequisites are distinct from post-broadcast confirmation:
+ * a transaction cannot require confirmation before it is allowed to broadcast.
  */
 export const MAINNET_GATE_KEYS = [
   "networkIdentityVerified",
@@ -16,6 +16,18 @@ export const MAINNET_GATE_KEYS = [
   "transactionPlanReviewed",
   "signedTransactionInspected",
   "relayAndConfirmationVerified",
+] as const;
+
+export const MAINNET_PRE_BROADCAST_GATE_KEYS = [
+  "networkIdentityVerified",
+  "consensusVmVerified",
+  "walletSessionVerified",
+  "circleStateReconciled",
+  "memberAccountingVerified",
+  "contractAuditApproved",
+  "tokenPolicyVerified",
+  "transactionPlanReviewed",
+  "signedTransactionInspected",
 ] as const;
 
 export type MainnetGateKey = typeof MAINNET_GATE_KEYS[number];
@@ -59,21 +71,29 @@ export type MainnetFlowPhase =
 export interface MainnetFlowSnapshot {
   phase: MainnetFlowPhase;
   gates: MainnetGateEvidence;
+  /** All outstanding gates, including confirmation which happens after broadcast. */
   missing: MainnetGateKey[];
+  /** Outstanding prerequisites which must pass before the first broadcast. */
+  missingBeforeBroadcast: (typeof MAINNET_PRE_BROADCAST_GATE_KEYS)[number][];
   canBroadcast: boolean;
 }
 
 /**
- * Derives the only safe mainnet phase from verified evidence.
- * Broadcast remains unavailable until all release gates are true and the
- * exact transaction has been reviewed and signed bytes independently checked.
+ * Derives the safe Mainnet phase from verified evidence.
+ *
+ * Broadcast requires every pre-broadcast gate. Relay/confirmation is deliberately
+ * excluded from canBroadcast because it can only be observed after broadcast.
+ * The flow reaches "confirmed" only after independent confirmation evidence.
  */
 export function evaluateMainnetFlow(
   evidence: Partial<MainnetGateEvidence> = {},
 ): MainnetFlowSnapshot {
   const gates = { ...CLOSED_MAINNET_GATES, ...evidence };
   const missing = MAINNET_GATE_KEYS.filter((key) => gates[key] !== true);
-  const canBroadcast = missing.length === 0;
+  const missingBeforeBroadcast = MAINNET_PRE_BROADCAST_GATE_KEYS.filter(
+    (key) => gates[key] !== true,
+  );
+  const canBroadcast = missingBeforeBroadcast.length === 0;
 
   let phase: MainnetFlowPhase = "read-only";
   const walletReady = gates.networkIdentityVerified && gates.walletSessionVerified;
@@ -88,20 +108,19 @@ export function evaluateMainnetFlow(
   if (walletReady) phase = "state-reconciliation";
   if (policyReady) phase = "transaction-review";
   if (planReady) phase = "signature-inspection";
-  if (canBroadcast && signatureReady && gates.relayAndConfirmationVerified) {
-    phase = "broadcast-eligible";
-  }
+  if (canBroadcast && signatureReady) phase = "broadcast-eligible";
+  if (canBroadcast && gates.relayAndConfirmationVerified) phase = "confirmed";
 
-  return { phase, gates, missing, canBroadcast };
+  return { phase, gates, missing, missingBeforeBroadcast, canBroadcast };
 }
 
-/** Explicitly reject broadcast unless the complete release evidence is present. */
+/** Reject Mainnet broadcast unless every pre-broadcast gate is satisfied. */
 export function assertMainnetBroadcastEligible(
   evidence: Partial<MainnetGateEvidence>,
 ): void {
   const readiness = evaluateMainnetFlow(evidence);
   if (!readiness.canBroadcast) {
-    const labels = readiness.missing.map((key) => MAINNET_GATE_LABELS[key]);
+    const labels = readiness.missingBeforeBroadcast.map((key) => MAINNET_GATE_LABELS[key]);
     throw new Error("Mainnet broadcast blocked. Missing: " + labels.join("; "));
   }
 }
