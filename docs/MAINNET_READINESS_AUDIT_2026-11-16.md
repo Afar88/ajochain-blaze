@@ -2,7 +2,7 @@
 
 **Audit date:** 16 November 2026  
 **Repository reviewed:** `Afar88/ajochain-blaze`  
-**Reviewed branch:** `audit/mainnet-readiness-gates`  
+**Reviewed branch:** `build/clean-mainnet-product`  
 **Production project:** Vercel `ajochain-blaze`  
 **Production alias:** https://ajochain-blaze.vercel.app
 
@@ -16,7 +16,7 @@ The audit has not removed the current hard locks. They remain in place while the
 
 - The Vercel project named `ajochain-blaze` is linked to `Afar88/ajochain-blaze`.
 - Its production alias currently resolves to the production deployment built from `main`, commit `71d09a0530c7af3403983c1cbc6f4137f778bed0`.
-- An audit-branch preview deployment was created and reached Vercel `READY` from commit `0ebbf6a0aafd9f9bd8edf694b43d087a379b83f4`. This was a preview deployment, not a production promotion.
+- A clean BLAZE integration preview has reached Vercel `READY` from `build/clean-mainnet-product`. This is a preview deployment, not a production promotion.
 - The production project has a project-scoped `ELECTRUM_SERVERS` value for two WSS endpoints. No PostgreSQL/Neon connection is configured in BLAZE.
 - The legacy Vercel project and its Neon/Postgres connection variables remain separate from BLAZE. Do not copy legacy database credentials or deployment artefacts into BLAZE.
 - The existing GitHub PR #9 is still a draft and unmerged. PRs #6 and #7 are open as well; #4 and #5 are draft/open. These branches overlap and diverge. Do not merge them independently without first reconciling the intended base and commit graph.
@@ -35,9 +35,9 @@ The browser Mainnet quorum provider explicitly rejects `sendRawTransaction`. The
 
 Before the BCH 2026 compatibility change, the wallet, PUSD client and PUSD server verifiers all used the BCH 2023 VM. The current feature branch now pins `@bitauth/libauth` to `3.1.0-next.8` and uses `createVirtualMachineBch2026` in all three paths, with bounded-loop regression coverage. This resolves the direct 2023-VM mismatch in the feature code, but Libauth remains an upstream prerelease and BLAZE CI does not yet run the full BCHN/VMB consensus vector suite.
 
-The May 15, 2026 BCH upgrade is active. Official BCHN material identifies the upgrade rules (including bounded loops, functions, bitwise operations and P2S) as active on Mainnet from 15 May 2026. The current Libauth stable npm package shown by npm is 3.0.0; the repository's BCH 2026 VM is in the 3.1.0-next prerelease line, not the stable 3.0.0 package.
+The May 15, 2026 BCH upgrade is active. Official BCHN material identifies the upgrade rules (including bounded loops, functions, bitwise operations and P2S) as active on Mainnet from 15 May 2026. The BLAZE integration branch has now pinned Libauth exactly to `3.1.0-next.8` and calls `createVirtualMachineBch2026` in the wallet verifier, PUSD client verifier and PUSD API verifier. Regression tests prove bounded-loop scripts pass under the 2026 VM and fail under the 2023 VM. This addresses the direct VM-version mismatch. The pinned Libauth package is still an upstream prerelease, and CI does not yet run the full upstream BCHN/VMB consensus-vector suite.
 
-**Impact:** the current verifier does not establish that the signed transaction is valid under the active Mainnet VM rules.
+**Impact:** local verifier versioning now matches the May 2026 upgrade implementation, but a bounded-loop regression test is not a substitute for the complete consensus vector suite and external review.
 
 **Remaining before BCH launch:** complete dependency provenance and independent review for the pinned Libauth `3.1.0-next.8` prerelease; run the full BCHN/VMB consensus vectors in CI; run AjoChain-specific transaction fixtures for every exact compiled covenant artifact intended for Mainnet; and retain the passing results with the release evidence.
 
@@ -45,7 +45,7 @@ References: [BCH 2026 upgrade specification](https://upgradespecs.bitcoincashnod
 
 ### Critical — PUSD send is not a live product flow
 
-The Assets screen exposes authenticated balance refresh and a transaction preview, but its Send button is disabled and has no send action. The client and server PUSD spending locks are both false. The server broadcast code, if eventually enabled, still uses the old BCH 2023 VM and does not yet demonstrate idempotent unknown-result reconciliation, independent confirmation, or a stable wallet-to-server approval protocol.
+The Assets screen exposes authenticated balance refresh and a transaction preview, but its Send button is disabled and has no send action. The client and server PUSD spending locks are both false. The integration branch now uses the BCH 2026 VM on both client and server, checks the Selene/WizardConnect `0x61` full-transaction sighash on wallet-owned P2PKH inputs at both layers, and validates serialized dust/carrier thresholds for token outputs and BCH-only change outputs. The server broadcast routine still attempts sequential provider broadcasts after errors and does not provide robust idempotent unknown-result reconciliation or independent confirmation/reorg tracking. The wallet-to-server request is not bound by a signed server challenge or durable idempotency record.
 
 PUSD circle/escrow contracts are prototypes and are not exposed as an active product path.
 
@@ -71,13 +71,13 @@ It does not verify a continuous header chain, proof of work/chainwork or SPV inc
 
 ### High — incomplete operational controls for a real-value API
 
-The Mainnet API applies a process-local rate limit using the first value in `X-Forwarded-For`. This is not a durable, shared rate limit in serverless deployments and must not be treated as an abuse-control boundary. The API also needs production monitoring, alerting and incident/rollback procedures before any broadcast endpoint is exposed.
+The Mainnet API applies a process-local in-memory rate limit using `X-Forwarded-For` (falling back to the runtime socket address). Vercel documents that it overwrites `X-Forwarded-For` to prevent IP spoofing, unless a trusted-proxy setup is configured; the main remaining limitation here is that a per-process `Map` is not a shared global rate limit across serverless instances and can reset between invocations. BLAZE's active Vercel project currently has no custom firewall configuration.
 
-**Required before BCH launch:** move abuse controls to a trusted edge/platform rule or validated client identity; ensure proxy headers cannot be spoofed to bypass limits; define global and per-route limits; add monitoring and alerting for provider disagreement, unknown broadcasts and elevated failure rates; document incident response and rollback.
+**Required before BCH launch:** add shared edge/platform rate limiting for the API routes, validate its actual Vercel behaviour, define per-route quotas and request sizes, add monitoring and alerting for provider disagreement, unknown broadcasts and elevated failure rates, and document incident response and rollback. Vercel WAF rate-limit rules can incur usage charges, so confirm the budget before enabling them. See [Vercel request-header documentation](https://vercel.com/docs/headers/request-headers) and [Vercel WAF pricing](https://vercel.com/docs/security/vercel-waf#pricing).
 
 ### Medium — dependency installs are not locked reproducibly
 
-The reviewed branch contains `package.json` but no committed `package-lock.json`. CI and Vercel run `npm install`, which may resolve newer compatible versions over time. CI prints `npm audit` output but currently does not fail the job based on high/critical vulnerability counts.
+The reviewed branch contains `package.json` but no committed `package-lock.json`. CI and Vercel run `npm install`, which may resolve newer compatible versions over time. CI reports `npm audit`; the latest full clean-integration run reported 0 vulnerabilities, but the audit step currently does not fail the job based on high/critical vulnerability counts.
 
 **Required before release:** commit a generated npm lockfile, use `npm ci` in CI and Vercel, review/update dependencies deliberately, and define vulnerability thresholds that fail CI for actionable high/critical findings.
 
@@ -87,16 +87,16 @@ Saved circles and invite metadata are stored locally in the browser. This is not
 
 **Required before broader launch:** keep the current limitation explicit; provide a tested user-controlled export/backup and restore flow; never imply that browser-local storage is a cloud account.
 
-## Fix completed during this audit
+## Fixes completed during this audit
 
 The Mainnet flow helper incorrectly treated `relayAndConfirmationVerified` as a pre-broadcast requirement. That made the `broadcast-eligible` phase unreachable until a transaction had already been relayed and confirmed. The audit branch now separates the nine pre-broadcast prerequisites from post-broadcast confirmation and adds tests for the correct phase transitions.
 
-This is a release-flow logic correction only. It did **not** enable either BCH or PUSD Mainnet signing/broadcasting, and it did not change either existing kill-switch.
+Additional integration fixes now include the BCH 2026 VM across wallet/PUSD client/server verification, 30-minute Mainnet tip freshness, PUSD `0x61` sighash enforcement on client and server, and serialized dust checks for CashToken and BCH change outputs. These are validation improvements only. They did **not** enable BCH or PUSD Mainnet signing/broadcasting, and they did not change either existing kill-switch.
 
 ## Mainnet opening sequence
 
 1. Complete the contract and wallet audit for the BCH circle version selected for first launch. Keep Classic V1 aggregate-accounting limitations explicit; do not promote V2/V3 Chipnet prototypes without separate Mainnet review.
-2. Adopt and test the active BCH_2026_05 verifier across browser and backend signing/verification.
+2. Complete dependency provenance review and full BCHN/VMB consensus-vector validation for the pinned BCH 2026 verifier across browser and backend signing/verification.
 3. Build the BCH Mainnet broadcast and confirmation/reorg path; test unknown/duplicate relay responses and stale-input races.
 4. Verify provider independence and choose/document the chain trust model.
 5. Run independent end-to-end tests with two separately controlled Selene/WizardConnect wallets on Mainnet using controlled small-value transactions after the independent review.
@@ -106,10 +106,10 @@ This is a release-flow logic correction only. It did **not** enable either BCH o
 
 ## Current status
 
-- BCH Mainnet read/inspection: implemented, with a two-provider Electrum quorum and the trust limitations above.
+- BCH Mainnet read/inspection: implemented, with a two-provider Electrum quorum and 30-minute tip freshness; trust limitations above remain.
 - BCH Mainnet create/contribute/payout: **locked; no approved broadcaster**.
 - Classic V1: planner and covenant prototype available; aggregate accounting; independent review and live Mainnet proof outstanding.
 - V2 fee and V3 auto-reserve: **Chipnet-only prototypes**.
-- PUSD balance/transfer preview: read-only/preparation path; official category ID identified; decimals need issuer/BCMR confirmation.
+- PUSD balance/transfer preview: read-only/preparation path; client/server BCH 2026 VM, `0x61` signature and carrier/dust checks are implemented; idempotent broadcast and confirmation remain missing; decimals need issuer/BCMR confirmation.
 - PUSD Mainnet sending and PUSD circle spending: **locked/prototype only**.
-- Production site: https://ajochain-blaze.vercel.app remains on the current `main` deployment; audit work is on a preview branch only.
+- Production site: verify `https://ajochain-blaze.vercel.app` against the exact post-merge `main` SHA; the clean integration preview is not itself a production promotion.
