@@ -155,6 +155,33 @@ describe("verifySignedPusdTransaction", () => {
     })).rejects.toThrow(/carrier is below the serialized-output dust threshold/);
   });
 
+  it("rejects BCH-only change outputs below the serialized-output dust threshold", async () => {
+    const previous = previousOutput();
+    const signed = encodeTransactionBCH({
+      version: 2,
+      locktime: 0,
+      inputs: [{
+        outpointTransactionHash: hexToBin(reverseHex(previous.txid)),
+        outpointIndex: 0,
+        sequenceNumber: 0xffffffff,
+        unlockingBytecode: dummyP2pkhUnlocking(),
+      }],
+      outputs: [
+        {
+          valueSatoshis: 1000n,
+          lockingBytecode: hexToBin(recipientScript),
+          token: { category: hexToBin(PUSD_ASSET.categoryId), amount: 100n },
+        },
+        { valueSatoshis: 500n, lockingBytecode: hexToBin(walletScript) },
+      ],
+    });
+    await expect(verify({
+      signedHex: binToHex(signed),
+      previous,
+      requiredAmount: 100n,
+    })).rejects.toThrow(/BCH change output 1 is below the serialized-output dust threshold/);
+  });
+
   it("rejects zero-value, negative-fee, or unaffordable PUSD plans before script execution", async () => {
     const fixture = signedSpend(recipientScript, 90n, 2100n);
     await expect(verify({
