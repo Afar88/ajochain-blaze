@@ -24,10 +24,10 @@ Regression coverage:
 - `src/core/bch-2026-vm.test.ts` confirms a bounded-loop transaction succeeds under the BCH 2026 VM and fails under the 2023 VM; it also checks the wallet verifier path.
 - `src/core/pusd-signed-transaction.test.ts` exercises a PUSD spend whose wallet-controlled previous output uses bounded-loop bytecode.
 
-## Remaining requirements
+## Targeted upstream VMB coverage in BLAZE CI\n\nThe CI workflow checks a selected set of upstream Libauth BCH 2026 VMB fixtures, pinned to source commit `d28da7f595cbd747c1e1125477db655f740f3dbc` (the source for the exact `3.1.0-next.8` verifier line). It covers standard, nonstandard and invalid outcomes for bitwise operations, functions, bounded loops, Pay-to-Script and flow control. The workflow runs both standard and nonstandard BCH 2026 VM policies and checks each vector against its upstream expected outcome.\n\nThis targeted subset is intentionally small enough to run on every BLAZE CI build. It is not the complete Libauth/BCHN VMB corpus and does not replace BCHN integration tests or external review.\n\n## Remaining requirements
 
 This compatibility change is necessary but not a Mainnet-readiness certification:
-- Run the upstream VMB consensus vectors against the exact package used in production and retain the passing report.
+- Expand the targeted upstream VMB CI job to the complete BCH 2026 VMB corpus and run the upstream BCHN integration checks against the exact package used in production; retain the passing reports.
 - Review the upstream prerelease status and dependency integrity before production pinning.
 - Independently validate the actual compiled AjoChain covenant artifacts under the same VM.
 - Complete the missing fresh-state, fee/carrier, idempotent relay, confirmation and reorg protections.

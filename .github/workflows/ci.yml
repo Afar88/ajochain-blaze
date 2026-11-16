@@ -49,3 +49,36 @@ jobs:
         run: npm test
       - name: Production build
         run: npm run build
+
+  bch-2026-vmb:
+    name: BCH 2026 consensus vectors (targeted upstream suite)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout BLAZE
+        uses: actions/checkout@v4
+      - name: Checkout pinned Libauth VMB fixtures
+        uses: actions/checkout@v4
+        with:
+          repository: bitauth/libauth
+          ref: d28da7f595cbd747c1e1125477db655f740f3dbc
+          path: .ci/libauth
+          sparse-checkout: |
+            src/lib/vmb-tests/generated/bch_2026_standard/chip.bitwise.vmb_tests.json
+            src/lib/vmb-tests/generated/bch_2026_standard/chip.functions.vmb_tests.json
+            src/lib/vmb-tests/generated/bch_2026_standard/chip.loops.vmb_tests.json
+            src/lib/vmb-tests/generated/bch_2026_standard/chip.p2s.vmb_tests.json
+            src/lib/vmb-tests/generated/bch_2026_standard/chip.flow-control.vmb_tests.json
+            src/lib/vmb-tests/generated/bch_2026_nonstandard/chip.bitwise.vmb_tests.json
+            src/lib/vmb-tests/generated/bch_2026_invalid/chip.bitwise.vmb_tests.json
+            src/lib/vmb-tests/generated/bch_2026_invalid/chip.functions.vmb_tests.json
+            src/lib/vmb-tests/generated/bch_2026_invalid/chip.loops.vmb_tests.json
+            src/lib/vmb-tests/generated/bch_2026_invalid/chip.flow-control.vmb_tests.json
+          sparse-checkout-cone-mode: false
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install the exact Libauth verifier
+        run: npm install --prefix .ci --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @bitauth/libauth@3.1.0-next.8
+      - name: Verify BCH 2026 upstream vectors
+        run: node .ci/verify-bch-2026-vmb.mjs .ci/libauth/src/lib/vmb-tests/generated
