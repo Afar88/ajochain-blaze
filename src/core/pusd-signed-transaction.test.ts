@@ -94,7 +94,7 @@ describe("verifySignedPusdTransaction", () => {
     const weakScript = hexToBin(weakSignature.length.toString(16).padStart(2, "0") + binToHex(weakSignature) +
       publicKey.length.toString(16).padStart(2, "0") + binToHex(publicKey));
     expect(() => assertRequiredPusdSighash(weakScript)).toThrow(/0x61/);
-    expect(() => assertRequiredPusdSighash(hexToBin("51"))).toThrow(/exactly a signature and public-key/);
+    expect(() => assertRequiredPusdSighash(hexToBin("51"))).toThrow(/non-push unlocking opcode/);
   });
 
   it("rejects incomplete signed transaction hex", async () => {
