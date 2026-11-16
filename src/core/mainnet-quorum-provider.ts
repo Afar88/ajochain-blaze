@@ -66,19 +66,48 @@ export function validateMainnetTipQuorum(
 }
 
 function canonicalUtxo(utxo: SpendableUtxo) {
+  if (!utxo || typeof utxo !== "object" ||
+      typeof utxo.txid !== "string" || !/^[0-9a-f]{64}$/i.test(utxo.txid) ||
+      !Number.isSafeInteger(utxo.vout) || utxo.vout < 0 ||
+      typeof utxo.satoshis !== "bigint" || utxo.satoshis < 0n ||
+      typeof utxo.lockingBytecode !== "string" ||
+      !/^(?:[0-9a-f]{2})*$/i.test(utxo.lockingBytecode)) {
+    throw new Error("Electrum returned a malformed Mainnet UTXO record.");
+  }
+
+  let token: {
+    category: string;
+    amount: string;
+    nft: { capability: string; commitment: string } | null;
+  } | null = null;
+  if (utxo.token) {
+    if (typeof utxo.token.category !== "string" ||
+        !/^[0-9a-f]{64}$/i.test(utxo.token.category) ||
+        typeof utxo.token.amount !== "bigint" || utxo.token.amount < 0n) {
+      throw new Error("Electrum returned malformed CashToken metadata for a Mainnet UTXO.");
+    }
+    const nft = utxo.token.nft;
+    if (nft && (typeof nft.capability !== "string" ||
+        typeof nft.commitment !== "string" ||
+        !/^(?:[0-9a-f]{2})*$/i.test(nft.commitment))) {
+      throw new Error("Electrum returned malformed CashToken NFT metadata for a Mainnet UTXO.");
+    }
+    token = {
+      category: utxo.token.category.toLowerCase(),
+      amount: utxo.token.amount.toString(),
+      nft: nft ? {
+        capability: nft.capability,
+        commitment: nft.commitment.toLowerCase(),
+      } : null,
+    };
+  }
+
   return {
     txid: utxo.txid.toLowerCase(),
     vout: utxo.vout,
     satoshis: utxo.satoshis.toString(),
     lockingBytecode: utxo.lockingBytecode.toLowerCase(),
-    token: utxo.token ? {
-      category: utxo.token.category.toLowerCase(),
-      amount: utxo.token.amount.toString(),
-      nft: utxo.token.nft ? {
-        capability: utxo.token.nft.capability,
-        commitment: utxo.token.nft.commitment.toLowerCase(),
-      } : null,
-    } : null,
+    token,
   };
 }
 
@@ -88,13 +117,26 @@ export function assertMainnetUtxoSnapshotsAgree(
   if (snapshots.length < 2) {
     throw new Error("At least two Mainnet UTXO snapshots are required.");
   }
-  const canonical = (items: SpendableUtxo[]) => JSON.stringify(
-    items.map(canonicalUtxo).sort((a, b) =>
+  const canonical = (items: SpendableUtxo[]) => {
+    if (!Array.isArray(items)) {
+      throw new Error("Electrum returned a malformed Mainnet UTXO snapshot.");
+    }
+    const seen = new Set<string>();
+    const normalized = items.map((utxo) => {
+      const item = canonicalUtxo(utxo);
+      const outpoint = item.txid + ":" + item.vout;
+      if (seen.has(outpoint)) {
+        throw new Error("Electrum returned a duplicate Mainnet UTXO outpoint: " + outpoint);
+      }
+      seen.add(outpoint);
+      return item;
+    });
+    return JSON.stringify(normalized.sort((a, b) =>
       (a.txid + ":" + a.vout).localeCompare(b.txid + ":" + b.vout)
-    ),
-  );
+    ));
+  };
   const expected = canonical(snapshots[0]);
-  if (snapshots.some((snapshot) => canonical(snapshot) !== expected)) {
+  if (snapshots.slice(1).some((snapshot) => canonical(snapshot) !== expected)) {
     throw new Error("Independent Electrum endpoints disagree on the BCH Mainnet UTXO set.");
   }
   return snapshots[0];

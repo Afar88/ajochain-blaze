@@ -73,13 +73,37 @@ describe("BCH Mainnet quorum provider", () => {
     ], now)).toThrow(/stale/);
   });
 
-  it("requires exact agreement across provider UTXO snapshots", () => {
+  it("requires exact agreement across provider UTXO snapshots regardless of ordering", () => {
+    const secondUtxo: SpendableUtxo = {
+      txid: "cd".repeat(32),
+      vout: 0,
+      satoshis: 20_000n,
+      lockingBytecode: "76a914" + "22".repeat(20) + "88ac",
+    };
     expect(assertMainnetUtxoSnapshotsAgree([
-      [mainnetUtxo], [{ ...mainnetUtxo }],
-    ])).toEqual([mainnetUtxo]);
+      [mainnetUtxo, secondUtxo], [secondUtxo, { ...mainnetUtxo }],
+    ])).toEqual([mainnetUtxo, secondUtxo]);
     expect(() => assertMainnetUtxoSnapshotsAgree([
       [mainnetUtxo], [{ ...mainnetUtxo, satoshis: 11_000n }],
     ])).toThrow(/disagree/);
+  });
+
+  it("rejects duplicate outpoints inside a single endpoint snapshot", () => {
+    expect(() => assertMainnetUtxoSnapshotsAgree([
+      [mainnetUtxo, { ...mainnetUtxo }],
+      [mainnetUtxo],
+    ])).toThrow(/duplicate Mainnet UTXO outpoint/);
+  });
+
+  it("rejects malformed UTXO outpoints and value metadata", () => {
+    expect(() => assertMainnetUtxoSnapshotsAgree([
+      [{ ...mainnetUtxo, txid: "not-a-txid" } as unknown as SpendableUtxo],
+      [mainnetUtxo],
+    ])).toThrow(/malformed Mainnet UTXO record/);
+    expect(() => assertMainnetUtxoSnapshotsAgree([
+      [{ ...mainnetUtxo, satoshis: -1n }],
+      [mainnetUtxo],
+    ])).toThrow(/malformed Mainnet UTXO record/);
   });
 
   it("cannot broadcast through the read-only Mainnet quorum provider", async () => {
