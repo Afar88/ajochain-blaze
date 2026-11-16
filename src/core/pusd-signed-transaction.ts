@@ -2,6 +2,7 @@ import {
   binToHex,
   createVirtualMachineBch2026,
   decodeTransactionBCH,
+  getDustThreshold,
   hashTransaction,
   hexToBin,
 } from "@bitauth/libauth";
@@ -196,6 +197,10 @@ export async function verifySignedPusdTransaction(
       }
       if (output.token.amount <= 0n) {
         throw new Error("Output " + outputIndex + " has an invalid PUSD amount.");
+      }
+      const minimumCarrier = getDustThreshold(output);
+      if (output.valueSatoshis < minimumCarrier) {
+        throw new Error("PUSD token output " + outputIndex + " carrier is below the serialized-output dust threshold of " + minimumCarrier + " sats.");
       }
 
       if (script === recipientLockingBytecode.toLowerCase()) {
