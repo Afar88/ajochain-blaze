@@ -11,7 +11,7 @@ import {
 import { hash160, secp256k1, hexToBin } from "@bitauth/libauth";
 import autoReserveJson from "../../contracts/AjoCircleV3AutoReserve.json" with { type: "json" };
 import { pkhToAddress } from "./bch-address";
-import { isValidV2FeeStateCommitment, v2FeeCreditFromCommitment, v2FeeStateCommitment, summarizeV2FeeMemberAccounting } from "./v2-fee-bch";
+import { assertV2FeeDepositRoundOpen, isValidV2FeeStateCommitment, v2FeeCreditFromCommitment, v2FeeStateCommitment, summarizeV2FeeMemberAccounting } from "./v2-fee-bch";
 
 const artifact = autoReserveJson as unknown as Artifact;
 const CATEGORY = "ab".repeat(32);
@@ -121,6 +121,19 @@ async function triggerPayout(provider: MockNetworkProvider, contract: Contract) 
   await builder.send();
   return { reserve, payout, gross, projectFee };
 }
+
+describe("V2/V3 member deposit round guard", () => {
+  it("allows only active rounds and rejects terminal or impossible rounds", () => {
+    expect(() => assertV2FeeDepositRoundOpen("fee-v3-auto-reserve", 0, 2)).not.toThrow();
+    expect(() => assertV2FeeDepositRoundOpen("fee-v3-auto-reserve", 1, 2)).not.toThrow();
+    expect(() => assertV2FeeDepositRoundOpen("fee-v2-escrow", 2, 2))
+      .toThrow(/completed every scheduled payout/);
+    expect(() => assertV2FeeDepositRoundOpen("fee-v3-auto-reserve", 3, 2))
+      .toThrow(/Invalid V2 fee deposit round/);
+    expect(() => assertV2FeeDepositRoundOpen("fee-v1", 2, 2))
+      .toThrow(/Invalid V2 fee deposit round/);
+  });
+});
 
 describe("V2/V3 state NFT commitment encoding", () => {
   it("recognises every valid three-byte round and payout-marker combination", () => {

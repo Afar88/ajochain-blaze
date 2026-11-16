@@ -88,6 +88,20 @@ export function isValidV2FeeStateCommitment(commitment: string): boolean {
   return typeof commitment === 'string' && /^54(?:0[0-5])(?:00|01)$/i.test(commitment);
 }
 
+/** Reject deposits for terminal or impossible payout rounds before building a wallet transaction. */
+export function assertV2FeeDepositRoundOpen(
+  covenant: V2FeeCircleParams['covenant'],
+  round: number,
+  memberCount: number,
+): void {
+  if (!Number.isSafeInteger(round) || round < 0 || round >= memberCount) {
+    if (covenant !== 'fee-v1' && round === memberCount) {
+      throw new Error('This circle has completed every scheduled payout. No further deposits are accepted.');
+    }
+    throw new Error('Invalid V2 fee deposit round; no deposit can be prepared for this state.');
+  }
+}
+
 export function v2FeeReceiptCommitment(index: number, credit: bigint): string {
   if (!Number.isInteger(index) || index < 0 || index > 4 || credit < 0n || credit > CASH_SCRIPT_INT_MAX) throw new Error('Invalid V2 member receipt data');
   return '52' + index.toString(16).padStart(2, '0') + credit.toString(16).padStart(16, '0').match(/../g)!.reverse().join('');
@@ -256,9 +270,7 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
   assertUtxoSet(all, params.stateCategory, params.members.length);
   const state = findState(all, params.stateCategory);
   const currentRound = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
-  if (params.covenant === 'fee-v2-escrow' && currentRound >= params.members.length) {
-    throw new Error('This circle has completed every scheduled payout. No further deposits are accepted.');
-  }
+  assertV2FeeDepositRoundOpen(params.covenant, currentRound, params.members.length);
   const allReceipts = params.members.map((_, i) => findReceipt(all, params.stateCategory, i));
   const allCredits = allReceipts.map(u => v2FeeCreditFromCommitment(u.token!.nft!.commitment));
   if (state.satoshis !== allCredits.reduce((sum, credit) => sum + credit, STATE_DUST)) throw new Error('State BCH does not match the exact member-credit total. Stop and investigate.');
