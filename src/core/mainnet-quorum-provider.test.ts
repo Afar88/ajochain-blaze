@@ -66,7 +66,7 @@ describe("BCH Mainnet quorum provider", () => {
       { height: 900_000, headerHex: fresh, genesisHeaderHex: wrongGenesis },
       { height: 900_000, headerHex: fresh, genesisHeaderHex: wrongGenesis },
     ], now)).toThrow(/genesis chain/);
-    const stale = headerWithTimestamp(Math.floor(now / 1000) - 4 * 60 * 60, "01");
+    const stale = headerWithTimestamp(Math.floor(now / 1000) - 31 * 60, "01");
     expect(() => validateMainnetTipQuorum([
       { height: 900_000, headerHex: stale, genesisHeaderHex: genesisHeader },
       { height: 900_000, headerHex: stale, genesisHeaderHex: genesisHeader },
