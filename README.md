@@ -59,6 +59,8 @@ The active BLAZE application is deployed from this repository through the dedica
 
 The legacy app is isolated in the separate Vercel project **`ajochain-legacy`** (legacy recovery preview: **`ajochain-legacy-recovery`**), both linked only to `Afar88/Ajochain`. Their domains and environment-variable stores are separate from BLAZE. Never use a legacy deployment as evidence that BLAZE has shipped.
 
+Backend separation is enforced too: BLAZE runs its own Vercel serverless API and has only its own `ELECTRUM_SERVERS` read-quorum configuration; it has no Neon/PostgreSQL connection. The legacy Vercel project alone has the legacy Neon/PostgreSQL integration. Never reuse its `DATABASE_URL`, `POSTGRES_*`, `PG*` or `NEON_*` variables for BLAZE. If BLAZE needs persistence later, provision a separate Neon project for BLAZE rather than pointing it at the legacy database. The legacy registry/recovery API remains design-only until implemented.
+
 See [legacy porting and deployment boundaries](docs/LEGACY_REPO_PORTING_AND_DEPLOYMENTS.md) for the project-to-repository map and compatibility decisions. See [PUSD CashToken integration status](docs/PUSD_CASHTOKEN_INTEGRATION.md) for the verified ParyonUSD category, two-decimal base-unit rules, and the still-blocked token-aware covenant work. See [WizardConnect and Selene integration](docs/WIZARDCONNECT_SELENE_PORT.md) for the mobile reconnect behaviour and signing safeguards. See [member accounting and circle completion](docs/MEMBER_ACCOUNTING_AND_CIRCLE_COMPLETION.md) for member contribution and payout rules.
 
 ## Mainnet launch status
