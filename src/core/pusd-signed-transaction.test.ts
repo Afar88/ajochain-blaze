@@ -136,7 +136,7 @@ describe("verifySignedPusdTransaction", () => {
     })).rejects.toThrow(/creates BCH value/);
   });
 
-  it("executes BCH 2023 scripts after prevouts and PUSD intent pass", async () => {
+  it("executes the active BCH 2026 VM after prevouts and PUSD intent pass", async () => {
     const fixture = signedSpend();
     await expect(verify({
       signedHex: fixture.signedHex,
