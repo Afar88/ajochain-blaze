@@ -53,11 +53,13 @@ npm run build
 
 The GitHub Actions workflow runs the same checks on pushes to `main` and pull requests targeting `main`.
 
-## GitHub Pages preview
+## Vercel deployment
 
-A separate workflow builds and deploys the static app to GitHub Pages on pushes to `main`. The Pages build uses the `/ajochain-blaze/` base path; local development and root-hosted deployments use `/`. The public Pages URL becomes available after the first successful deployment run.
+The active BLAZE application is deployed from this repository through the dedicated Vercel project **`ajochain-blaze`**, linked only to `Afar88/ajochain-blaze`. Its stable URL is https://ajochain-blaze.vercel.app. Use this project for BLAZE previews and release verification; check the deployed commit SHA before testing.
 
-See [PUSD CashToken integration status](docs/PUSD_CASHTOKEN_INTEGRATION.md) for the verified ParyonUSD category, two-decimal base-unit rules, and the still-blocked token-aware covenant work. See [WizardConnect and Selene integration](docs/WIZARDCONNECT_SELENE_PORT.md) for the mobile reconnect behaviour and signing safeguards. See [member accounting and circle completion](docs/MEMBER_ACCOUNTING_AND_CIRCLE_COMPLETION.md) for the rule that members must continue contributing after receiving a payout, and the V2 covenant design that blocks a round when any member is short.
+The legacy app is isolated in the separate Vercel project **`ajochain-legacy`** (legacy recovery preview: **`ajochain-legacy-recovery`**), both linked only to `Afar88/Ajochain`. Their domains and environment-variable stores are separate from BLAZE. Never use a legacy deployment as evidence that BLAZE has shipped.
+
+See [legacy porting and deployment boundaries](docs/LEGACY_REPO_PORTING_AND_DEPLOYMENTS.md) for the project-to-repository map and compatibility decisions. See [PUSD CashToken integration status](docs/PUSD_CASHTOKEN_INTEGRATION.md) for the verified ParyonUSD category, two-decimal base-unit rules, and the still-blocked token-aware covenant work. See [WizardConnect and Selene integration](docs/WIZARDCONNECT_SELENE_PORT.md) for the mobile reconnect behaviour and signing safeguards. See [member accounting and circle completion](docs/MEMBER_ACCOUNTING_AND_CIRCLE_COMPLETION.md) for member contribution and payout rules.
 
 ## Mainnet launch status
 
