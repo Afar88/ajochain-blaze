@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import {
   binToHex,
-  createVirtualMachineBCH2023,
+  createVirtualMachineBch2026,
   decodeCashAddress,
   decodeTransactionBCH,
   hashTransaction,
@@ -582,7 +582,7 @@ async function verifyPusdSpendAndBroadcast(sessions, tip, body) {
   if (fee < 0n) throw new Error("Signed transaction creates BCH value.");
   if (fee > maxFee) throw new Error("Signed transaction fee exceeds the approved maximum.");
 
-  const vmResult = createVirtualMachineBCH2023().verify({ transaction, sourceOutputs });
+  const vmResult = createVirtualMachineBch2026().verify({ transaction, sourceOutputs });
   if (vmResult !== true) {
     throw new Error("Signed BCH/CashTokens transaction failed virtual-machine validation: " + vmResult);
   }
