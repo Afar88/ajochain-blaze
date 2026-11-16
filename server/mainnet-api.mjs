@@ -468,6 +468,60 @@ export function assertPusdTokenOutputCarrier(output, outputIndex = 0) {
   }
 }
 
+export function assertPusdBchChangeCarrier(output, outputIndex = 0) {
+  const minimumCarrier = getDustThreshold(output);
+  if (output.valueSatoshis < minimumCarrier) {
+    throw new Error(
+      "BCH change output " + outputIndex + " is below the serialized-output dust threshold of " +
+      minimumCarrier.toString() + " sats.",
+    );
+  }
+}
+
+export function readPusdWalletUnlockingPushes(script) {
+  const pushes = [];
+  let offset = 0;
+  while (offset < script.length) {
+    const opcode = script[offset++];
+    let length;
+    if (opcode <= 75) {
+      length = opcode;
+    } else if (opcode === 0x4c) {
+      if (offset + 1 > script.length) throw new Error("Malformed wallet PUSHDATA1 unlocking script.");
+      length = script[offset++];
+    } else if (opcode === 0x4d) {
+      if (offset + 2 > script.length) throw new Error("Malformed wallet PUSHDATA2 unlocking script.");
+      length = script[offset] | (script[offset + 1] << 8);
+      offset += 2;
+    } else if (opcode === 0x4e) {
+      if (offset + 4 > script.length) throw new Error("Malformed wallet PUSHDATA4 unlocking script.");
+      length = script.readUInt32LE(offset);
+      offset += 4;
+    } else {
+      throw new Error("Wallet-owned P2PKH input contains a non-push unlocking opcode.");
+    }
+    if (offset + length > script.length) throw new Error("Wallet unlocking script push exceeds its available bytes.");
+    pushes.push(script.subarray(offset, offset + length));
+    offset += length;
+  }
+  return pushes;
+}
+
+export function assertRequiredPusdSighash(script, inputIndex = 0) {
+  const pushes = readPusdWalletUnlockingPushes(Buffer.from(script));
+  if (pushes.length !== 2) {
+    throw new Error("Wallet-owned P2PKH input " + inputIndex + " must contain exactly a signature and public-key push.");
+  }
+  const signature = pushes[0];
+  const publicKey = pushes[1];
+  if (signature.length < 2 || signature[signature.length - 1] !== 0x61) {
+    throw new Error("Wallet-owned P2PKH input " + inputIndex + " must use SIGHASH_ALL | FORKID | UTXOS (0x61).");
+  }
+  if (publicKey.length !== 33 && publicKey.length !== 65) {
+    throw new Error("Wallet-owned P2PKH input " + inputIndex + " has an invalid public-key length.");
+  }
+}
+
 function parsePositiveBigInt(value, label, allowZero = false) {
   if (typeof value !== "string" || !/^\d+$/.test(value)) {
     throw new Error(label + " must be an integer decimal string.");
@@ -537,6 +591,9 @@ async function verifyPusdSpendAndBroadcast(sessions, tip, body) {
     if (!walletScripts.includes(lockingBytecode)) {
       throw new Error("Input " + index + " is not controlled by a locally derived wallet address.");
     }
+    if (/^76a914[0-9a-f]{40}88ac$/.test(lockingBytecode)) {
+      assertRequiredPusdSighash(input.unlockingBytecode, index);
+    }
     if (sourceOutput.valueSatoshis <= 0n) throw new Error("Input " + index + " has no BCH carrier value.");
     if (sourceOutput.token) {
       const category = binToHex(sourceOutput.token.category).toLowerCase();
@@ -574,8 +631,11 @@ async function verifyPusdSpendAndBroadcast(sessions, tip, body) {
       } else {
         throw new Error("PUSD output " + index + " is not directed to the approved recipient or wallet change address.");
       }
-    } else if (!walletScripts.includes(script)) {
-      throw new Error("BCH-only output " + index + " is not directed to a wallet-derived change address.");
+    } else {
+      if (!walletScripts.includes(script)) {
+        throw new Error("BCH-only output " + index + " is not directed to a wallet-derived change address.");
+      }
+      assertPusdBchChangeCarrier(output, index);
     }
   }
 
