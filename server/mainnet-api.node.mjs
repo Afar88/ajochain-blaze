@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
   assertPreviousTransactionsAgree,
+  assertPusdTokenOutputCarrier,
   assertUnspentSnapshotsAgree,
   cashAddressToLockingBytecode,
   hashBlockHeader,
@@ -115,6 +116,19 @@ test("PUSD Mainnet broadcast stays locked even if a runtime override is set", as
     if (original === undefined) delete process.env.ENABLE_MAINNET_BROADCAST;
     else process.env.ENABLE_MAINNET_BROADCAST = original;
   }
+});
+
+test("PUSD token outputs must meet the serialized CashTokens dust threshold", () => {
+  const output = {
+    valueSatoshis: 500n,
+    lockingBytecode: Buffer.from("76a914" + "11".repeat(20) + "88ac", "hex"),
+    token: {
+      category: Buffer.from("2469acc5afa4b10cb5b5c04afb89c3a3ffd61c5da9c01e26d00951cae2a02544", "hex"),
+      amount: 100n,
+    },
+  };
+  assert.throws(() => assertPusdTokenOutputCarrier(output, 0), /below the serialized-output dust threshold/);
+  assert.doesNotThrow(() => assertPusdTokenOutputCarrier({ ...output, valueSatoshis: 1000n }, 0));
 });
 
 test("raw previous transaction bytes must agree across the Electrum quorum", () => {
