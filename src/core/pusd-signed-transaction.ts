@@ -3,6 +3,7 @@ import {
   createVirtualMachineBch2026,
   decodeTransactionBCH,
   getDustThreshold,
+  getDustThreshold,
   hashTransaction,
   hexToBin,
 } from "@bitauth/libauth";
@@ -39,6 +40,55 @@ export interface VerifiedPusdTransaction {
   changePusdAmount: bigint;
   inputCount: number;
   outputCount: number;
+}
+
+/**
+ * Read a push-only P2PKH unlocking script. This intentionally rejects script
+ * execution opcodes in a wallet-owned input's unlocking script.
+ */
+export function readPusdUnlockingPushes(script: Uint8Array): Uint8Array[] {
+  const pushes: Uint8Array[] = [];
+  let offset = 0;
+  while (offset < script.length) {
+    const opcode = script[offset++];
+    let length: number;
+    if (opcode <= 75) {
+      length = opcode;
+    } else if (opcode === 0x4c) {
+      if (offset + 1 > script.length) throw new Error("Malformed wallet PUSHDATA1 unlocking script.");
+      length = script[offset++];
+    } else if (opcode === 0x4d) {
+      if (offset + 2 > script.length) throw new Error("Malformed wallet PUSHDATA2 unlocking script.");
+      length = script[offset] | (script[offset + 1] << 8);
+      offset += 2;
+    } else if (opcode === 0x4e) {
+      if (offset + 4 > script.length) throw new Error("Malformed wallet PUSHDATA4 unlocking script.");
+      length = new DataView(script.buffer, script.byteOffset + offset, 4).getUint32(0, true);
+      offset += 4;
+    } else {
+      throw new Error("Wallet-owned P2PKH input contains a non-push unlocking opcode.");
+    }
+    if (offset + length > script.length) throw new Error("Wallet unlocking script push exceeds its available bytes.");
+    pushes.push(script.slice(offset, offset + length));
+    offset += length;
+  }
+  return pushes;
+}
+
+/** Require WizardConnect's SIGHASH_ALL | FORKID | UTXOS (0x61) wallet signature. */
+export function assertRequiredPusdSighash(script: Uint8Array): void {
+  const pushes = readPusdUnlockingPushes(script);
+  if (pushes.length !== 2) {
+    throw new Error("Wallet-owned P2PKH input must contain exactly a signature and public-key push.");
+  }
+  const signature = pushes[0];
+  const publicKey = pushes[1];
+  if (signature.length < 2 || signature[signature.length - 1] !== 0x61) {
+    throw new Error("Wallet signature must use SIGHASH_ALL | SIGHASH_FORKID | SIGHASH_UTXOS (0x61).");
+  }
+  if (publicKey.length !== 33 && publicKey.length !== 65) {
+    throw new Error("Wallet-owned input did not contain a valid compressed or uncompressed public key.");
+  }
 }
 
 const isHex = (value: string) => /^(?:[0-9a-f]{2})+$/i.test(value);
@@ -143,6 +193,9 @@ export async function verifySignedPusdTransaction(
     if (!walletScripts.has(sourceScript)) {
       throw new Error("Input " + inputIndex + " is not locked to a locally derived wallet script.");
     }
+    if (/^76a914[0-9a-f]{40}88ac$/.test(sourceScript)) {
+      assertRequiredPusdSighash(input.unlockingBytecode);
+    }
 
     if (sourceOutput.token) {
       const category = binToHex(sourceOutput.token.category).toLowerCase();
@@ -212,8 +265,14 @@ export async function verifySignedPusdTransaction(
       } else {
         throw new Error("PUSD output " + outputIndex + " is not directed to the approved recipient or wallet change script.");
       }
-    } else if (!walletScripts.has(script)) {
-      throw new Error("BCH-only output " + outputIndex + " is not directed to a wallet-derived change script.");
+    } else {
+      if (!walletScripts.has(script)) {
+        throw new Error("BCH-only output " + outputIndex + " is not directed to a wallet-derived change script.");
+      }
+      const minimumCarrier = getDustThreshold(output);
+      if (output.valueSatoshis < minimumCarrier) {
+        throw new Error("BCH change output " + outputIndex + " is below the serialized-output dust threshold of " + minimumCarrier + " sats.");
+      }
     }
   }
 
