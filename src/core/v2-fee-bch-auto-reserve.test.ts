@@ -11,7 +11,7 @@ import {
 import { hash160, secp256k1, hexToBin } from "@bitauth/libauth";
 import autoReserveJson from "../../contracts/AjoCircleV3AutoReserve.json" with { type: "json" };
 import { pkhToAddress } from "./bch-address";
-import { v2FeeCreditFromCommitment, summarizeV2FeeMemberAccounting } from "./v2-fee-bch";
+import { isValidV2FeeStateCommitment, v2FeeCreditFromCommitment, v2FeeStateCommitment, summarizeV2FeeMemberAccounting } from "./v2-fee-bch";
 
 const artifact = autoReserveJson as unknown as Artifact;
 const CATEGORY = "ab".repeat(32);
@@ -121,6 +121,26 @@ async function triggerPayout(provider: MockNetworkProvider, contract: Contract) 
   await builder.send();
   return { reserve, payout, gross, projectFee };
 }
+
+describe("V2/V3 state NFT commitment encoding", () => {
+  it("recognises every valid three-byte round and payout-marker combination", () => {
+    for (let round = 0; round <= 5; round++) {
+      for (const hasPaid of [false, true]) {
+        const commitment = v2FeeStateCommitment(round, hasPaid);
+        expect(commitment).toHaveLength(6);
+        expect(isValidV2FeeStateCommitment(commitment)).toBe(true);
+      }
+    }
+  });
+
+  it("rejects truncated, extended, out-of-range and malformed state commitments", () => {
+    for (const commitment of [
+      "5400", "54000000", "540600", "54ff00", "540002", "550000", "",
+    ]) {
+      expect(isValidV2FeeStateCommitment(commitment)).toBe(false);
+    }
+  });
+});
 
 describe("AjoChain V3 automatic future-contribution reserve covenant", () => {
   it("retains one next installment from the recipient's payout and funds their receipt", async () => {

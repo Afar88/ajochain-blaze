@@ -1,10 +1,10 @@
 # BCH, PUSD and Member Accounting
 
-## New BCH V2 fee circles
+## Current BCH V3 automatic-reserve fee circles
 
-New fee circles use the separate `AjoCircleV2Fee` CashScript covenant. Existing Classic V1 and earlier V2 circles are not upgraded or reinterpreted.
+The new-circle creation flow currently selects the separate `AjoCircleV3AutoReserve` CashScript covenant. It is a Chipnet-only prototype and requires 2–5 unique BCH member addresses and a minimum contribution of **0.002 BCH per member per round**. The covenant carries one state NFT and one member receipt NFT per member. Each receipt holds that member's own credit. Existing Classic V1, legacy fee-v1, V2 full-escrow and already-created V3 circles remain on their original versioned covenant; they are not upgraded or reinterpreted.
 
-The V2 fee circle is a Chipnet-only prototype. It requires 2–5 unique BCH member addresses and a minimum contribution of **0.002 BCH per member per round**. The covenant carries one state NFT and one member receipt NFT per member. Each receipt holds that member's own credit.
+For each scheduled round, every member must have one contribution available in their own receipt. When a non-final recipient receives the pot, exactly one next-round contribution is withheld from that payout and credited to that recipient's own receipt. It is consumed at the following payout. The reserve does not cover any later installments; after it is consumed, the member must contribute again. The final recipient has no future installment reserve.
 
 ### Fee rules
 
@@ -46,7 +46,7 @@ Before the first payout, the initiator may invoke the covenant cancellation path
 
 This ledger module is **not itself a blockchain verifier**. Only a trusted transaction/UTXO verifier may emit `contribution_confirmed` events after checking the destination output, previous transactions, input owners, token category/amount, confirmation and block hash. Local storage, a copied invite, a wallet connection or a screenshot is not evidence of payment.
 
-The V2 fee covenant's on-chain receipt NFTs are the enforcement source for its BCH credit and payout eligibility. The event ledger is an auditable accounting/indexing layer. Classic V1 remains an aggregate pool and cannot attribute pooled deposits to individual members.
+The selected V3 auto-reserve covenant's on-chain receipt NFTs are the enforcement source for its BCH credit and payout eligibility. The separate V2 full-escrow and fee-v1 contracts retain their own historical rules. The event ledger is an auditable accounting/indexing layer. Classic V1 remains an aggregate pool and cannot attribute pooled deposits to individual members.
 
 ## PUSD status
 

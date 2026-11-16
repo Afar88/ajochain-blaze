@@ -83,6 +83,11 @@ export function v2FeeStateCommitment(round: number, hasPaid: boolean): string {
   return '54' + round.toString(16).padStart(2, '0') + (hasPaid ? '01' : '00');
 }
 
+/** Validate the exact three-byte state NFT commitment: prefix | round | hasPaid. */
+export function isValidV2FeeStateCommitment(commitment: string): boolean {
+  return typeof commitment === 'string' && /^54(?:0[0-5])(?:00|01)$/i.test(commitment);
+}
+
 export function v2FeeReceiptCommitment(index: number, credit: bigint): string {
   if (!Number.isInteger(index) || index < 0 || index > 4 || credit < 0n || credit > CASH_SCRIPT_INT_MAX) throw new Error('Invalid V2 member receipt data');
   return '52' + index.toString(16).padStart(2, '0') + credit.toString(16).padStart(16, '0').match(/../g)!.reverse().join('');
@@ -180,7 +185,7 @@ export function v2FeeCreditFromCommitment(commitment: string): bigint {
 }
 
 function findState(utxos: SpendableUtxo[], category: string) {
-  const matches = utxos.filter(u => u.token?.category === category && u.token.nft?.capability === 'minting' && /^54[0-5][01]$/.test(u.token.nft.commitment));
+  const matches = utxos.filter(u => u.token?.category === category && u.token.nft?.capability === 'minting' && isValidV2FeeStateCommitment(u.token.nft.commitment));
   if (matches.length !== 1) throw new Error(matches.length ? 'Multiple V2 fee state NFTs found; stop and investigate.' : 'V2 fee state NFT not found or has an invalid commitment.');
   if (matches[0].token!.amount !== 0n) throw new Error('V2 fee state NFT unexpectedly carries fungible tokens.');
   return matches[0];
