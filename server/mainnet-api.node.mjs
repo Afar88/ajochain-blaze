@@ -148,7 +148,7 @@ test("PUSD server requires the wallet's 0x61 P2PKH sighash", () => {
     Buffer.from([publicKey.length]), publicKey,
   ]);
   assert.throws(() => assertRequiredPusdSighash(weakScript, 1), /0x61/);
-  assert.throws(() => assertRequiredPusdSighash(Buffer.from([0x51]), 2), /exactly a signature and public-key/);
+  assert.throws(() => assertRequiredPusdSighash(Buffer.from([0x51]), 2), /non-push unlocking opcode/);
 });
 
 test("PUSD server rejects dust-sized BCH change outputs", () => {
