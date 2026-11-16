@@ -3,7 +3,7 @@
 // derives receive addresses locally and asks the wallet to sign transactions.
 import { initiateDappRelay, RelayMsgAction, type DappRelayResult } from '@wizardconnect/core';
 import { DappConnectionManager, loadSession } from '@wizardconnect/dapp';
-import { binToHex, decodeTransactionBCH, encodeTransactionOutputs, hash160, hexToBin } from '@bitauth/libauth';
+import { binToHex, createVirtualMachineBch2026, decodeTransactionBCH, encodeTransactionOutputs, hash160, hexToBin } from '@bitauth/libauth';
 import { sourceOutputToRelay } from '@wizardconnect/core/hdwalletv1-serialize';
 import { pkhToAddress, type Net } from './bch-address';
 
@@ -112,12 +112,16 @@ export function buildWizardSignRequest(
 
 
 /**
- * Verify that the wallet returned a valid serialization of the transaction
- * AjoChain asked it to sign. Unlocking scripts may change; transaction intent
- * (version, locktime, input outpoints/order/sequence, and every output) may not.
- * This is a dapp-side integrity check, not a substitute for covenant validation.
+ * Verify the wallet returned the approved transaction and execute every input
+ * against the exact previous outputs supplied with the signing request.
+ * This is stateless BCH 2026 consensus validation; a separate chain-state check
+ * must still establish that every previous output remains unspent.
  */
-export function verifySignedTransaction(signedHex: string, expected: any) {
+export function verifySignedTransaction(
+  signedHex: string,
+  expected: any,
+  expectedSourceOutputs: any[],
+) {
   if (typeof signedHex !== 'string' || !/^(?:[0-9a-f]{2})+$/i.test(signedHex)) {
     throw new Error('Wallet returned malformed transaction hex.');
   }
@@ -146,6 +150,17 @@ export function verifySignedTransaction(signedHex: string, expected: any) {
   if (binToHex(encodeTransactionOutputs(decoded.outputs)) !==
       binToHex(encodeTransactionOutputs(expected.outputs))) {
     throw new Error('Wallet changed transaction outputs or CashTokens; refusing to broadcast.');
+  }
+  if (!Array.isArray(expectedSourceOutputs) ||
+      expectedSourceOutputs.length !== decoded.inputs.length) {
+    throw new Error('Exact previous-output data is missing; refusing to trust a wallet signature.');
+  }
+  const vmResult = createVirtualMachineBch2026().verify({
+    transaction: decoded,
+    sourceOutputs: expectedSourceOutputs,
+  });
+  if (vmResult !== true) {
+    throw new Error('Signed BCH transaction failed local BCH 2026 VM verification: ' + String(vmResult));
   }
   return decoded;
 }
@@ -395,7 +410,7 @@ class WizardWallet {
     if (typeof signedTransaction !== 'string' || !/^(?:[0-9a-f]{2})+$/i.test(signedTransaction)) {
       throw new Error('Selene did not return a valid signed transaction. The transaction was not broadcast.');
     }
-    const decoded = verifySignedTransaction(signedTransaction, wcObject?.transaction);
+    const decoded = verifySignedTransaction(signedTransaction, wcObject?.transaction, wcObject?.sourceOutputs);
     return { signedTransaction, decoded };
   }
 }
