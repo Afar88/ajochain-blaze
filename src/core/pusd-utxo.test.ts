@@ -1,13 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { PUSD_ASSET } from "./assets";
-import { assertPusdCategory, planPusdInputs, type PusdUtxo } from "./pusd-utxo";
+import { assertPusdCategory, planPusdInputs, type AuthenticatedPusdUtxo } from "./pusd-utxo";
 
 const txid = (digit: string) => digit.repeat(64);
-const utxo = (digit: string, amount: bigint, extra: Partial<PusdUtxo> = {}): PusdUtxo => ({
+const utxo = (digit: string, amount: bigint, extra: Partial<AuthenticatedPusdUtxo> = {}): AuthenticatedPusdUtxo => ({
   txid: txid(digit),
   vout: 0,
   satoshis: 1000n,
   token: { category: PUSD_ASSET.categoryId, amount },
+  lockingBytecode: "76a914" + "11".repeat(20) + "88ac",
+  provenance: {
+    rawTransactionVerified: true,
+    txid: txid(digit),
+    vout: 0,
+    unspentChecked: true,
+  },
   ...extra,
 });
 

@@ -21,7 +21,7 @@ The executable fail-closed policy is in `src/core/mainnet-flow.ts`. It is a read
 
 ## Release gates
 
-Every pre-broadcast gate in `MAINNET_PRE_BROADCAST_GATE_KEYS` must be true before broadcast eligibility. The post-broadcast `relayAndConfirmationVerified` item is intentionally excluded at that stage, because it can only be proven after a transaction has been relayed and independently confirmed:
+All keys in `MAINNET_GATE_KEYS` must be true before broadcast eligibility:
 
 - `networkIdentityVerified`
 - `consensusVmVerified`
@@ -32,8 +32,7 @@ Every pre-broadcast gate in `MAINNET_PRE_BROADCAST_GATE_KEYS` must be true befor
 - `tokenPolicyVerified`
 - `transactionPlanReviewed`
 - `signedTransactionInspected`
-
-After a successful relay, independently verify the transaction and its confirmation/reorg status before marking `relayAndConfirmationVerified` true. That final item moves the flow from `broadcast-eligible` to `confirmed`; it must never be required before the first broadcast.
+- `relayAndConfirmationVerified`
 
 These are evidence requirements, not checkboxes that a user can toggle. Evidence must come from the corresponding independent verification step. The initial state is all gates closed.
 
