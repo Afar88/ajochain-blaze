@@ -3,7 +3,7 @@
 // derives receive addresses locally and asks the wallet to sign transactions.
 import { initiateDappRelay, RelayMsgAction, type DappRelayResult } from '@wizardconnect/core';
 import { DappConnectionManager, loadSession } from '@wizardconnect/dapp';
-import { binToHex, decodeTransactionBCH, encodeTransactionOutputs, hash160, hexToBin } from '@bitauth/libauth';
+import { binToHex, createVirtualMachineBch2026, decodeTransactionBCH, encodeTransactionOutputs, hash160, hexToBin } from '@bitauth/libauth';
 import { sourceOutputToRelay } from '@wizardconnect/core/hdwalletv1-serialize';
 import { pkhToAddress, type Net } from './bch-address';
 
