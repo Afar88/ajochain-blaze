@@ -19,10 +19,17 @@ function loopSpend() {
       sequenceNumber: 0xffffffff,
       unlockingBytecode: hexToBin("51"),
     }],
-    outputs: [{
-      valueSatoshis: 9_000n,
-      lockingBytecode: hexToBin("51"),
-    }],
+    outputs: [
+      {
+        valueSatoshis: 9_000n,
+        lockingBytecode: hexToBin("51"),
+      },
+      // Keep the synthetic fixture above BCH's 65-byte minimum transaction size.
+      {
+        valueSatoshis: 0n,
+        lockingBytecode: hexToBin("6a01aa"),
+      },
+    ],
   };
   const sourceOutputs = [{
     valueSatoshis: 10_000n,
