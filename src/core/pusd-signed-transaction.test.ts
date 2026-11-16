@@ -123,6 +123,14 @@ describe("verifySignedPusdTransaction", () => {
     })).rejects.toThrow(/not directed to the approved recipient/);
   });
 
+  it("rejects PUSD token outputs below the serialized CashTokens dust threshold", async () => {
+    const fixture = signedSpend(recipientScript, 90n, 500n);
+    await expect(verify({
+      signedHex: fixture.signedHex,
+      previous: fixture.previous,
+    })).rejects.toThrow(/carrier is below the serialized-output dust threshold/);
+  });
+
   it("rejects zero-value, negative-fee, or unaffordable PUSD plans before script execution", async () => {
     const fixture = signedSpend(recipientScript, 90n, 2100n);
     await expect(verify({
