@@ -52,11 +52,11 @@ npm run build
 
 The GitHub Actions workflow runs the same checks on pushes to `main` and pull requests targeting `main`.
 
-## GitHub Pages preview
+## Vercel deployment
 
-A separate workflow builds and deploys the static app to GitHub Pages on pushes to `main`. The Pages build uses the `/ajochain-blaze/` base path; local development and root-hosted deployments use `/`. The public Pages URL becomes available after the first successful deployment run.
+The only hosted deployment target for this repository is the dedicated Vercel project linked to `Afar88/ajochain-blaze`: https://ajochain-blaze.vercel.app. The legacy `Afar88/Ajochain` repository and its Vercel project/backend are separate. Do not use legacy deployments or databases for BLAZE verification.
 
-See [PUSD CashToken integration status](docs/PUSD_CASHTOKEN_INTEGRATION.md) for the verified ParyonUSD category, two-decimal base-unit rules, and the still-blocked token-aware covenant work. See [WizardConnect and Selene integration](docs/WIZARDCONNECT_SELENE_PORT.md) for the mobile reconnect behaviour and signing safeguards. See [member accounting and circle completion](docs/MEMBER_ACCOUNTING_AND_CIRCLE_COMPLETION.md) for the rule that members must continue contributing after receiving a payout, and the V2 covenant design that blocks a round when any member is short.
+See [the Mainnet readiness audit (16 Nov 2026)](docs/MAINNET_READINESS_AUDIT_2026-11-16.md) for the verified blockers and the BCH Mainnet opening sequence. See [PUSD CashToken integration status](docs/PUSD_CASHTOKEN_INTEGRATION.md) for the canonical ParyonUSD category and token transfer boundary. See [WizardConnect and Selene integration](docs/WIZARDCONNECT_SELENE_PORT.md) for mobile reconnect behaviour and signing safeguards. See [member accounting and circle completion](docs/MEMBER_ACCOUNTING_AND_CIRCLE_COMPLETION.md) for member-credit rules and the V2 covenant design.
 
 ## Network and safety policy
 
