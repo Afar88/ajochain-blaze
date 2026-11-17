@@ -111,6 +111,15 @@ export function v2FeeCancelWalletInputIndex(memberCount: number): number {
   return memberCount + 1;
 }
 
+/** Validate the fee sponsor against the circle's actual network prefix. */
+export function validateV2FeePayoutFeePayerAddress(
+  address: string,
+  network: ClassicNetwork,
+): void {
+  if (!address) throw new Error("A connected " + (network === "mainnet" ? "Mainnet" : "Chipnet") + " fee-payer address is required.");
+  classicAddressToPkh(address, network);
+}
+
 /** Resolve the immutable script artifact selected by a saved circle covenant identifier. */
 export function v2FeeArtifactForCovenant(covenant: V2FeeCovenant): Artifact {
   switch (covenant) {
@@ -430,8 +439,7 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
 /** Any circle participant can trigger payout and sponsor miner fees from a separate BCH input. */
 export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress: string) {
   validate(params);
-  if (!feePayerAddress) throw new Error("A connected " + (params.network === "mainnet" ? "Mainnet" : "Chipnet") + " fee-payer address is required.");
-  classicAddressToPkh(feePayerAddress, params.network);
+  validateV2FeePayoutFeePayerAddress(feePayerAddress, params.network);
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
   const all = await contract.getUtxos();
