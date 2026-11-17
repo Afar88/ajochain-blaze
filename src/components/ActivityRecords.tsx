@@ -312,7 +312,7 @@ export default function ActivityRecords() {
                     <div><span>Circle state</span><b>{result.stateLabel}</b></div>
                     <div><span>Current round</span><b>{result.roundLabel}</b></div>
                     <div><span>Next recipient</span><b>{result.recipient ?? "None"}</b></div>
-                    <div><span>Transaction source</span><b>{result.history?.providerConfidence && result.history.providerConfidence > 1 ? "Independent Electrum quorum" : "Single Chipnet Electrum provider"}</b></div>
+                    <div><span>Transaction source</span><b>{!result.history ? "History unavailable" : result.history.network === "mainnet" ? "Independent Mainnet Electrum quorum" : "Single Chipnet Electrum provider"}</b></div>
                   </div>
                   {result.details && <p className="activity-source-note">{result.details}</p>}
                   {result.memberRecords && (
@@ -332,7 +332,11 @@ export default function ActivityRecords() {
                       <small>{result.history?.truncated ? "Showing the latest records only" : "Complete provider response for this script set"}</small>
                     </div>
                     {result.historyError ? (
-                      <p className="classic-error">{result.historyError} Current chain receipt records above remain independently verified.</p>
+                      <div className="activity-unavailable">
+                        <b>Transaction history could not be loaded</b>
+                        <p>{result.historyError}</p>
+                        <small>Circle state above was read separately. No transaction is assumed from this failed history request.</small>
+                      </div>
                     ) : result.history?.records.length ? (
                       result.history.records.map((record) => (
                         <div className="activity-transaction-row" key={record.txid}>
