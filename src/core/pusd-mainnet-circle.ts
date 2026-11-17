@@ -39,6 +39,7 @@ export interface PusdMainnetCircleParams extends PusdMainnetCircleDraft {
 }
 
 export interface PusdMainnetCircleSnapshot {
+  provider: NetworkProvider;
   params: PusdMainnetCircleParams;
   contract: Contract;
   escrows: Contract[];
@@ -405,6 +406,7 @@ export async function readPusdMainnetCircle(params: PusdMainnetCircleParams): Pr
   const totalCredits = credits.reduce((sum, credit) => sum + credit, 0n);
   if (totalCredits > CASH_TOKEN_MAX_AMOUNT) throw new Error("Total circle credit exceeds the CashTokens amount limit.");
   return {
+    provider,
     params,
     contract,
     escrows,
