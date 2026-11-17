@@ -105,9 +105,40 @@ export function buildWizardSignRequest(
     transaction.version,
     transaction.locktime,
   );
-  const relaySourceOutputs = transaction.inputs.map((input: unknown, index: number) =>
-    sourceOutputToRelay({ ...(input as object), ...sourceOutputs[index] }),
-  );
+  const relaySourceOutputs = transaction.inputs.map((input: unknown, index: number) => {
+    const sourceOutput = { ...(input as object), ...sourceOutputs[index] } as any;
+    const relaySourceOutput = sourceOutputToRelay(sourceOutput) as Record<string, any>;
+
+    // The reference serializer omits CashScript covenant metadata. Selene
+    // needs this contract descriptor to recognise P2SH32 inputs, replace the
+    // placeholder signature/public key and build the correct covenant spend.
+    const contract = sourceOutput.contract;
+    if (contract) {
+      const redeemScript = contract.redeemScript instanceof Uint8Array
+        ? binToHex(contract.redeemScript)
+        : typeof contract.redeemScript === "string"
+          ? contract.redeemScript.toLowerCase()
+          : "";
+      const contractName = contract.artifact?.contractName;
+      const functionName = contract.abiFunction?.name;
+      if (!redeemScript || typeof contractName !== "string" || !contractName ||
+          typeof functionName !== "string" || !functionName) {
+        throw new Error("CashScript wallet input is missing its contract name, ABI function or redeem script.");
+      }
+      const abiInputs = Array.isArray(contract.abiFunction.inputs)
+        ? contract.abiFunction.inputs.map((entry: any) => ({
+            ...(typeof entry?.name === "string" ? { name: entry.name } : {}),
+            ...(typeof entry?.type === "string" ? { type: entry.type } : {}),
+          }))
+        : [];
+      relaySourceOutput.contract = {
+        abiFunction: { name: functionName, inputs: abiInputs },
+        redeemScript,
+        artifact: { contractName },
+      };
+    }
+    return relaySourceOutput;
+  });
 
   const request = {
     action: RelayMsgAction.SignTransactionRequest,
@@ -199,7 +230,10 @@ export function assertRequiredWalletSighash(script: Uint8Array): void {
  * Recognize a canonical DER ECDSA signature argument including its trailing
  * BCH sighash byte. Cryptographic validity remains the BCH 2026 VM's job.
  */
-function isDerTransactionSignature(push: Uint8Array): boolean {
+function isBchTransactionSignature(push: Uint8Array): boolean {
+  // Cashonize/Selene commonly uses Schnorr (64-byte signature + 0x61 sighash).
+  if (push.length === 65) return true;
+  // Some compatible wallets can return DER-encoded ECDSA signatures.
   if (push.length < 9 || push.length > 73 || push[0] !== 0x30 ||
       push[1] !== push.length - 3 || push[2] !== 0x02) return false;
 
@@ -225,7 +259,7 @@ function isDerTransactionSignature(push: Uint8Array): boolean {
 export function assertRequiredContractWalletSighash(script: Uint8Array): void {
   const pushes = readPushOnlyUnlockingScript(script);
   const argumentsOnly = pushes.slice(0, -1);
-  const signatures = argumentsOnly.filter(isDerTransactionSignature);
+  const signatures = argumentsOnly.filter(isBchTransactionSignature);
   if (signatures.length === 0) {
     throw new Error("Wallet-signed covenant input is missing its transaction signature argument.");
   }
