@@ -586,6 +586,71 @@ function normalizeWalletAddresses(value) {
   return scripts;
 }
 
+/**
+ * Relay a fully verified transaction exactly once. If the relay response is
+ * lost or malformed, query every configured provider for the exact txid before
+ * returning an outcome. Never blindly relay to a second provider after an
+ * ambiguous result: the first provider may already have accepted the spend.
+ */
+export async function broadcastPusdTransactionOnce(sessions, signedTransactionHex, expectedTxid) {
+  if (!Array.isArray(sessions) || sessions.length < 2) {
+    throw new Error("PUSD broadcast recovery requires the configured Electrum quorum.");
+  }
+  if (!isHex(signedTransactionHex) || !/^[0-9a-f]{64}$/i.test(expectedTxid)) {
+    throw new Error("A valid signed transaction and expected transaction ID are required.");
+  }
+
+  const normalizedHex = signedTransactionHex.toLowerCase();
+  const actualTxid = hashTransaction(hexToBin(normalizedHex)).toLowerCase();
+  const normalizedTxid = expectedTxid.toLowerCase();
+  if (actualTxid !== normalizedTxid) {
+    throw new Error("Expected transaction ID does not match the exact signed transaction bytes.");
+  }
+
+  let relayFailure;
+  try {
+    const relayResult = await sessions[0].call(
+      "blockchain.transaction.broadcast",
+      [normalizedHex],
+    );
+    if (typeof relayResult === "string" && relayResult.toLowerCase() === normalizedTxid) {
+      return { txid: normalizedTxid, relayStatus: "accepted" };
+    }
+    relayFailure = new Error(
+      "Electrum relay returned a transaction ID that does not match the signed bytes.",
+    );
+  } catch (error) {
+    relayFailure = error instanceof Error ? error : new Error("Unknown Electrum relay error.");
+  }
+
+  // A successful lookup is evidence that the exact transaction is already
+  // known to a provider. It is not evidence of block confirmation.
+  for (const session of sessions) {
+    try {
+      const knownTransactionHex = await session.call(
+        "blockchain.transaction.get",
+        [normalizedTxid],
+      );
+      if (typeof knownTransactionHex === "string" &&
+          isHex(knownTransactionHex) &&
+          knownTransactionHex.toLowerCase() === normalizedHex) {
+        return { txid: normalizedTxid, relayStatus: "already-known" };
+      }
+    } catch {
+      // Continue observing the remaining providers. A lookup failure does not
+      // authorize another broadcast attempt.
+    }
+  }
+
+  const detail = relayFailure?.message ?? "No valid relay response was received.";
+  throw new Error(
+    "PUSD broadcast result is UNKNOWN for " + normalizedTxid +
+    ". It was not retried. Check this exact transaction ID with the configured " +
+    "providers and reconcile its mempool/confirmation state before any manual retry. " +
+    "Initial relay result: " + detail,
+  );
+}
+
 async function verifyPusdSpendAndBroadcast(sessions, tip, body) {
   const walletScripts = normalizeWalletAddresses(body.walletAddresses);
   const recipientScript = cashAddressToLockingBytecode(body.recipientAddress);
@@ -712,23 +777,16 @@ async function verifyPusdSpendAndBroadcast(sessions, tip, body) {
   }
 
   const expectedTxid = hashTransaction(signedBytes).toLowerCase();
-  let broadcastResult;
-  let lastError;
-  for (const session of sessions) {
-    try {
-      broadcastResult = await session.call("blockchain.transaction.broadcast", [body.signedTransactionHex.toLowerCase()]);
-      if (typeof broadcastResult !== "string" || broadcastResult.toLowerCase() !== expectedTxid) {
-        throw new Error("Electrum broadcast returned a transaction ID that does not match the signed bytes.");
-      }
-      break;
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  if (!broadcastResult) throw lastError ?? new Error("No Electrum server accepted the transaction.");
+  const relay = await broadcastPusdTransactionOnce(
+    sessions,
+    body.signedTransactionHex,
+    expectedTxid,
+  );
 
   return {
     txid: expectedTxid,
+    relayStatus: relay.relayStatus,
+    confirmationStatus: "not-checked",
     feeSatoshis: fee.toString(),
     inputPusdAmount: inputPusd.toString(),
     recipientPusdAmount: recipientAmount.toString(),
