@@ -44,15 +44,20 @@ function commitment(index: number, credit: bigint) {
     credit.toString(16).padStart(16, "0").match(/../g)!.reverse().join("");
 }
 
-function addGenesis(provider: MockNetworkProvider, contract: Contract) {
+function addGenesis(
+  provider: MockNetworkProvider,
+  contract: Contract,
+  stateCommitment = "540000",
+  initialCredit = 0n,
+) {
   provider.addUtxo(contract.address, randomUtxo({
-    satoshis: DUST,
-    token: { category: CATEGORY, amount: 0n, nft: { capability: "minting", commitment: "540000" } },
+    satoshis: DUST + BigInt(members.length) * initialCredit,
+    token: { category: CATEGORY, amount: 0n, nft: { capability: "minting", commitment: stateCommitment } },
   }));
   for (let index = 0; index < members.length; index++) {
     provider.addUtxo(contract.address, randomUtxo({
       satoshis: DUST,
-      token: { category: CATEGORY, amount: 0n, nft: { capability: "none", commitment: commitment(index, 0n) } },
+      token: { category: CATEGORY, amount: 0n, nft: { capability: "none", commitment: commitment(index, initialCredit) } },
     }));
   }
 }
@@ -203,6 +208,29 @@ describe("V2/V3 state NFT commitment encoding", () => {
     ]) {
       expect(isValidV2FeeStateCommitment(commitment)).toBe(false);
     }
+  });
+});
+
+describe("AjoChain V3 rejects inconsistent state in covenant branches", () => {
+  it("rejects deposits from a non-genesis round with an unpaid marker", async () => {
+    const provider = new MockNetworkProvider();
+    const contract = makeContract(provider);
+    addGenesis(provider, contract, "540100");
+    await expect(depositCurrentRound(provider, contract, 0)).rejects.toThrow();
+  });
+
+  it("rejects payout from a non-genesis round with an unpaid marker", async () => {
+    const provider = new MockNetworkProvider();
+    const contract = makeContract(provider);
+    addGenesis(provider, contract, "540100", CONTRIBUTION);
+    await expect(triggerPayout(provider, contract)).rejects.toThrow();
+  });
+
+  it("rejects cancellation unless the circle is still at genesis", async () => {
+    const provider = new MockNetworkProvider();
+    const contract = makeContract(provider);
+    addGenesis(provider, contract, "540100", CONTRIBUTION);
+    await expect(cancelV3Circle(provider, contract)).rejects.toThrow();
   });
 });
 
