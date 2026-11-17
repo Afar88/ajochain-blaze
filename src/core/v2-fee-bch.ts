@@ -84,21 +84,24 @@ function validate(p: V2FeeCircleDraft | V2FeeCircleParams): void {
   treasuryAddressToPkh(p.treasury, p.network);
 }
 
+/** Resolve the immutable script artifact selected by a saved circle covenant identifier. */
+export function v2FeeArtifactForCovenant(covenant: V2FeeCovenant): Artifact {
+  switch (covenant) {
+    case 'fee-v1': return legacyArtifact;
+    case 'fee-v2-escrow': return legacyEscrowArtifact;
+    case 'fee-v3-auto-reserve': return legacyAutoReserveArtifact;
+    case 'fee-v1-guarded': return artifact;
+    case 'fee-v2-escrow-guarded': return escrowArtifact;
+    case 'fee-v3-auto-reserve-guarded': return autoReserveArtifact;
+  }
+  throw new Error('Unsupported V2 fee covenant.');
+}
+
 function contractFor(p: V2FeeCircleParams, provider: NetworkProvider): Contract {
   validate(p);
   const pkhs = p.members.map(addressToPkh);
   while (pkhs.length < 5) pkhs.push(new Uint8Array(20));
-  const selectedArtifact = p.covenant === 'fee-v1'
-    ? legacyArtifact
-    : p.covenant === 'fee-v2-escrow'
-      ? legacyEscrowArtifact
-      : p.covenant === 'fee-v3-auto-reserve'
-        ? legacyAutoReserveArtifact
-        : isFeeV1Covenant(p.covenant)
-          ? artifact
-          : isFeeV2EscrowCovenant(p.covenant)
-            ? escrowArtifact
-            : autoReserveArtifact;
+  const selectedArtifact = v2FeeArtifactForCovenant(p.covenant);
   return new Contract(selectedArtifact, [
     pkhs[0], pkhs[1], pkhs[2], pkhs[3], pkhs[4],
     BigInt(p.members.length), p.contribution, p.maxFee,

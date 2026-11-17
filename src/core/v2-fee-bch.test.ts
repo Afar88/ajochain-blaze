@@ -12,6 +12,7 @@ import { hash160, secp256k1, hexToBin } from '@bitauth/libauth';
 import artifactJson from '../../contracts/AjoCircleV2Fee.json' with { type: 'json' };
 import legacyArtifactJson from '../../contracts/AjoCircleV2Fee.legacy.json' with { type: 'json' };
 import { pkhToAddress } from './bch-address';
+import { v2FeeArtifactForCovenant } from './v2-fee-bch';
 
 const artifact = artifactJson as unknown as Artifact;
 const legacyArtifact = legacyArtifactJson as unknown as Artifact;
@@ -160,6 +161,32 @@ async function cancel(provider: MockNetworkProvider, contract: Contract, signer 
   builder.addOutput({ to: fundingAddress, amount: 15_000n });
   await builder.send();
 }
+
+describe('V2 fee covenant artifact version routing', () => {
+  it('keeps all three legacy and guarded covenant identifiers on separate script addresses', () => {
+    const provider = new MockNetworkProvider();
+    const args = [
+      members[0].pkh, members[1].pkh,
+      new Uint8Array(20), new Uint8Array(20), new Uint8Array(20),
+      2n, CONTRIBUTION, MAX_FEE, hexToBin(CATEGORY).reverse(),
+      initiator.pkh, treasury.pkh,
+    ];
+    const pairs = [
+      ['fee-v1', 'fee-v1-guarded'],
+      ['fee-v2-escrow', 'fee-v2-escrow-guarded'],
+      ['fee-v3-auto-reserve', 'fee-v3-auto-reserve-guarded'],
+    ] as const;
+    for (const [legacy, guarded] of pairs) {
+      const legacyContract = new Contract(v2FeeArtifactForCovenant(legacy), args, {
+        provider, contractType: 'p2sh32',
+      });
+      const guardedContract = new Contract(v2FeeArtifactForCovenant(guarded), args, {
+        provider, contractType: 'p2sh32',
+      });
+      expect(legacyContract.address).not.toBe(guardedContract.address);
+    }
+  });
+});
 
 describe('AjoCircleV2Fee legacy state-marker enforcement', () => {
   it('rejects deposits from a nonzero round with an unpaid marker', async () => {
