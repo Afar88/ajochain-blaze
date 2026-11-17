@@ -342,10 +342,56 @@ describe("AjoChain V3 automatic future-contribution reserve covenant", () => {
     expect(ledger[0].fullySecured).toBe(true);
     expect(ledger[0].payoutAmountReceived).toBe(gross - projectFee - nextInstallmentReserve);
     expect(ledger[0].payoutAmountReceived).toBe(790_000n);
+    expect(ledger[0].totalPaidIn).toBe(CONTRIBUTION);
+    expect(ledger.slice(1).every((member) => member.totalPaidIn === CONTRIBUTION)).toBe(true);
     expect(ledger[0].remainingContributionCommitment).toBe(3n * CONTRIBUTION);
     expect(ledger.slice(1).every((member) =>
       member.requiredForNextPayout === CONTRIBUTION && !member.fullySecured,
     )).toBe(true);
+  });
+
+  it("separates direct member deposits from the payout-funded reserve at every five-member position", () => {
+    const params = {
+      version: 2 as const,
+      covenant: "fee-v3-auto-reserve" as const,
+      name: "Five-member deposit history",
+      network: "chipnet" as const,
+      members: ["m0", "m1", "m2", "m3", "m4"],
+      contribution: CONTRIBUTION,
+      maxFee: MAX_FEE,
+      stateCategory: CATEGORY,
+      initiator: "initiator",
+      treasury: "treasury",
+    };
+    const cases = [
+      { round: 2, credits: [0n, CONTRIBUTION, 0n, 0n, 0n], direct: [1n, 2n, 2n, 2n, 2n] },
+      { round: 3, credits: [0n, 0n, CONTRIBUTION, 0n, 0n], direct: [2n, 2n, 2n, 3n, 3n] },
+      { round: 4, credits: [0n, 0n, 0n, CONTRIBUTION, 0n], direct: [3n, 3n, 3n, 3n, 4n] },
+      { round: 5, credits: [0n, 0n, 0n, 0n, 0n], direct: [4n, 4n, 4n, 4n, 5n] },
+    ];
+    for (const snapshot of cases) {
+      const ledger = summarizeV2FeeMemberAccounting(params, snapshot.round, snapshot.credits);
+      expect(ledger.map((member) => member.totalPaidIn)).toEqual(
+        snapshot.direct.map((count) => count * CONTRIBUTION),
+      );
+    }
+  });
+
+  it("rejects a latest V3 recipient whose reserve credit is not exact", () => {
+    const params = {
+      version: 2 as const,
+      covenant: "fee-v3-auto-reserve" as const,
+      name: "Reserve integrity",
+      network: "chipnet" as const,
+      members: ["m0", "m1", "m2"],
+      contribution: CONTRIBUTION,
+      maxFee: MAX_FEE,
+      stateCategory: CATEGORY,
+      initiator: "initiator",
+      treasury: "treasury",
+    };
+    expect(() => summarizeV2FeeMemberAccounting(params, 1, [CONTRIBUTION - 1n, 0n, 0n]))
+      .toThrow(/exact automatic reserve/);
   });
 
   it("reports one next installment for prior recipients and one current contribution for unpaid members", () => {

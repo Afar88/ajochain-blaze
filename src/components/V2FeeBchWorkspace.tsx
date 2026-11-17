@@ -392,7 +392,7 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
           {active.covenant === "fee-v1" && <p className="classic-error">Legacy rolling-credit circle: it only checks one contribution at a time. A member who stops after receiving a payout can block later rounds. New circles use V3 automatic future-contribution reserves.</p>}
           {active.covenant === "fee-v2-escrow" && <p className="field-hint">This existing V2 circle uses its original full-cycle pre-funding covenant. New circles use V3 automatic future-contribution reserves; this existing circle is not silently migrated.</p>}
           <div className="fee-accounting-table">
-            <div className="fee-accounting-row fee-accounting-header"><span>Member</span><span>Paid in</span><span>Locked now / required</span><span>Payout received</span><span>Still due</span><span>Status</span></div>
+            <div className="fee-accounting-row fee-accounting-header"><span>Member</span><span>Paid directly</span><span>Locked now / required</span><span>Payout received</span><span>Still due</span><span>Status</span></div>
             {snapshot.memberAccounting.map((account) => (
               <div className="fee-accounting-row" key={account.address}>
                 <span><b>Member {account.index + 1}{memberIndex === account.index ? " · You" : ""}</b><small>{account.address}</small></span>

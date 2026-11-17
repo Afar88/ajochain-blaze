@@ -17,6 +17,10 @@ For each scheduled round, every member must have one contribution available in t
 
 The current Chipnet treasury value in the form is a provisional project configuration. Members must inspect the immutable treasury in the circle details before sharing or funding an invite. Do not reuse the Chipnet address on Mainnet.
 
+### Member-paid versus payout-funded reserve
+
+The on-chain receipt balance includes both member deposits and the one automatic reserve withheld from a non-final recipient's payout. The member ledger's **Paid directly** figure excludes that payout-funded reserve, including after it is consumed in the following round. **Locked now** reports the actual receipt credit, and **Still due** reports the remaining cycle commitment after completed rounds and current receipt credit. The reserve is not counted as a member deposit.
+
 ### Payout and member fairness
 
 Payout requires every member receipt to hold at least one full contribution. The covenant atomically:

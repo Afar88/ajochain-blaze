@@ -154,11 +154,26 @@ export function summarizeV2FeeMemberAccounting(
     }
     const shortfallForNextPayout = requiredForNextPayout > currentCredit
       ? requiredForNextPayout - currentCredit : 0n;
-    const totalPaidIn = params.covenant !== 'fee-v1'
-      ? contributionAlreadyConsumed + currentCredit : null;
-    const remainingContributionCommitment = totalPaidIn === null
+    // A V3 recipient's automatic reserve is funded from their payout, not a
+    // member deposit. Exclude it both while held and after it funds the next round.
+    const isCurrentReserveHolder = params.covenant === 'fee-v3-auto-reserve' &&
+      !completed && round > 0 && index === round - 1 && index < memberCount - 1;
+    if (isCurrentReserveHolder && currentCredit !== params.contribution) {
+      throw new Error('Latest V3 recipient receipt does not contain its exact automatic reserve.');
+    }
+    const hasConsumedAutomaticReserve = params.covenant === 'fee-v3-auto-reserve' &&
+      index < memberCount - 1 && round > index + 1;
+    const totalPaidIn = params.covenant === 'fee-v1'
       ? null
-      : (fullCycleContribution > totalPaidIn ? fullCycleContribution - totalPaidIn : 0n);
+      : params.covenant === 'fee-v3-auto-reserve'
+        ? contributionAlreadyConsumed + currentCredit -
+          (hasConsumedAutomaticReserve ? params.contribution : 0n) -
+          (isCurrentReserveHolder ? params.contribution : 0n)
+        : contributionAlreadyConsumed + currentCredit;
+    const commitmentCovered = contributionAlreadyConsumed + currentCredit;
+    const remainingContributionCommitment = params.covenant === 'fee-v1'
+      ? null
+      : (fullCycleContribution > commitmentCovered ? fullCycleContribution - commitmentCovered : 0n);
     const prepaidRounds = Number(currentCredit / params.contribution);
     const fullySecured = completed || currentCredit >= requiredForNextPayout;
     const futureReserve = params.covenant === 'fee-v3-auto-reserve' && index < memberCount - 1
