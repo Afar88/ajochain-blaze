@@ -488,6 +488,8 @@ export default function App() {
               {network === "mainnet" && <>
                 <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-mainnet"}><BchMainnetCircleWorkspace network={network} walletConnected={connected} /></div>
                 <div className="circle-workspace-panel" hidden={circleWorkspace !== "pusd-mainnet"}><PusdMainnetCircleWorkspace network={network} walletConnected={connected} /></div>
+                {/* Legacy invite links remain accessible as a read-only compatibility workspace. */}
+                {circleWorkspace === "bch-classic" && <div className="circle-workspace-panel"><ClassicBchWorkspace network={network} walletConnected={connected} /></div>}
               </>}
               {network === "chipnet" && <>
                 <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-fair-round"}><V2FeeBchWorkspace network={network} walletConnected={connected} /></div>
