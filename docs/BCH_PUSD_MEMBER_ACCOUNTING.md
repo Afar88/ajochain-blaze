@@ -8,7 +8,8 @@ For each scheduled round, every member must have one contribution available in t
 
 ### Fee rules
 
-- The project fee is **1% of the gross round pot**, calculated with integer floor division.
+- On **every payout**, including the final recipient's payout, the project fee is **1% of the gross round pot**: `memberCount × contribution`, calculated with integer floor division. This is the full pooled contribution amount that the scheduled collector receives before the project fee and any next-round reserve are deducted; it is not 1% of the recipient's net payout.
+- The same formula applies to every member in payout order. For example, three members contributing 100 PUSD each create a 300 PUSD gross pot and a 3 PUSD project fee on each round. The fee is paid as a separate PUSD output to the fixed project-fee address.
 - The destination is committed as a fixed constructor argument at circle creation. It cannot be changed for that circle later.
 - The project fee is a separate output, not a miner-fee reserve.
 - Miner fees are separately bounded by the circle's maximum miner-fee value.
