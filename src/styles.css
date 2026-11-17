@@ -742,3 +742,198 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   :root { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: .01ms !important; }
 }
+
+
+/* Mature, slightly deeper neutral/forest palette and improved text legibility. */
+:root[data-theme="light"] {
+  --ink: #1c2b22;
+  --muted: #66756b;
+  --green: #173b2b;
+  --lime: #d4dfc5;
+  --line: #d7dfd7;
+  --paper: #f6f8f5;
+  --shadow: 0 16px 45px rgba(22,39,28,.09);
+  background: #edf1ed;
+  color: #1c2b22;
+}
+:root[data-theme="light"] body,
+:root[data-theme="light"] .compact-app {
+  background: #edf1ed;
+  color: #1c2b22;
+}
+:root[data-theme="light"] .app-header {
+  background: rgba(244,247,243,.97);
+  border-color: #d6ded6;
+}
+:root[data-theme="light"] .app-dropdown {
+  background: #f8faf7;
+  border-color: #d5ded5;
+}
+:root[data-theme="light"] .menu-trigger,
+:root[data-theme="light"] .overview-status-card,
+:root[data-theme="light"] .asset-preview,
+:root[data-theme="light"] .asset-detail-card,
+:root[data-theme="light"] .circle-panel,
+:root[data-theme="light"] .classic-workspace,
+:root[data-theme="light"] .circle-workspace {
+  background: #f8faf7;
+  border-color: #d9e1d9;
+}
+:root[data-theme="light"] .welcome-hero {
+  background: linear-gradient(115deg,#f8faf7 0%,#e6ece5 100%);
+  border-color: #d4ded4;
+}
+:root[data-theme="light"] .welcome-hero h1,
+:root[data-theme="light"] .page-intro h1,
+:root[data-theme="light"] .asset-preview h2,
+:root[data-theme="light"] .section-heading h2,
+:root[data-theme="light"] .dropdown-heading b {
+  color: #1c3024;
+}
+:root[data-theme="light"] .welcome-hero p,
+:root[data-theme="light"] .page-intro p,
+:root[data-theme="light"] .section-heading p,
+:root[data-theme="light"] .overview-status-card small,
+:root[data-theme="light"] .asset-preview-rows small {
+  color: #64736a;
+}
+:root[data-theme="light"] .dropdown-item,
+:root[data-theme="light"] .network-choice-item,
+:root[data-theme="light"] .theme-choice-item {
+  background: #f3f6f2;
+  border-color: #dbe3da;
+  color: #48594e;
+}
+:root[data-theme="light"] .dropdown-item:hover,
+:root[data-theme="light"] .dropdown-item.active,
+:root[data-theme="light"] .network-choice-item.selected,
+:root[data-theme="light"] .theme-choice-item.selected {
+  background: #e3ebe1;
+  border-color: #b9cbb8;
+  color: #1c3c2a;
+}
+
+/* The header action is an accessible icon-only overflow control. */
+.menu-trigger {
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 12px;
+}
+.menu-trigger svg:last-child {
+  margin-left: 0;
+  transition: none;
+}
+.menu-trigger-open svg:last-child { transform: none; }
+
+/* Make supporting copy, labels and controls comfortable to read on phones. */
+.page-body p { font-size: 12px; line-height: 1.7; }
+.page-body small,
+.app-dropdown small,
+.page-body .classic-empty,
+.page-body .classic-disclaimer,
+.page-body .pusd-mainnet-form label small,
+.page-body .pusd-mainnet-build-status small,
+.app-footer {
+  font-size: 11px;
+  line-height: 1.6;
+}
+.page-body .page-intro p,
+.page-body .section-heading p,
+.page-body .modal-heading p,
+.page-body .classic-create-panel > p {
+  font-size: 12px;
+}
+.page-body .section-kicker,
+.page-body .status-label,
+.page-body .welcome-kicker,
+.app-dropdown .dropdown-label {
+  font-size: 10px;
+}
+.page-body .overview-status-card b,
+.page-body .asset-preview-rows b,
+.page-body .circle-panel h3,
+.page-body .classic-create-panel h3,
+.page-body .classic-account-panel h3,
+.page-body .classic-active-circle h3 {
+  font-size: 13px;
+}
+.page-body .overview-status-card small,
+.page-body .asset-preview-rows small,
+.page-body .asset-preview > div:first-child p {
+  font-size: 11px;
+}
+.page-body .circle-panel label,
+.page-body .classic-create-panel label,
+.page-body .classic-restore-form label,
+.page-body .pusd-mainnet-form > label,
+.page-body .classic-deposit-field {
+  font-size: 12px;
+}
+.page-body input,
+.page-body textarea,
+.page-body select {
+  font-size: 13px;
+}
+.app-dropdown .dropdown-item { font-size: 13px; }
+.app-dropdown .network-choice-item { font-size: 12px; }
+
+/* Slightly deeper charcoal-green surfaces for the dark appearance. */
+:root[data-theme="dark"] {
+  background: #0d1310;
+  color: #e7eee8;
+}
+:root[data-theme="dark"] body,
+:root[data-theme="dark"] .compact-app { background: #0d1310; color: #e7eee8; }
+:root[data-theme="dark"] .app-header { background: rgba(17,26,20,.97); border-color: #2d3b31; }
+:root[data-theme="dark"] .app-dropdown,
+:root[data-theme="dark"] .overview-status-card,
+:root[data-theme="dark"] .asset-preview,
+:root[data-theme="dark"] .asset-detail-card,
+:root[data-theme="dark"] .circle-workspace,
+:root[data-theme="dark"] .classic-workspace,
+:root[data-theme="dark"] .circle-panel,
+:root[data-theme="dark"] .classic-create-panel,
+:root[data-theme="dark"] .classic-account-panel,
+:root[data-theme="dark"] .classic-active-circle,
+:root[data-theme="dark"] .wallet-modal,
+:root[data-theme="dark"] .section-card,
+:root[data-theme="dark"] .metric-card,
+:root[data-theme="dark"] .draft-card {
+  background: #17211a;
+  border-color: #344238;
+  color: #e3ece5;
+}
+:root[data-theme="dark"] .welcome-hero {
+  background: linear-gradient(115deg,#18251d 0%,#202f25 100%);
+  border-color: #3a4a3e;
+}
+:root[data-theme="dark"] .menu-trigger {
+  background: #1a281f;
+  border-color: #394b3d;
+  color: #e1ebe3;
+}
+:root[data-theme="dark"] .dropdown-item,
+:root[data-theme="dark"] .network-choice-item,
+:root[data-theme="dark"] .theme-choice-item {
+  background: #1b2920;
+  border-color: #37483c;
+  color: #c8d6cc;
+}
+:root[data-theme="dark"] .dropdown-item:hover,
+:root[data-theme="dark"] .dropdown-item.active,
+:root[data-theme="dark"] .network-choice-item.selected,
+:root[data-theme="dark"] .theme-choice-item.selected {
+  background: #2a3d30;
+  border-color: #58725e;
+  color: #edf5ef;
+}
+@media (max-width: 600px) {
+  .menu-trigger { width: 42px; min-width: 42px; }
+  .page-body p,
+  .page-body small,
+  .app-dropdown small { font-size: 11px; }
+  .page-body .page-intro p,
+  .page-body .section-heading p { font-size: 12px; }
+}
