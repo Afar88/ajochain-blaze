@@ -14,6 +14,12 @@ import artifactJson from "../../contracts/AjoCircle.json" with { type: "json" };
 import { MainnetQuorumNetworkProvider } from "./mainnet-quorum-provider";
 import { MAX_CIRCLE_MEMBERS, MIN_CIRCLE_MEMBERS } from "./member-ledger";
 import { selectCashTokensGenesisUtxo } from "./cash-token-genesis";
+import {
+  CHIPNET_ELECTRUM_ENDPOINTS,
+  CHIPNET_ELECTRUM_PROTOCOL_VERSION,
+  CHIPNET_ELECTRUM_SOCKET_OPTIONS,
+  CHIPNET_ELECTRUM_TIMEOUT_MS,
+} from "./chipnet-electrum-config";
 
 export type ClassicNetwork = "mainnet" | "chipnet";
 export const CLASSIC_MIN_MEMBERS = MIN_CIRCLE_MEMBERS;
@@ -48,13 +54,7 @@ export interface ClassicCircleStatus {
 
 const artifact = artifactJson as unknown as Artifact;
 const servers: Record<ClassicNetwork, Array<[string, number]>> = {
-  chipnet: [
-    // Browser probe (2026-11-17): OPTN Labs completed Electrum RPC reliably.
-    ["electrum-chipnet.optnlabs.com", 443],
-    // Confirmed Chipnet RPC fallbacks from the same browser probe.
-    ["chipnet.bch.ninja", 50004],
-    ["cbch.loping.net", 62104],
-  ],
+  chipnet: CHIPNET_ELECTRUM_ENDPOINTS.map(([host, port]) => [host, port]),
   mainnet: [
     ["bch.imaginary.cash", 50004],
     ["electroncash.dk", 50004],
@@ -63,10 +63,17 @@ const servers: Record<ClassicNetwork, Array<[string, number]>> = {
 const providers: Partial<Record<ClassicNetwork, Promise<NetworkProvider>>> = {};
 
 function makeProvider(network: ClassicNetwork, host: string, port: number) {
+  // CashScript 0.14 requires Electrum protocol 1.5.0 (including headers.get_tip
+  // and token-aware listunspent). In browsers, keep the socket alive while the
+  // wallet opens in another tab and the AjoChain page is temporarily hidden.
+  const socket = new ElectrumWebSocket(host, {
+    ...CHIPNET_ELECTRUM_SOCKET_OPTIONS,
+    port,
+  } as never);
   const client = new ElectrumClient(
     "AjoChain Blaze",
-    "1.0.0",
-    new ElectrumWebSocket(host, { port, encrypted: true, timeout: 8_000 } as never),
+    CHIPNET_ELECTRUM_PROTOCOL_VERSION,
+    socket,
   );
   return new ElectrumNetworkProvider(network, { electrum: client } as never);
 }
@@ -102,7 +109,10 @@ export function getClassicProvider(network: ClassicNetwork): Promise<NetworkProv
         await Promise.race([
           provider.getBlockHeight(),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(host + " timed out")), 9_000),
+            setTimeout(
+              () => reject(new Error(host + ":" + port + " did not complete an Electrum 1.5.0 handshake within " + CHIPNET_ELECTRUM_TIMEOUT_MS + " ms")),
+              CHIPNET_ELECTRUM_TIMEOUT_MS,
+            ),
           ),
         ]);
         return provider;
