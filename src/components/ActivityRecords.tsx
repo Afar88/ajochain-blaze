@@ -40,7 +40,7 @@ function readStoredV2Circles(): CircleRef[] {
   try {
     const raw: unknown = JSON.parse(window.localStorage.getItem(V2_STORAGE_KEY) || "[]");
     if (!Array.isArray(raw)) return [];
-    return raw.flatMap((item, index) => {
+    return raw.flatMap((item) => {
       if (!item || typeof item !== "object" || typeof item.encoded !== "string") return [];
       try {
         const params = decodeV2FeeCircle(item.encoded);
