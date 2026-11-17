@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assertP2pkhWalletInputCoverage,
+  assertRequiredContractWalletSighash,
   assertRequiredWalletSighash,
   readPushOnlyUnlockingScript,
 } from "./wizard-wallet";
@@ -61,5 +62,44 @@ describe("WizardConnect signed input inspection", () => {
   it("rejects malformed push lengths and unexpected push counts", () => {
     expect(() => readPushOnlyUnlockingScript(Uint8Array.from([0x4c]))).toThrow(/PUSHDATA1/);
     expect(() => assertRequiredWalletSighash(push(signature))).toThrow(/exactly a signature and public-key/);
+  });
+});
+
+
+describe("WizardConnect covenant-input sighash inspection", () => {
+  const publicKey = new Uint8Array(33).fill(2);
+  const redeemScript = Uint8Array.from([0x51]);
+
+  function derSignature(sighash: number): Uint8Array {
+    // Minimal structurally valid DER ECDSA shape, plus the BCH sighash byte.
+    return Uint8Array.from([0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x01, sighash]);
+  }
+
+  function covenantUnlockingScript(signature: Uint8Array): Uint8Array {
+    return Uint8Array.from([
+      ...push(publicKey),
+      ...push(signature),
+      ...push(redeemScript),
+    ]);
+  }
+
+  it("accepts a contract signature using WizardConnect's required 0x61 flag", () => {
+    expect(() => assertRequiredContractWalletSighash(covenantUnlockingScript(derSignature(0x61))))
+      .not.toThrow();
+  });
+
+  it("rejects a contract signature that omits SIGHASH_UTXOS", () => {
+    expect(() => assertRequiredContractWalletSighash(covenantUnlockingScript(derSignature(0x41))))
+      .toThrow(/0x61/);
+  });
+
+  it("does not mistake bytes inside the redeem-script push for a signature argument", () => {
+    const redeemScriptWithDerLikeBytes = derSignature(0x41);
+    const unlocking = Uint8Array.from([
+      ...push(publicKey),
+      ...push(redeemScriptWithDerLikeBytes),
+    ]);
+    expect(() => assertRequiredContractWalletSighash(unlocking))
+      .toThrow(/missing its transaction signature argument/);
   });
 });
