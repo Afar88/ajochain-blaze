@@ -48,7 +48,7 @@ These are evidence requirements, not checkboxes that a user can toggle. Evidence
 
 - **Wallet disconnect before signing:** discard the pending plan and require fresh session verification.
 - **Wallet disconnect after signing:** retain the raw signed transaction only for safe local inspection; do not broadcast automatically.
-- **Unknown broadcast result:** query the transaction/inputs before retrying to avoid duplicate spends.
+- **Unknown broadcast result:** the PUSD API submits the exact signed bytes to one relay endpoint only. If its response is ambiguous, it queries the transaction ID across the configured providers and accepts an exact raw-transaction match as `already-known`. If no provider can prove the exact transaction is known, the API returns an explicit `UNKNOWN` result and does not relay to another endpoint. The user/operator must reconcile that transaction ID and mempool state before any manual retry. A relay-accepted or already-known result is **not** a confirmation; confirmation tracking remains a separate release requirement.
 - **Chain reorganization:** mark affected activity as unconfirmed/reorged and rebuild the view from chain data.
 - **State mismatch or stale UTXO:** invalidate the plan and restart from circle-state reconciliation.
 - **Any verification exception:** fail closed, explain the failed check, and keep broadcast unavailable.
