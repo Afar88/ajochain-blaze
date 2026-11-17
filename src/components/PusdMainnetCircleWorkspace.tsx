@@ -21,12 +21,16 @@ function readDrafts(): Draft[] {
   try {
     const value: unknown = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "[]");
     if (!Array.isArray(value)) return [];
-    return value.filter((item: unknown): item is Draft =>
-      Boolean(item) && typeof item === "object" &&
-      typeof item.name === "string" && typeof item.contribution === "string" &&
-      Array.isArray(item.members) && item.members.every((member) => typeof member === "string") &&
-      typeof item.maxFeeSatoshis === "string" && Number.isSafeInteger(item.savedAt),
-    ).slice(0, 20);
+    return value.filter((item: unknown): item is Draft => {
+      if (!item || typeof item !== "object") return false;
+      const candidate = item as Record<string, unknown>;
+      return typeof candidate.name === "string" &&
+        typeof candidate.contribution === "string" &&
+        Array.isArray(candidate.members) &&
+        candidate.members.every((member: unknown) => typeof member === "string") &&
+        typeof candidate.maxFeeSatoshis === "string" &&
+        Number.isSafeInteger(candidate.savedAt);
+    }).slice(0, 20);
   } catch {
     return [];
   }
