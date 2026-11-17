@@ -169,6 +169,45 @@ export function assertRequiredWalletSighash(script: Uint8Array): void {
   }
 }
 
+/**
+ * Recognize a canonical DER ECDSA signature argument including its trailing
+ * BCH sighash byte. Cryptographic validity remains the BCH 2026 VM's job.
+ */
+function isDerTransactionSignature(push: Uint8Array): boolean {
+  if (push.length < 9 || push.length > 73 || push[0] !== 0x30 ||
+      push[1] !== push.length - 3 || push[2] !== 0x02) return false;
+
+  const rLength = push[3];
+  if (rLength === 0 || rLength > 33) return false;
+  const sTagIndex = 4 + rLength;
+  if (sTagIndex + 2 >= push.length - 1 || push[sTagIndex] !== 0x02) return false;
+  const sLength = push[sTagIndex + 1];
+  if (sLength === 0 || sLength > 33 || 6 + rLength + sLength !== push.length - 1) return false;
+
+  const rFirst = push[4];
+  const sFirst = push[sTagIndex + 2];
+  if ((rFirst & 0x80) !== 0 || (sFirst & 0x80) !== 0) return false;
+  if (rLength > 1 && rFirst === 0 && (push[5] & 0x80) === 0) return false;
+  if (sLength > 1 && sFirst === 0 && (push[sTagIndex + 3] & 0x80) === 0) return false;
+  return true;
+}
+
+/**
+ * CashScript P2SH32 unlockers put ABI arguments before the final redeem-script
+ * push. Enforce the WizardConnect 0x61 policy on each DER signature argument.
+ */
+export function assertRequiredContractWalletSighash(script: Uint8Array): void {
+  const pushes = readPushOnlyUnlockingScript(script);
+  const argumentsOnly = pushes.slice(0, -1);
+  const signatures = argumentsOnly.filter(isDerTransactionSignature);
+  if (signatures.length === 0) {
+    throw new Error("Wallet-signed covenant input is missing its transaction signature argument.");
+  }
+  if (signatures.some((signature) => signature[signature.length - 1] !== 0x61)) {
+    throw new Error("Wallet covenant signature must use SIGHASH_ALL | SIGHASH_FORKID | SIGHASH_UTXOS (0x61).");
+  }
+}
+
 /** Ensure every P2PKH prevout is explicitly included in the wallet signing request. */
 export function assertP2pkhWalletInputCoverage(
   sourceOutputs: readonly { lockingBytecode: Uint8Array }[],
@@ -229,10 +268,14 @@ export function verifySignedTransaction(
     }
     seenWalletInputs.add(index);
     const sourceScript = binToHex(expectedSourceOutputs[index]?.lockingBytecode ?? new Uint8Array()).toLowerCase();
-    // P2PKH funding inputs must carry the WizardConnect 0x61 signature. Contract
-    // inputs can have custom unlocker arguments; their validity is checked by the BCH VM below.
+    // Check the wallet protocol's required sighash on both ordinary BCH
+    // funding inputs and CashScript P2SH32 inputs carrying wallet ABI signatures.
     if (/^76a914[0-9a-f]{40}88ac$/.test(sourceScript)) {
       assertRequiredWalletSighash(decoded.inputs[index].unlockingBytecode);
+    } else if (/^aa20[0-9a-f]{64}87$/.test(sourceScript)) {
+      assertRequiredContractWalletSighash(decoded.inputs[index].unlockingBytecode);
+    } else {
+      throw new Error("Cannot verify the required 0x61 sighash for this wallet-signed input script; refusing to broadcast.");
     }
   }
 
