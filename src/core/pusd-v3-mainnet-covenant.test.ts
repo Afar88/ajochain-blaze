@@ -148,6 +148,8 @@ async function payout(provider: MockNetworkProvider, contract: Contract, escrows
   const reserveAddress = pkhToAddress(initiator.pkh, "chipnet");
   const reserve = provider.addUtxo(reserveAddress, randomUtxo({ satoshis: 25_000n }));
   const reserveCredit = recipientIndex < members.length - 1 ? CONTRIBUTION : 0n;
+  const nextRound = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16) + 1;
+  const nextStateCommitment = "54" + nextRound.toString(16).padStart(2, "0") + "01";
   const circleUnlock = contract.unlock.payout();
   const builder = new TransactionBuilder({ provider })
     .addInput(state, circleUnlock)
@@ -158,7 +160,7 @@ async function payout(provider: MockNetworkProvider, contract: Contract, escrows
     .addInput(reserve, initiator.signature.unlockP2PKH())
     .addOutput({
       to: contract.tokenAddress, amount: state.satoshis,
-      token: { category: STATE, amount: 0n, nft: { capability: "minting", commitment: "540101" } },
+      token: { category: STATE, amount: 0n, nft: { capability: "minting", commitment: nextStateCommitment } },
     })
     .addOutput({
       to: contract.tokenAddress, amount: receipts[0].satoshis,
