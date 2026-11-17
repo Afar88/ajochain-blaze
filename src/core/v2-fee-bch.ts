@@ -104,11 +104,16 @@ export function validateV2FeeCircleDraft(draft: V2FeeCircleDraft): void {
  * Contract state/receipt inputs are unlocked by the covenant, not by the
  * connected wallet. Only the final initiator funding input is wallet-owned.
  */
-export function v2FeeCancelWalletInputIndex(memberCount: number): number {
+/**
+ * The V3 cancel branch checks the initiator signature on the state NFT and
+ * every member receipt, then the final BCH fee input also needs its P2PKH
+ * signature. All inputs therefore belong in the WizardConnect signing request.
+ */
+export function v2FeeCancelWalletInputIndexes(memberCount: number): number[] {
   if (!Number.isInteger(memberCount) || memberCount < 2 || memberCount > 5) {
     throw new Error("A V2 fee circle needs 2–5 members.");
   }
-  return memberCount + 1;
+  return Array.from({ length: memberCount + 2 }, (_, index) => index);
 }
 
 /** Validate the fee sponsor against the circle's actual network prefix. */
@@ -578,7 +583,7 @@ export async function planV2FeeCancel(params: V2FeeCircleParams, walletAddress: 
   receipts.forEach((receipt, i) => builder.addOutput({ to: params.members[i], amount: receipt.satoshis + credits[i] }));
   builder.addOutput({ to: walletAddress, amount: change });
   const wc = builder.generateWcTransactionObject({ broadcast: false, userPrompt: `Cancel V2 circle "${params.name}" and refund every member` });
-  return { wc, walletInputs: [v2FeeCancelWalletInputIndex(params.members.length)], minerFee, refunds: credits };
+  return { wc, walletInputs: v2FeeCancelWalletInputIndexes(params.members.length), minerFee, refunds: credits };
 }
 
 /** Read and validate the complete V2 fee state before showing balances or actions. */
