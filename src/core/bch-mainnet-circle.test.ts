@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { encodeCashAddress } from "@bitauth/libauth";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "./project-treasury";
 import { createBchMainnetCircleDraft } from "./bch-mainnet-circle";
-import { validateV2FeeCircleDraft } from "./v2-fee-bch";
+import { validateV2FeeCircleDraft, v2FeeCancelWalletInputIndex } from "./v2-fee-bch";
 
 function address(seed: number): string {
   const result = encodeCashAddress({
@@ -59,5 +59,11 @@ describe("BCH Mainnet V3 circle adapter", () => {
     const draft = createBchMainnetCircleDraft(base);
     expect(() => validateV2FeeCircleDraft({ ...draft, network: "chipnet" }))
       .toThrow(/Mainnet V3 covenant cannot be used on Chipnet/);
+  });
+
+  it("only requests a wallet signature for the initiator funding input on cancellation", () => {
+    expect(v2FeeCancelWalletInputIndex(2)).toBe(3);
+    expect(v2FeeCancelWalletInputIndex(5)).toBe(6);
+    expect(() => v2FeeCancelWalletInputIndex(1)).toThrow(/2–5 members/);
   });
 });
