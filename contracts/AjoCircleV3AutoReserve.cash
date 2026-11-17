@@ -117,6 +117,9 @@ contract AjoCircleV3AutoReserve(
         require(int(hasPaid) == 0 || int(hasPaid) == 1);
         int round = int(stateRound);
         require(round >= 0 && round < memberCount);
+        // Genesis alone is unpaid. Any later round proves a prior payout.
+        require((round == 0 && int(hasPaid) == 0) ||
+            (round > 0 && int(hasPaid) == 1));
         int recipientReserve = 0;
         // Withhold exactly one next contribution from each recipient's payout,
         // except the final recipient, whose cycle ends with this payout.
