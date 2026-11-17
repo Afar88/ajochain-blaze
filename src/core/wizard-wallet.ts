@@ -21,6 +21,16 @@ export function describeWizardWalletDisconnect(reason: unknown, message?: unknow
     (messageText ? "" : " Choose Retry saved session or Fresh pairing to reconnect.");
 }
 
+/** Explain the transport-level subscription closure while WizardConnect retries. */
+export function describeWizardRelayDisconnect(cause: unknown): string {
+  const detail = cause instanceof Error
+    ? cause.message.trim()
+    : cause === null || cause === undefined ? "" : String(cause).trim();
+  return "WizardConnect relay subscription closed" +
+    (detail ? ": " + detail : ".") +
+    ". Automatic reconnection is in progress.";
+}
+
 const PATHS_STORAGE_KEY = 'ajochain:wizardconnect-paths:v1';
 const RECEIVE_INDEX_STORAGE_KEY = 'ajochain:wizardconnect-receive-index:v1';
 const ADDRESS_STORAGE_KEY = 'ajochain:wizardconnect-addresses:v1';
@@ -407,6 +417,24 @@ class WizardWallet {
       }
       this.relay = relay;
       if (!existing) { this.uri = relay.uri; this.qrUri = relay.qrUri; }
+
+      // Keep transport-level subscription failures visible without stopping
+      // WizardConnect's own reconnect loop. A successful relay subscription
+      // clears this diagnostic; walletready still owns the connected state.
+      relay.client.on("disconnect", (cause) => {
+        if (!this.isCurrent(mgr, generation) || this.state === "disconnecting") return;
+        this.error = describeWizardRelayDisconnect(cause);
+        if (this.state === "connected") this.state = "reconnecting";
+        this.emit();
+      });
+      relay.client.on("connection", () => {
+        if (!this.isCurrent(mgr, generation)) return;
+        if (this.error?.startsWith("WizardConnect relay subscription closed")) {
+          this.error = null;
+          this.emit();
+        }
+      });
+
       mgr.attachRelay(relay);
       this.connectionWatchdog = setTimeout(() => {
         if (!this.isCurrent(mgr, generation) || this.state !== 'connecting') return;
