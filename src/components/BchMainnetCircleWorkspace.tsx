@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
 import { formatAssetAmount, parseAssetAmount } from "../core/assets";
+import { classicAddressToPkh } from "../core/classic-bch";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "../core/project-treasury";
 import {
   prepareBchMainnetCircleGenesisPreview,
@@ -9,6 +10,28 @@ import { wallet } from "../core/wizard-wallet";
 import type { NetworkId } from "../core/network-config";
 
 type Props = { network: NetworkId; walletConnected: boolean };
+
+type Draft = { name: string; contribution: string; members: string[]; maxFee: string; savedAt: number };
+const STORAGE_KEY = "ajochain-blaze:bch-mainnet-circle-drafts:v1";
+
+function readDrafts(): Draft[] {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item: unknown): item is Draft => {
+      if (!item || typeof item !== "object") return false;
+      const value = item as Record<string, unknown>;
+      return typeof value.name === "string" &&
+        typeof value.contribution === "string" &&
+        Array.isArray(value.members) &&
+        value.members.every((member: unknown) => typeof member === "string") &&
+        typeof value.maxFee === "string" &&
+        Number.isSafeInteger(value.savedAt);
+    }).slice(0, 20);
+  } catch {
+    return [];
+  }
+}
 
 function errorMessage(cause: unknown) {
   return cause instanceof Error ? cause.message : String(cause);
@@ -19,6 +42,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
   const [contribution, setContribution] = useState("0.002");
   const [membersText, setMembersText] = useState("");
   const [maxFee, setMaxFee] = useState("10000");
+  const [drafts, setDrafts] = useState<Draft[]>(readDrafts);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -53,6 +77,49 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
       return null;
     }
   }, [members.length, contribution]);
+
+  const saveDraft = () => {
+    setError("");
+    setNotice("");
+    setPreview(null);
+    try {
+      if (network !== "mainnet") throw new Error("BCH Mainnet drafts can only be saved while the app is set to Mainnet.");
+      if (!name.trim() || name.trim().length > 60) throw new Error("Enter a circle name between 1 and 60 characters.");
+      if (members.length < 2 || members.length > 5) throw new Error("Enter 2–5 unique BCH Mainnet member addresses.");
+      const keys = members.map((member) => Array.from(classicAddressToPkh(member, "mainnet")).join(","));
+      if (new Set(keys).size !== keys.length) throw new Error("Every member must have a unique Mainnet address.");
+      const units = parseAssetAmount("BCH", contribution);
+      if (!/^\\d+$/.test(maxFee.trim()) || BigInt(maxFee.trim()) < 7_000n) {
+        throw new Error("Maximum miner fee must be at least 7,000 whole satoshis for a two-member genesis estimate.");
+      }
+      const draft: Draft = {
+        name: name.trim(),
+        contribution: formatAssetAmount("BCH", units),
+        members,
+        maxFee: maxFee.trim(),
+        savedAt: Date.now(),
+      };
+      const next = [draft, ...drafts.filter((entry) =>
+        entry.name !== draft.name || entry.contribution !== draft.contribution ||
+        entry.members.join("|") !== draft.members.join("|"),
+      )].slice(0, 20);
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      setDrafts(next);
+      setNotice("BCH Mainnet draft saved on this browser only. It is not an on-chain circle.");
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  };
+
+  const restoreDraft = (draft: Draft) => {
+    setName(draft.name);
+    setContribution(draft.contribution);
+    setMembersText(draft.members.join("\\n"));
+    setMaxFee(draft.maxFee);
+    setPreview(null);
+    setError("");
+    setNotice("Local draft loaded. Confirm the member addresses and prepare a fresh Mainnet preview.");
+  };
 
   const prepare = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -157,9 +224,12 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
           </div>
         )}
 
+        <div className="pusd-mainnet-actions">
+          <button className="secondary-button" type="button" onClick={saveDraft} disabled={network !== "mainnet"}>Save local draft</button>
         <button className="primary-button" type="submit" disabled={busy || network !== "mainnet" || !walletConnected}>
           {busy ? "Preparing Mainnet preview…" : "Prepare on-chain creation preview"} <ArrowRight size={15} />
         </button>
+        </div>
       </form>
 
       {preview && (
@@ -175,6 +245,21 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
       )}
       {error && <p className="classic-error" role="alert">{error}</p>}
       {notice && <p className="classic-notice" role="status">{notice}</p>}
+
+      <div className="pusd-mainnet-saved">
+        <div className="section-heading"><div><span className="section-kicker">LOCAL DRAFTS</span><h3>Saved BCH Mainnet circles</h3></div><small>{drafts.length} saved</small></div>
+        {drafts.length === 0 ? <p className="classic-empty">No BCH Mainnet drafts saved on this browser.</p> : (
+          <div className="classic-saved-list">
+            {drafts.map((draft, index) => (
+              <button type="button" className="classic-saved-item" key={draft.savedAt + ":" + index} onClick={() => restoreDraft(draft)}>
+                <b>{draft.name}</b>
+                <span>{draft.contribution} BCH · {draft.members.length} members</span>
+                <small>Saved {new Date(draft.savedAt).toLocaleString()}</small>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="pusd-mainnet-build-status">
         <LockKeyhole size={16} />
