@@ -4,6 +4,7 @@ import {
   Menu, ShieldCheck, Users, Wallet, X,
 } from "lucide-react";
 import { getDefaultNetwork, NETWORKS, type NetworkId } from "./core/network-config";
+import { getDefaultCircleWorkspace, resolveCircleWorkspaceForNetwork, type CircleWorkspaceId } from "./core/circle-network-options";
 import { formatAssetAmount, parseAssetAmount, PUSD_ASSET } from "./core/assets";
 import type { PusdTransferPlan } from "./core/pusd-transaction-builder";
 import type { AuthenticatedPusdUtxo } from "./core/pusd-utxo";
@@ -44,7 +45,7 @@ const pageLabels: Record<Page, string> = {
 export default function App() {
   const [network, setNetwork] = useState<NetworkId>(() => getDefaultNetwork(import.meta.env.PROD));
   const [page, setPage] = useState<Page>("overview");
-  const [circleWorkspace, setCircleWorkspace] = useState<"bch-mainnet" | "pusd-mainnet" | "bch-fair-round" | "bch-classic">(() => getDefaultNetwork(import.meta.env.PROD) === "mainnet" ? "bch-mainnet" : "bch-fair-round");
+  const [circleWorkspace, setCircleWorkspace] = useState<CircleWorkspaceId>(() => getDefaultCircleWorkspace(getDefaultNetwork(import.meta.env.PROD)));
   const [menuOpen, setMenuOpen] = useState(false);
   const [walletClient, setWalletClient] = useState<WalletClient | null>(null);
   const [walletView, setWalletView] = useState<WalletView>({
@@ -241,10 +242,7 @@ export default function App() {
 
   const changeNetwork = (next: NetworkId) => {
     setNetwork(next);
-    setCircleWorkspace((current) => {
-      if (next === "mainnet") return current === "bch-mainnet" || current === "pusd-mainnet" ? current : "bch-mainnet";
-      return current === "bch-fair-round" || current === "bch-classic" ? current : "bch-fair-round";
-    });
+    setCircleWorkspace((current) => resolveCircleWorkspaceForNetwork(current, next));
     setMenuOpen(false);
     setAddressMatchMessage("");
   };
