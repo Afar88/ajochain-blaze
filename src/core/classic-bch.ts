@@ -12,10 +12,11 @@ import { ElectrumClient } from "@electrum-cash/network";
 import { ElectrumWebSocket } from "@electrum-cash/web-socket";
 import artifactJson from "../../contracts/AjoCircle.json" with { type: "json" };
 import { MainnetQuorumNetworkProvider } from "./mainnet-quorum-provider";
+import { MAX_CIRCLE_MEMBERS, MIN_CIRCLE_MEMBERS } from "./member-ledger";
 
 export type ClassicNetwork = "mainnet" | "chipnet";
-export const CLASSIC_MIN_MEMBERS = 2;
-export const CLASSIC_MAX_MEMBERS = 5;
+export const CLASSIC_MIN_MEMBERS = MIN_CIRCLE_MEMBERS;
+export const CLASSIC_MAX_MEMBERS = MAX_CIRCLE_MEMBERS;
 export const CLASSIC_STATE_DUST = 1_000n;
 export const CLASSIC_CHANGE_DUST = 546n;
 export const CLASSIC_DEFAULT_MAX_FEE = 10_000n;
