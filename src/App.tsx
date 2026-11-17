@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import {
   Activity, ArrowRight, Check, ChevronDown, Coins, Home,
-  Menu, Monitor, Moon, ShieldCheck, Sun, Users, Wallet, X,
+  Monitor, MoreVertical, Moon, ShieldCheck, Sun, Users, Wallet, X,
 } from "lucide-react";
 import { getDefaultNetwork, NETWORKS, type NetworkId } from "./core/network-config";
 import { getDefaultCircleWorkspace, resolveCircleWorkspaceForNetwork, type CircleWorkspaceId } from "./core/circle-network-options";
@@ -301,9 +301,7 @@ export default function App() {
             aria-controls="ajochain-dropdown"
             onClick={() => setMenuOpen((value) => !value)}
           >
-            {menuOpen ? <X size={19} /> : <Menu size={19} />}
-            <span>Menu</span>
-            <ChevronDown size={15} />
+            {menuOpen ? <X size={19} /> : <MoreVertical size={21} />}
           </button>
         </div>
         {menuOpen && (
