@@ -432,14 +432,18 @@ export async function planPusdMainnetDeposit(
 
   const balance = await fetchPusdWalletBalance(walletAddress);
   const tokenInput = balance.utxos
-    .filter((utxo) => utxo.token?.category === PUSD_ASSET.categoryId && utxo.token.amount === amount)
-    .sort((a, b) => (a.txid + ":" + a.vout).localeCompare(b.txid + ":" + b.vout))[0];
+    .filter((utxo) => utxo.token?.category === PUSD_ASSET.categoryId && utxo.token.amount >= amount)
+    .sort((a, b) => a.token!.amount === b.token!.amount
+      ? (a.txid + ":" + a.vout).localeCompare(b.txid + ":" + b.vout)
+      : a.token!.amount < b.token!.amount ? -1 : 1)[0];
   if (!tokenInput) {
     throw new Error("This covenant deposit needs one authenticated PUSD UTXO whose entire token amount exactly matches the deposit. Split or consolidate PUSD into an exact amount first.");
   }
   const provider = await getClassicProvider("mainnet");
   const bchUtxos = (await provider.getUtxos(walletAddress)).filter((utxo) => !utxo.token);
-  const reserve = selectSingleBchCoin(bchUtxos, params.maxFee + CHANGE_DUST);
+  const tokenChange = tokenInput.token!.amount - amount;
+  const tokenChangeCarrier = tokenChange > 0n ? TOKEN_OUTPUT_CARRIER : 0n;
+  const reserve = selectSingleBchCoin(bchUtxos, params.maxFee + CHANGE_DUST + tokenChangeCarrier);
   if (!reserve) throw new Error("No BCH-only input is available to sponsor the PUSD deposit miner fee.");
   const funding = tokenInput as unknown as SpendableUtxo;
   const { contract, escrows } = snapshot;
@@ -467,12 +471,17 @@ export async function planPusdMainnetDeposit(
       amount: escrow.satoshis + funding.satoshis,
       token: { category: PUSD_ASSET.categoryId, amount: oldCredit + amount },
     })
+    .addOutput(...(tokenChange > 0n ? [{
+      to: walletAddress,
+      amount: TOKEN_OUTPUT_CARRIER,
+      token: { category: PUSD_ASSET.categoryId, amount: tokenChange },
+    }] : []))
     .addOutput({ to: walletAddress, amount: change });
 
   const estimateBuilder = makeBuilder(CHANGE_DUST);
   const { fee, size } = await estimateFee(estimateBuilder, params.maxFee);
-  const feeChange = reserve.satoshis - fee;
-  if (feeChange < CHANGE_DUST) throw new Error("BCH fee reserve cannot cover the quoted deposit fee and change.");
+  const feeChange = reserve.satoshis - tokenChangeCarrier - fee;
+  if (feeChange < CHANGE_DUST) throw new Error("BCH fee reserve cannot cover the token-change carrier, quoted miner fee and change.");
   const builder = makeBuilder(feeChange);
   const wc = builder.generateWcTransactionObject({
     broadcast: false,
