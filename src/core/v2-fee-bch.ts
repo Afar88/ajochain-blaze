@@ -71,8 +71,8 @@ export function decodeV2FeeCircle(encoded: string): V2FeeCircleParams {
       typeof value.name !== "string" ||
       (value.network !== "chipnet" && value.network !== "mainnet") ||
       !Array.isArray(value.members) || !value.members.every((member) => typeof member === "string") ||
-      typeof value.contribution !== "string" || !/^\\d+$/.test(value.contribution) ||
-      typeof value.maxFee !== "string" || !/^\\d+$/.test(value.maxFee) ||
+      typeof value.contribution !== "string" || !/^[0-9]+$/.test(value.contribution) ||
+      typeof value.maxFee !== "string" || !/^[0-9]+$/.test(value.maxFee) ||
       typeof value.stateCategory !== "string" || typeof value.initiator !== "string" ||
       typeof value.treasury !== "string") {
     throw new Error("This is not a valid AjoChain V2 fee-circle record.");
