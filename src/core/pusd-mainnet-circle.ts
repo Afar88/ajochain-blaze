@@ -194,6 +194,19 @@ function selectBchInputs(
   return { selected, total };
 }
 
+function selectSingleBchCoin(
+  utxos: readonly SpendableUtxo[],
+  requiredSatoshis: bigint,
+): SpendableUtxo {
+  const coin = [...utxos]
+    .filter((utxo) => !utxo.token && utxo.satoshis >= requiredSatoshis)
+    .sort((a, b) => a.satoshis === b.satoshis ? 0 : a.satoshis > b.satoshis ? -1 : 1)[0];
+  if (!coin) {
+    throw new Error("No single BCH-only UTXO can cover this action's miner-fee reserve and dust-safe change.");
+  }
+  return coin;
+}
+
 function transactionSizeBytes(builder: TransactionBuilder): number {
   const built = builder.build();
   if (typeof built !== "string" || !/^(?:[0-9a-f]{2})+$/i.test(built)) {
@@ -426,7 +439,7 @@ export async function planPusdMainnetDeposit(
   }
   const provider = await getClassicProvider("mainnet");
   const bchUtxos = (await provider.getUtxos(walletAddress)).filter((utxo) => !utxo.token);
-  const reserve = selectBchInputs(bchUtxos, params.maxFee + CHANGE_DUST)[0];
+  const reserve = selectSingleBchCoin(bchUtxos, params.maxFee + CHANGE_DUST);
   if (!reserve) throw new Error("No BCH-only input is available to sponsor the PUSD deposit miner fee.");
   const funding = tokenInput as unknown as SpendableUtxo;
   const { contract, escrows } = snapshot;
@@ -495,8 +508,7 @@ export async function planPusdMainnetPayout(
   const payoutAmount = economics.grossPot - economics.projectFee - reserve;
   const provider = await getClassicProvider("mainnet");
   const bchUtxos = (await provider.getUtxos(initiatorAddress)).filter((utxo) => !utxo.token);
-  const funding = selectBchInputs(bchUtxos, 2n * TOKEN_OUTPUT_CARRIER + params.maxFee + CHANGE_DUST);
-  const feeInput = funding.selected[0];
+  const feeInput = selectSingleBchCoin(bchUtxos, 2n * TOKEN_OUTPUT_CARRIER + params.maxFee + CHANGE_DUST);
   const count = params.members.length;
   const makeBuilder = (feeChange: bigint) => {
     const unlock = snapshot.contract.unlock.payout();
@@ -576,8 +588,7 @@ export async function planPusdMainnetCancel(
   }
   const provider = await getClassicProvider("mainnet");
   const bchUtxos = (await provider.getUtxos(initiatorAddress)).filter((utxo) => !utxo.token);
-  const feeInput = selectBchInputs(bchUtxos, params.maxFee + CHANGE_DUST)[0];
-  if (!feeInput) throw new Error("No BCH-only input is available to sponsor cancellation.");
+  const feeInput = selectSingleBchCoin(bchUtxos, params.maxFee + CHANGE_DUST);
 
   const count = params.members.length;
   const makeBuilder = (feeChange: bigint) => {
