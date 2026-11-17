@@ -348,13 +348,14 @@ describe("AjoChain V3 automatic future-contribution reserve covenant", () => {
         });
       }
       builder.addOutput({ to: pkhToAddress(fiveTreasury.pkh, "chipnet"), amount: projectFee });
+      const recipientPayout = pot - projectFee - reserve;
       builder.addOutput({
         to: pkhToAddress(five[round].pkh, "chipnet"),
-        amount: pot - projectFee - reserve,
+        amount: recipientPayout,
       });
       builder.addOutput({ to: feeAddress, amount: feeFunding.satoshis - 15_000n });
       await builder.send();
-      return { reserve, pot, projectFee };
+      return { reserve, pot, projectFee, recipientPayout };
     };
 
     // All five members fund round one. Member one receives one next installment,
@@ -382,7 +383,41 @@ describe("AjoChain V3 automatic future-contribution reserve covenant", () => {
     // contributing completely, the next scheduled payout is blocked.
     for (let index = 2; index < five.length; index++) await depositFive(index);
     await expect(payoutFive()).rejects.toThrow();
-  }, 90000);
+
+    // The circle can continue when member one funds their next direct installment.
+    await depositFive(0);
+    const third = await payoutFive();
+    expect(third.reserve).toBe(CONTRIBUTION);
+    expect(third.recipientPayout).toBe(third.pot - third.projectFee - CONTRIBUTION);
+    circle = await readFive();
+    expect(circle.state.satoshis).toBe(DUST + CONTRIBUTION);
+    expect(circle.state.token!.nft!.commitment).toBe("540301");
+    expect(v2FeeCreditFromCommitment(circle.receipts[2].token!.nft!.commitment)).toBe(CONTRIBUTION);
+
+    // Member two's reserve funds this round; all other members contribute again.
+    for (const index of [0, 1, 3, 4]) await depositFive(index);
+    const fourth = await payoutFive();
+    expect(fourth.reserve).toBe(CONTRIBUTION);
+    expect(fourth.recipientPayout).toBe(fourth.pot - fourth.projectFee - CONTRIBUTION);
+    circle = await readFive();
+    expect(circle.state.satoshis).toBe(DUST + CONTRIBUTION);
+    expect(circle.state.token!.nft!.commitment).toBe("540401");
+    expect(v2FeeCreditFromCommitment(circle.receipts[3].token!.nft!.commitment)).toBe(CONTRIBUTION);
+
+    // The fifth and final recipient has no next round, so no reserve is withheld.
+    for (const index of [0, 1, 2, 4]) await depositFive(index);
+    const fifth = await payoutFive();
+    expect(fifth.reserve).toBe(0n);
+    expect(fifth.recipientPayout).toBe(fifth.pot - fifth.projectFee);
+    circle = await readFive();
+    expect(circle.state.satoshis).toBe(DUST);
+    expect(circle.state.token!.nft!.commitment).toBe("540501");
+    expect(circle.receipts.every((receipt) =>
+      v2FeeCreditFromCommitment(receipt.token!.nft!.commitment) === 0n,
+    )).toBe(true);
+    await expect(payoutFive()).rejects.toThrow();
+    await expect(depositFive(0)).rejects.toThrow();
+  }, 150000);
 
   it("reserves exactly one next contribution for the first recipient in a five-member circle", () => {
     const params = {
