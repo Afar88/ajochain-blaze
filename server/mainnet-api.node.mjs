@@ -16,6 +16,9 @@ import {
   BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT,
   assertBchMainnetChainIdentity,
   broadcastPusdTransactionOnce,
+  computeElectrumMerkleRoot,
+  getVerifiedTransactionStatus,
+  verifyElectrumMerkleProof,
   mainnetApiErrorStatus,
   lockingBytecodeToScriptHash,
   normalizeElectrumUnspent,
@@ -301,6 +304,26 @@ test("PUSD broadcaster rejects a transaction ID that does not match the signed b
 });
 
 
+test("transaction-status endpoint rejects malformed txids before opening Electrum sessions", async () => {
+  const server = createMainnetApiServer();
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const response = await fetch(
+      "http://127.0.0.1:" + address.port + "/api/transaction/status?txid=not-a-txid",
+    );
+    assert.equal(response.status, 400);
+    const payload = await response.json();
+    assert.match(payload.error, /exactly 64 hexadecimal characters/);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("ambiguous PUSD relay outcomes are exposed as retry-blocked service errors", () => {
   assert.equal(
     mainnetApiErrorStatus("PUSD broadcast result is UNKNOWN for " + "ab".repeat(32) + ". It was not retried."),
@@ -309,4 +332,157 @@ test("ambiguous PUSD relay outcomes are exposed as retry-blocked service errors"
   assert.equal(mainnetApiErrorStatus("Rate limit exceeded; retry in one minute."), 429);
   assert.equal(mainnetApiErrorStatus("Request body exceeds the permitted size."), 413);
   assert.equal(mainnetApiErrorStatus("Invalid PUSD amount."), 400);
+});
+
+
+function headerWithMerkleRoot(rootHex) {
+  const header = Buffer.alloc(80);
+  header.writeUInt32LE(1, 0);
+  Buffer.from(rootHex, "hex").reverse().copy(header, 36);
+  header.writeUInt32LE(1_800_000_000, 68);
+  return header.toString("hex");
+}
+
+function makeStatusSession({ raw, proof, header, proofError, transactionError } = {}) {
+  return {
+    call: async (method) => {
+      if (method === "blockchain.transaction.get") {
+        if (transactionError) throw new Error(transactionError);
+        return raw;
+      }
+      if (method === "blockchain.transaction.get_merkle") {
+        if (proofError) throw new Error(proofError);
+        return proof;
+      }
+      if (method === "blockchain.block.header") return header;
+      throw new Error("Unexpected Electrum method: " + method);
+    },
+  };
+}
+
+test("Electrum merkle proof verifies the leaf hash against the serialized block-header root", () => {
+  const raw = sampleRawTransactionHex();
+  const txid = transactionIdFromHex(raw);
+  const proof = { block_height: 900_000, merkle: [], pos: 0 };
+  const header = headerWithMerkleRoot(txid);
+
+  assert.equal(computeElectrumMerkleRoot(txid, [], 0), txid);
+  assert.equal(verifyElectrumMerkleProof(txid, proof, header), true);
+  assert.equal(verifyElectrumMerkleProof(txid, proof, headerWithMerkleRoot("ab".repeat(32))), false);
+});
+
+test("Electrum merkle proof respects sibling order and position bits", () => {
+  const raw = sampleRawTransactionHex();
+  const txid = transactionIdFromHex(raw);
+  const sibling = "42".repeat(32);
+  const left = Buffer.from(sibling, "hex").reverse();
+  const right = Buffer.from(txid, "hex").reverse();
+  const first = createHash("sha256").update(Buffer.concat([left, right])).digest();
+  const second = createHash("sha256").update(first).digest();
+  const root = Buffer.from(second).reverse().toString("hex");
+
+  assert.equal(computeElectrumMerkleRoot(txid, [sibling], 1), root);
+  assert.throws(() => computeElectrumMerkleRoot(txid, [], 1), /position exceeds/);
+  assert.throws(() => computeElectrumMerkleRoot(txid, ["bad"], 0), /malformed sibling/);
+});
+
+test("transaction status requires identical provider transactions and merkle proofs before reporting confirmed", async () => {
+  const raw = sampleRawTransactionHex();
+  const txid = transactionIdFromHex(raw);
+  const blockHeight = 899_998;
+  const proof = { block_height: blockHeight, merkle: [], pos: 0 };
+  const header = headerWithMerkleRoot(txid);
+  const tip = { height: 900_000, hash: "55".repeat(32) };
+  const sessions = [
+    makeStatusSession({ raw, proof, header }),
+    makeStatusSession({ raw, proof, header }),
+  ];
+
+  const result = await getVerifiedTransactionStatus(sessions, tip, txid);
+  assert.equal(result.status, "confirmed");
+  assert.equal(result.confirmations, 3);
+  assert.equal(result.blockHeight, blockHeight);
+  assert.equal(result.blockHash, hashBlockHeader(header));
+  assert.equal(result.verification, "electrum-quorum-merkle-inclusion");
+  assert.match(result.verificationLimit, /not local SPV or chainwork/);
+});
+
+test("transaction status is pending only when all providers know identical raw bytes but return ordinary no-proof responses", async () => {
+  const raw = sampleRawTransactionHex();
+  const txid = transactionIdFromHex(raw);
+  const tip = { height: 900_000, hash: "55".repeat(32) };
+  const sessions = [
+    makeStatusSession({ raw, proofError: "transaction not found in block at requested height" }),
+    makeStatusSession({ raw, proofError: "No information available about transaction merkle proof" }),
+  ];
+
+  const result = await getVerifiedTransactionStatus(sessions, tip, txid);
+  assert.equal(result.status, "pending");
+  assert.equal(result.confirmations, 0);
+  assert.match(result.reason, /not confirmation/);
+});
+
+test("transaction status treats unsupported merkle RPC errors as unknown, not pending", async () => {
+  const raw = sampleRawTransactionHex();
+  const txid = transactionIdFromHex(raw);
+  const tip = { height: 900_000, hash: "55".repeat(32) };
+  const sessions = [
+    makeStatusSession({ raw, proofError: "method not found" }),
+    makeStatusSession({ raw, proofError: "method not found" }),
+  ];
+
+  const result = await getVerifiedTransactionStatus(sessions, tip, txid);
+  assert.equal(result.status, "unknown");
+  assert.match(result.reason, /proof lookup failed for a reason other than an ordinary unconfirmed transaction/);
+});
+
+test("transaction status returns unknown when only one provider supplies a merkle proof", async () => {
+  const raw = sampleRawTransactionHex();
+  const txid = transactionIdFromHex(raw);
+  const tip = { height: 900_000, hash: "55".repeat(32) };
+  const proof = { block_height: 899_999, merkle: [], pos: 0 };
+  const header = headerWithMerkleRoot(txid);
+  const sessions = [
+    makeStatusSession({ raw, proof, header }),
+    makeStatusSession({ raw, proofError: "transaction not found in block" }),
+  ];
+
+  const result = await getVerifiedTransactionStatus(sessions, tip, txid);
+  assert.equal(result.status, "unknown");
+  assert.match(result.reason, /disagree about whether/);
+});
+
+test("transaction status downgrades from confirmed to pending when a later quorum no longer returns an inclusion proof", async () => {
+  const raw = sampleRawTransactionHex();
+  const txid = transactionIdFromHex(raw);
+  const tip = { height: 900_000, hash: "55".repeat(32) };
+  const proof = { block_height: 899_999, merkle: [], pos: 0 };
+  const header = headerWithMerkleRoot(txid);
+
+  const confirmed = await getVerifiedTransactionStatus([
+    makeStatusSession({ raw, proof, header }),
+    makeStatusSession({ raw, proof, header }),
+  ], tip, txid);
+  const afterReorgObservation = await getVerifiedTransactionStatus([
+    makeStatusSession({ raw, proofError: "transaction not found in block" }),
+    makeStatusSession({ raw, proofError: "transaction not found in block" }),
+  ], tip, txid);
+
+  assert.equal(confirmed.status, "confirmed");
+  assert.equal(afterReorgObservation.status, "pending");
+  assert.equal(afterReorgObservation.confirmations, 0);
+});
+
+test("transaction status stays unknown if a provider cannot return the exact raw transaction", async () => {
+  const raw = sampleRawTransactionHex();
+  const txid = transactionIdFromHex(raw);
+  const tip = { height: 900_000, hash: "55".repeat(32) };
+  const sessions = [
+    makeStatusSession({ raw, proofError: "transaction not found in block" }),
+    makeStatusSession({ transactionError: "Electrum request timed out: blockchain.transaction.get" }),
+  ];
+
+  const result = await getVerifiedTransactionStatus(sessions, tip, txid);
+  assert.equal(result.status, "unknown");
+  assert.match(result.reason, /Not every provider returned/);
 });

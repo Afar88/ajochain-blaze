@@ -10,6 +10,9 @@ This document is the release checklist referenced by `src/core/pusd-mainnet-guar
 
 - [ ] Confirm the ParyonUSD issuer and category ID through current issuer-controlled sources.
 - [ ] Verify decimals, supply/amount policy, NFT policy, allowed address types, and any issuer freeze/blacklist or recovery controls.
+
+The issuer-maintained [ParyonUSD withdrawal contract source](https://github.com/ParyonUSD/contracts/blob/67e4b16e77aa14616bf3d5a574a1abf278f03817/contracts/stabilitypool/poolContractFunctions/WithdrawFromPool.cash) describes rounding in units of 0.01 ParyonUSD; its [ParyonUSD AddLiquidity contract source](https://github.com/ParyonUSD/contracts/blob/67e4b16e77aa14616bf3d5a574a1abf278f03817/contracts/stabilitypool/poolContractFunctions/AddLiquidity.cash) encodes a 100.00 ParyonUSD minimum as `100_00`. This is strong evidence for a two-decimal base-unit convention, but the release gate remains open until the source/artifact is matched to the deployed contracts and the issuer-controlled token metadata/policy is checked against the exact category ID.
+
 - [ ] Record the exact token metadata snapshot and review date in the release evidence.
 
 ## UTXO discovery and authentication
@@ -29,6 +32,8 @@ This document is the release checklist referenced by `src/core/pusd-mainnet-guar
 - [ ] Decode the exact Selene-signed raw bytes; verify every outpoint, prevout, wallet script, value, token output, fee, VM result and requested recipient amount.
 - [ ] Re-query all prevouts after verification and immediately before a broadcast attempt.
 - [ ] Verify behavior for server disagreement, timeout, partial broadcast acceptance, unknown result, duplicate submissions, mempool conflicts and chain reorgs.
+
+A read-only `GET /api/transaction/status?txid=<64-hex-txid>` endpoint has been added. It requires matching raw transaction bytes from every configured provider and verifies an identical transaction merkle proof against the same block header from every provider before returning `confirmed`. It returns `pending` only when all providers know the same transaction but return ordinary no-proof responses; provider disagreement or lookup/proof errors return `unknown`. Subsequent reads may downgrade status after a reorganisation. This is provider-quorum merkle verification, not local SPV/chainwork validation, durable history, or full conflict/replacement tracking. Those remaining requirements stay open.
 
 ## Wallet and operational testing
 

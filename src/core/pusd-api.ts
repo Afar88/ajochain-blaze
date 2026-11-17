@@ -31,6 +31,8 @@ export interface PusdFeeQuote {
 
 export interface PusdBroadcastResult {
   txid: string;
+  relayStatus: "accepted" | "already-known";
+  confirmationStatus: "not-checked";
   feeSatoshis: bigint;
   inputPusdAmount: bigint;
   recipientPusdAmount: bigint;
@@ -38,6 +40,22 @@ export interface PusdBroadcastResult {
   network: "mainnet";
   tipHeight: number;
   broadcast: true;
+}
+
+export interface MainnetTransactionStatus {
+  network: "mainnet";
+  txid: string;
+  status: "confirmed" | "pending" | "unknown";
+  confirmations: number | null;
+  tipHeight: number | null;
+  tipHash: string | null;
+  providerConfidence: number;
+  blockHeight?: number;
+  blockHash?: string;
+  verification?: string;
+  verificationLimit?: string;
+  reason?: string;
+  retryPolicy: string;
 }
 
 interface RawPusdUtxo {
@@ -222,6 +240,57 @@ export async function fetchPusdWalletBalance(address: string): Promise<PusdWalle
   };
 }
 
+/**
+ * Query the current quorum view of a BCH Mainnet transaction. A later query
+ * may downgrade a previously confirmed result after a chain reorganisation.
+ */
+export async function fetchMainnetTransactionStatus(txid: string): Promise<MainnetTransactionStatus> {
+  const normalized = txid.trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(normalized)) {
+    throw new Error("Transaction ID must be exactly 64 hexadecimal characters.");
+  }
+  const result = await requestJson<MainnetTransactionStatus>(
+    "/api/transaction/status?" + new URLSearchParams({ txid: normalized }).toString(),
+  );
+  const validBase = Boolean(result) &&
+    result.network === "mainnet" &&
+    typeof result.txid === "string" &&
+    result.txid.toLowerCase() === normalized &&
+    ["confirmed", "pending", "unknown"].includes(result.status) &&
+    Number.isSafeInteger(result.providerConfidence) &&
+    result.providerConfidence >= 0 &&
+    typeof result.retryPolicy === "string" &&
+    (result.confirmations === null ||
+      (Number.isSafeInteger(result.confirmations) && result.confirmations >= 0));
+
+  if (!validBase) {
+    throw new Error("Mainnet transaction-status response failed validation.");
+  }
+
+  if (result.status === "confirmed") {
+    const blockHeight = result.blockHeight;
+    const tipHeight = result.tipHeight;
+    if (result.providerConfidence < 2 ||
+        typeof result.confirmations !== "number" || result.confirmations < 1 ||
+        typeof blockHeight !== "number" || !Number.isSafeInteger(blockHeight) || blockHeight < 1 ||
+        typeof result.blockHash !== "string" || !/^[0-9a-f]{64}$/i.test(result.blockHash) ||
+        typeof tipHeight !== "number" || !Number.isSafeInteger(tipHeight) || tipHeight < blockHeight ||
+        typeof result.tipHash !== "string" || !/^[0-9a-f]{64}$/i.test(result.tipHash)) {
+      throw new Error("Confirmed Mainnet transaction response failed confirmation-proof validation.");
+    }
+  } else if (result.status === "pending") {
+    if (result.providerConfidence < 2 || result.confirmations !== 0 ||
+        typeof result.tipHeight !== "number" || !Number.isSafeInteger(result.tipHeight) ||
+        result.tipHeight < 1 ||
+        typeof result.tipHash !== "string" || !/^[0-9a-f]{64}$/i.test(result.tipHash)) {
+      throw new Error("Pending Mainnet transaction response failed provider-quorum validation.");
+    }
+  } else if (result.confirmations !== null) {
+    throw new Error("Unknown Mainnet transaction response cannot claim a confirmation count.");
+  }
+  return result;
+}
+
 /** Get a fee quote that has been checked against the configured Electrum quorum. */
 export async function fetchPusdFeeQuote(): Promise<PusdFeeQuote> {
   const quote = await requestJson<{
@@ -302,6 +371,8 @@ export async function verifyAndBroadcastPusdTransfer(options: {
 
   const broadcast = await requestJson<{
     txid: string;
+    relayStatus: "accepted" | "already-known";
+    confirmationStatus: "not-checked";
     feeSatoshis: string;
     inputPusdAmount: string;
     recipientPusdAmount: string;
@@ -326,6 +397,8 @@ export async function verifyAndBroadcastPusdTransfer(options: {
   }
   return {
     txid: broadcast.txid,
+    relayStatus: broadcast.relayStatus,
+    confirmationStatus: broadcast.confirmationStatus,
     feeSatoshis: BigInt(broadcast.feeSatoshis),
     inputPusdAmount: BigInt(broadcast.inputPusdAmount),
     recipientPusdAmount: BigInt(broadcast.recipientPusdAmount),

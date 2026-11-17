@@ -393,6 +393,209 @@ export function assertPreviousTransactionsAgree(transactions) {
   return normalized[0];
 }
 
+
+/** Compute the Electrum transaction merkle root (txid and branch hashes are display-order hex). */
+export function computeElectrumMerkleRoot(txid, merkle, position) {
+  if (!/^[0-9a-f]{64}$/i.test(txid) ||
+      !Array.isArray(merkle) || merkle.length > 32 ||
+      !Number.isSafeInteger(position) || position < 0 || position > 0xffffffff) {
+    throw new Error("Electrum returned a malformed transaction merkle proof.");
+  }
+
+  let node = Buffer.from(txid, "hex").reverse();
+  let index = position;
+  for (const siblingHex of merkle) {
+    if (!/^[0-9a-f]{64}$/i.test(siblingHex)) {
+      throw new Error("Electrum merkle proof contains a malformed sibling hash.");
+    }
+    const sibling = Buffer.from(siblingHex, "hex").reverse();
+    const pair = (index & 1) === 1
+      ? Buffer.concat([sibling, node])
+      : Buffer.concat([node, sibling]);
+    node = doubleSha256(pair);
+    index = Math.floor(index / 2);
+  }
+  if (index !== 0) {
+    throw new Error("Electrum merkle proof position exceeds the supplied branch depth.");
+  }
+  return Buffer.from(node).reverse().toString("hex");
+}
+
+/** Verify a transaction merkle proof against the merkle root in an 80-byte BCH block header. */
+export function verifyElectrumMerkleProof(txid, proof, headerHex) {
+  if (!proof || !Number.isSafeInteger(proof.block_height) || proof.block_height < 1 ||
+      !Array.isArray(proof.merkle) ||
+      !Number.isSafeInteger(proof.pos) || proof.pos < 0 ||
+      !isHex(headerHex) || headerHex.length !== 160) {
+    return false;
+  }
+  let root;
+  try {
+    root = computeElectrumMerkleRoot(txid, proof.merkle, proof.pos);
+  } catch {
+    return false;
+  }
+  const headerRoot = Buffer.from(headerHex, "hex").subarray(36, 68).reverse().toString("hex");
+  return root === headerRoot;
+}
+
+function normalizeElectrumMerkleProof(value) {
+  if (!value || typeof value !== "object" ||
+      !Number.isSafeInteger(value.block_height) || value.block_height < 1 ||
+      !Array.isArray(value.merkle) ||
+      !Number.isSafeInteger(value.pos) || value.pos < 0 ||
+      value.merkle.length > 32 ||
+      value.merkle.some((item) => !/^[0-9a-f]{64}$/i.test(item))) {
+    throw new Error("Electrum returned a malformed confirmed-transaction merkle proof.");
+  }
+  return {
+    block_height: value.block_height,
+    merkle: value.merkle.map((item) => item.toLowerCase()),
+    pos: value.pos,
+  };
+}
+
+function isElectrumUnconfirmedError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  // Keep this allow-list narrow: "method not found", provider outages, and
+  // arbitrary RPC failures must never be misreported as an ordinary pending tx.
+  return /no information available about transaction|transaction not found in block|transaction (?:is )?not confirmed(?: in a block)?|no (?:confirmed )?merkle proof (?:available )?for (?:this )?transaction/i.test(message);
+}
+
+/**
+ * Read a transaction's status from every configured provider. "confirmed" is
+ * returned only when all providers supply identical raw bytes and identical
+ * merkle proofs, and the proof verifies against the same block header on every
+ * provider. This is an Electrum quorum check, not local SPV/chainwork validation.
+ *
+ * A previously-confirmed transaction may return pending/unknown after a reorg;
+ * callers must replace the old state with the latest result rather than pinning
+ * a historical confirmation.
+ */
+export async function getVerifiedTransactionStatus(sessions, tip, txid) {
+  const normalizedTxid = String(txid ?? "").toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(normalizedTxid)) {
+    throw new Error("Transaction ID must be exactly 32 bytes of hexadecimal.");
+  }
+  const unknown = (reason) => ({
+    network: "mainnet",
+    txid: normalizedTxid,
+    status: "unknown",
+    confirmations: null,
+    tipHeight: tip?.height ?? null,
+    tipHash: tip?.hash ?? null,
+    providerConfidence: 0,
+    reason,
+    retryPolicy: "Do not infer failure or retry a spend from an unknown lookup result.",
+  });
+  if (!Array.isArray(sessions) || sessions.length < 2) {
+    return unknown("At least two Electrum providers are required for transaction-status quorum.");
+  }
+  if (!tip || !Number.isSafeInteger(tip.height) || tip.height < 1 ||
+      typeof tip.hash !== "string" || !/^[0-9a-f]{64}$/i.test(tip.hash)) {
+    return unknown("A verified BCH Mainnet tip quorum is unavailable.");
+  }
+
+  const observations = await Promise.all(sessions.map(async (session) => {
+    try {
+      const response = await session.call("blockchain.transaction.get", [normalizedTxid]);
+      const hex = typeof response === "string" ? response : (response?.hex ?? response?.txHex);
+      if (!isHex(hex) || hashTransaction(hexToBin(hex)).toLowerCase() !== normalizedTxid) {
+        return { rawHex: null, proof: null, proofError: null, error: "Provider returned missing, malformed, or mismatched raw transaction bytes." };
+      }
+      let proof = null;
+      let proofError = null;
+      try {
+        proof = normalizeElectrumMerkleProof(
+          await session.call("blockchain.transaction.get_merkle", [normalizedTxid]),
+        );
+      } catch (error) {
+        proofError = error instanceof Error ? error.message : String(error);
+      }
+      return { rawHex: hex.toLowerCase(), proof, proofError, error: null };
+    } catch (error) {
+      return {
+        rawHex: null,
+        proof: null,
+        proofError: null,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }));
+
+  if (observations.some((item) => item.error || !item.rawHex)) {
+    return unknown("Not every provider returned the exact transaction bytes. This may be propagation delay, a conflict, a provider fault, or a reorganisation.");
+  }
+  try {
+    assertPreviousTransactionsAgree(observations.map((item) => ({ hex: item.rawHex })));
+  } catch {
+    return unknown("Electrum providers disagree on the raw transaction bytes.");
+  }
+
+  const proofCount = observations.filter((item) => item.proof !== null).length;
+  if (proofCount === 0) {
+    if (observations.some((item) => !isElectrumUnconfirmedError(item.proofError))) {
+      return unknown("The transaction is known by the providers, but confirmation-proof lookup failed for a reason other than an ordinary unconfirmed transaction.");
+    }
+    return {
+      network: "mainnet",
+      txid: normalizedTxid,
+      status: "pending",
+      confirmations: 0,
+      tipHeight: tip.height,
+      tipHash: tip.hash,
+      providerConfidence: sessions.length,
+      verification: "identical-raw-transaction-known-by-electrum-quorum",
+      reason: "All configured providers know the exact transaction, but none supplied a block-inclusion proof. This is not confirmation.",
+      retryPolicy: "Do not create or broadcast a replacement until inputs and mempool state have been reconciled.",
+    };
+  }
+  if (proofCount !== sessions.length) {
+    return unknown("Electrum providers disagree about whether the transaction has a confirmed block-inclusion proof.");
+  }
+
+  const proof = observations[0].proof;
+  const proofFingerprint = JSON.stringify(proof);
+  if (observations.some((item) => JSON.stringify(item.proof) !== proofFingerprint)) {
+    return unknown("Electrum providers disagree on the transaction's block height, position, or merkle branch.");
+  }
+  if (proof.block_height > tip.height) {
+    return unknown("Transaction proof refers to a block above the agreed Mainnet tip.");
+  }
+
+  let headers;
+  try {
+    headers = await Promise.all(sessions.map((session) =>
+      session.call("blockchain.block.header", [proof.block_height]),
+    ));
+  } catch {
+    return unknown("Could not retrieve the candidate confirmation block header from every provider.");
+  }
+  if (headers.some((header) => !isHex(header) || header.length !== 160) ||
+      headers.some((header) => header.toLowerCase() !== headers[0].toLowerCase())) {
+    return unknown("Electrum providers disagree on the block header containing the transaction.");
+  }
+  const blockHeader = headers[0].toLowerCase();
+  if (!verifyElectrumMerkleProof(normalizedTxid, proof, blockHeader)) {
+    return unknown("The transaction merkle proof does not match the agreed block header.");
+  }
+
+  return {
+    network: "mainnet",
+    txid: normalizedTxid,
+    status: "confirmed",
+    confirmations: tip.height - proof.block_height + 1,
+    blockHeight: proof.block_height,
+    blockHash: hashBlockHeader(blockHeader),
+    tipHeight: tip.height,
+    tipHash: tip.hash,
+    providerConfidence: sessions.length,
+    verification: "electrum-quorum-merkle-inclusion",
+    verificationLimit: "Providers agree on the block header and transaction inclusion proof; this is not local SPV or chainwork validation.",
+    retryPolicy: "Do not rebroadcast a confirmed transaction.",
+  };
+}
+
 async function fetchQuorumPreviousTransaction(sessions, txid) {
   const transactions = await Promise.all(
     sessions.map((session) => fetchPreviousTransaction(session, txid)),
@@ -902,6 +1105,18 @@ export function createMainnetApiServer() {
             tipHash: tip.hash,
             broadcastEnabled: MAINNET_BROADCAST_ENABLED,
           });
+        });
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/api/transaction/status") {
+        const txid = url.searchParams.get("txid") ?? "";
+        if (!/^[0-9a-f]{64}$/i.test(txid)) {
+          throw new Error("Supply a transaction ID containing exactly 64 hexadecimal characters.");
+        }
+        await withElectrumSessions(async (sessions) => {
+          const tip = await getTipQuorum(sessions);
+          const result = await getVerifiedTransactionStatus(sessions, tip, txid);
+          sendJson(response, 200, result);
         });
         return;
       }
