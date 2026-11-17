@@ -16,7 +16,7 @@ const STATE = "ab".repeat(32);
 const PUSD = PUSD_ASSET.categoryId;
 const DUST = 1_000n;
 const CONTRIBUTION = 100n;
-const MAX_FEE = 10_000n;
+const MAX_FEE = 30_000n;
 const treasuryPkh = getMainnetProjectTreasuryPkh();
 
 function key(n: number) {
@@ -129,7 +129,7 @@ async function deposit(
       to: escrows[index].tokenAddress, amount: escrowUtxos[index].satoshis + funding.satoshis,
       token: { category: PUSD, amount },
     })
-    .addOutput({ to: reserveAddress, amount: 15_000n });
+    .addOutput({ to: reserveAddress, amount: 10_000n });
   await builder.send();
 }
 
@@ -184,7 +184,7 @@ async function payout(provider: MockNetworkProvider, contract: Contract, escrows
       to: tokenAddress(members[recipientIndex].pkh), amount: DUST,
       token: { category: PUSD, amount: recipientPayout },
     })
-    .addOutput({ to: reserveAddress, amount: 15_000n });
+    .addOutput({ to: reserveAddress, amount: 10_000n });
 
   await builder.send();
 }
