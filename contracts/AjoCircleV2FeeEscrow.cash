@@ -63,6 +63,9 @@ contract AjoCircleV2FeeEscrow(
         require(stateRound.length == 1 && hasPaid.length == 1);
         require(int(stateRound) >= 0 && int(stateRound) < memberCount);
         require(int(hasPaid) == 0 || int(hasPaid) == 1);
+        // Genesis alone is unpaid. Any later round proves a prior payout.
+        require((int(stateRound) == 0 && int(hasPaid) == 0) ||
+            (int(stateRound) > 0 && int(hasPaid) == 1));
         require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
         require(tx.outputs[0].tokenCategory == stateCategory + 0x02);
         require(tx.outputs[0].tokenAmount == 0);
@@ -113,6 +116,9 @@ contract AjoCircleV2FeeEscrow(
         require(int(hasPaid) == 0 || int(hasPaid) == 1);
         int round = int(stateRound);
         require(round >= 0 && round < memberCount);
+        // Full-cycle escrow is also irreversible after the first payout.
+        require((round == 0 && int(hasPaid) == 0) ||
+            (round > 0 && int(hasPaid) == 1));
         int remainingRounds = memberCount - round;
         for (int i = 0; i < memberCount; i++) {
             int receiptInput = i + 1;
@@ -199,7 +205,7 @@ contract AjoCircleV2FeeEscrow(
         bytes stateRound, bytes hasPaid = stateData.split(1);
         require(statePrefix == 0x54);
         require(stateRound.length == 1 && hasPaid.length == 1);
-        require(int(stateRound) >= 0 && int(stateRound) < memberCount);
+        require(int(stateRound) == 0);
         require(hasPaid == 0x00);
 
         int totalCredits = 0;

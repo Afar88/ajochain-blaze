@@ -46,15 +46,20 @@ function receiptCommitment(index: number, amount: bigint) {
     amount.toString(16).padStart(16, '0').match(/../g)!.reverse().join('');
 }
 
-function addGenesis(provider: MockNetworkProvider, contract: Contract) {
+function addGenesis(
+  provider: MockNetworkProvider,
+  contract: Contract,
+  stateCommitment = '540000',
+  initialCredit = 0n,
+) {
   provider.addUtxo(contract.address, randomUtxo({
-    satoshis: DUST,
-    token: { category: CATEGORY, amount: 0n, nft: { capability: 'minting', commitment: '540000' } },
+    satoshis: DUST + BigInt(members.length) * initialCredit,
+    token: { category: CATEGORY, amount: 0n, nft: { capability: 'minting', commitment: stateCommitment } },
   }));
   for (let index = 0; index < members.length; index++) {
     provider.addUtxo(contract.address, randomUtxo({
       satoshis: DUST,
-      token: { category: CATEGORY, amount: 0n, nft: { capability: 'none', commitment: receiptCommitment(index, 0n) } },
+      token: { category: CATEGORY, amount: 0n, nft: { capability: 'none', commitment: receiptCommitment(index, initialCredit) } },
     }));
   }
 }
@@ -97,6 +102,30 @@ async function current(contract: Contract) {
   return { state, receipts };
 }
 
+async function cancelEscrow(
+  provider: MockNetworkProvider,
+  contract: Contract,
+) {
+  const { state, receipts } = await current(contract);
+  const feeAddress = pkhToAddress(initiator.pkh, 'chipnet');
+  const feeFunding = provider.addUtxo(feeAddress, randomUtxo({ satoshis: 20_000n }));
+  const unlocker = contract.unlock.cancel(initiator.publicKey, initiator.signature);
+  const builder = new TransactionBuilder({ provider })
+    .addInput(state, unlocker)
+    .addInputs(receipts, unlocker)
+    .addInput(feeFunding, initiator.signature.unlockP2PKH());
+  receipts.forEach((receipt, index) => {
+    const encodedCredit = receipt.token!.nft!.commitment.slice(4);
+    const credit = BigInt('0x' + encodedCredit.match(/../g)!.reverse().join(''));
+    builder.addOutput({
+      to: pkhToAddress(members[index].pkh, 'chipnet'),
+      amount: receipt.satoshis + credit,
+    });
+  });
+  builder.addOutput({ to: feeAddress, amount: 14_000n });
+  await builder.send();
+}
+
 async function payout(provider: MockNetworkProvider, contract: Contract) {
   const { state, receipts } = await current(contract);
   const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
@@ -131,6 +160,29 @@ async function payout(provider: MockNetworkProvider, contract: Contract) {
   builder.addOutput({ to: feeAddress, amount: feeFunding.satoshis - 8_000n });
   await builder.send();
 }
+
+describe('AjoChain full-cycle escrow state-marker enforcement', () => {
+  it('rejects deposits from a non-genesis round with an unpaid marker', async () => {
+    const provider = new MockNetworkProvider();
+    const contract = makeContract(provider);
+    addGenesis(provider, contract, '540100');
+    await expect(deposit(provider, contract, 0, CONTRIBUTION)).rejects.toThrow();
+  });
+
+  it('rejects payout from a non-genesis round with an unpaid marker', async () => {
+    const provider = new MockNetworkProvider();
+    const contract = makeContract(provider);
+    addGenesis(provider, contract, '540100', CONTRIBUTION);
+    await expect(payout(provider, contract)).rejects.toThrow();
+  });
+
+  it('rejects cancellation unless the escrow circle is still at genesis', async () => {
+    const provider = new MockNetworkProvider();
+    const contract = makeContract(provider);
+    addGenesis(provider, contract, '540100', CONTRIBUTION);
+    await expect(cancelEscrow(provider, contract)).rejects.toThrow();
+  });
+});
 
 describe('AjoChain full-cycle escrow covenant', () => {
   it('blocks the first payout until every member has escrowed every scheduled round', async () => {
