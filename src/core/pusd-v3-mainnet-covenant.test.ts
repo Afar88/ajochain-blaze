@@ -244,6 +244,15 @@ describe("AjoChain PUSD V3 Mainnet covenant (mock-chain invariants)", () => {
     ]);
     expect(escrowUtxos[0].token?.amount).toBe(CONTRIBUTION);
     expect(escrowUtxos[1].token?.category).toBeUndefined();
+
+    const treasuryOutputs = await provider.getUtxos(tokenAddress(treasuryPkh));
+    expect(treasuryOutputs.some((utxo) =>
+      utxo.token?.category === PUSD && utxo.token.amount === 2n,
+    )).toBe(true);
+    const firstRecipientOutputs = await provider.getUtxos(tokenAddress(members[0].pkh));
+    expect(firstRecipientOutputs.some((utxo) =>
+      utxo.token?.category === PUSD && utxo.token.amount === 98n,
+    )).toBe(true);
   });
 
   it("pays no future reserve to the final recipient", async () => {
