@@ -322,8 +322,10 @@ export function inspectClassicCircle(
 }
 
 function feeFor(builder: TransactionBuilder, feeRateSatsPerByte = 1): bigint {
-  const encoded = builder.build();
-  const byteLength = encoded.length / 2;
+  // getTransactionSize() includes the eventual P2PKH placeholder signature sizes
+  // but skips balance/fee validation, so provisional builders can be measured
+  // while the planner is still selecting enough wallet inputs.
+  const byteLength = Number(builder.getTransactionSize());
   return BigInt(Math.ceil(byteLength * feeRateSatsPerByte)) + 20n;
 }
 
