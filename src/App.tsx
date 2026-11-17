@@ -222,10 +222,10 @@ export default function App() {
     setShowWallet(true);
     const start = (client: WalletClient) => {
       setWalletClient(client);
-      if (client.state === "disconnected") {
+      if (client.state === "disconnected" || client.state === "idle") {
+        // A fresh page starts idle even when an encrypted WizardConnect session
+        // exists. Try that saved session before creating a new pairing.
         if (!client.tryResume()) client.connect();
-      } else if (client.state === "idle") {
-        client.connect();
       }
     };
     if (walletClient) start(walletClient);
@@ -516,7 +516,10 @@ export default function App() {
         )}
       </div>
 
-      {walletView.error && <div className="global-wallet-error" role="alert"><ShieldCheck size={17} /><span>{walletView.error}</span><button onClick={() => walletClient?.startFreshPairing()}>Fresh pairing</button></div>}
+      {walletView.error && <div className="global-wallet-error" role="alert"><ShieldCheck size={17} /><span>{walletView.error}</span><div className="global-wallet-error-actions">
+        <button onClick={() => { if (walletClient && !walletClient.retrySavedSession()) walletClient.connect(); }}>Retry saved session</button>
+        <button onClick={() => walletClient?.startFreshPairing()}>Fresh pairing</button>
+      </div></div>}
 
       {showWallet && (
         <div className="modal-backdrop wallet-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowWallet(false); }}>
@@ -551,10 +554,11 @@ export default function App() {
                 <div className="wallet-modal-actions">
                   <button className="primary-button" onClick={() => {
                     if (!walletClient) { openWallet(); return; }
-                    if (walletClient.state === "disconnected") { if (!walletClient.tryResume()) walletClient.connect(); }
-                    else if (walletClient.state === "idle") walletClient.connect();
-                    else if (walletClient.state === "connecting" || walletClient.state === "reconnecting") walletClient.startFreshPairing();
-                  }}>{walletView.state === "reconnecting" ? "Start fresh pairing" : "Retry / connect Selene"}</button>
+                    if (!walletClient.retrySavedSession()) {
+                      if (walletClient.state === "idle" || walletClient.state === "disconnected") walletClient.connect();
+                    }
+                  }}>Retry saved session / connect</button>
+                  <button className="secondary-button" onClick={() => walletClient?.startFreshPairing()}>Start fresh pairing</button>
                   <button className="secondary-button" onClick={() => setShowWallet(false)}>Close</button>
                 </div>
               </div>
