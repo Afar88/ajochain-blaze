@@ -4,7 +4,7 @@
 import { initiateDappRelay, RelayMsgAction, type DappRelayResult } from '@wizardconnect/core';
 import { DappConnectionManager, loadSession } from '@wizardconnect/dapp';
 import { binToHex, createVirtualMachineBch2026, decodeTransactionBCH, encodeTransactionOutputs, hash160, hexToBin } from '@bitauth/libauth';
-import { sourceOutputToRelay } from '@wizardconnect/core/hdwalletv1-serialize';
+import { sourceOutputToRelay, transactionToHex } from '@wizardconnect/core/hdwalletv1-serialize';
 import { pkhToAddress, type Net } from './bch-address';
 
 export type WalletState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnecting' | 'disconnected';
@@ -96,27 +96,44 @@ export function buildWizardSignRequest(
     throw new Error('Wallet signing request contains duplicate input indexes.');
   }
 
+  // The relay is JSON-based: never pass native transaction objects containing
+  // BigInt or Uint8Array values. WizardConnect requires the transaction as raw
+  // BCH transaction hex and source outputs in its canonical relay-safe format.
+  const relayTransaction = transactionToHex(
+    transaction.inputs,
+    transaction.outputs,
+    transaction.version,
+    transaction.locktime,
+  );
   const relaySourceOutputs = transaction.inputs.map((input: unknown, index: number) =>
     sourceOutputToRelay({ ...(input as object), ...sourceOutputs[index] }),
   );
 
-  return {
+  const request = {
     action: RelayMsgAction.SignTransactionRequest,
     sequence,
     time: Math.floor(Date.now() / 1000),
     transaction: {
-      transaction: {
-        inputs: transaction.inputs,
-        outputs: transaction.outputs,
-        version: transaction.version,
-        locktime: transaction.locktime,
-      },
+      transaction: relayTransaction,
       sourceOutputs: relaySourceOutputs,
       broadcast: false,
       userPrompt: prompt,
     },
     inputPaths,
   };
+
+  // Fail locally with a useful error if a future change reintroduces native
+  // BigInt/byte arrays into the JSON relay payload. This runs before Selene is
+  // contacted, and intentionally does not weaken any amount or tx validation.
+  try {
+    JSON.stringify(request);
+  } catch (error) {
+    throw new Error(
+      "WizardConnect signing request is not JSON-serializable: " +
+      (error instanceof Error ? error.message : String(error)),
+    );
+  }
+  return request;
 }
 
 
