@@ -6,8 +6,9 @@ This integration ports the proven dapp-side wallet manager from the frozen AjoCh
 
 - WizardConnect relay initiation and DappConnectionManager session handling.
 - Resume using the saved encrypted WizardConnect session credentials.
-- Mobile recovery on `focus`, `online`, `pageshow` and visible `visibilitychange`.
-- A five-second resume throttle so several browser lifecycle events do not create parallel relays.
+- Mobile recovery on relay socket close, `focus`, `online` and `pageshow`.
+- Production builds disable WizardConnect's default hidden-tab teardown, so opening Selene does not proactively close the dapp's relay subscriptions; a real socket drop is handled by the relay's reconnect loop.
+- A five-second saved-session resume throttle so several browser lifecycle events do not create parallel relays.
 - Connection generation guards to ignore stale callbacks after a reconnect or deliberate disconnect.
 - Watchdog feedback when Selene does not respond to a saved-session attempt.
 - A deliberate fresh-pairing path that clears a stalled saved session.
@@ -30,7 +31,7 @@ Never store or request wallet seed phrases or private keys. The saved WizardConn
 
 1. Pair from AjoChain to Selene and approve.
 2. Confirm the displayed address matches Selene, including a non-zero receive index.
-3. Background AjoChain, return from Selene, and confirm the same session recovers without a new pairing.
+3. Background AjoChain, return from Selene, and confirm the same session recovers without a new pairing. The app should not deliberately close relay subscriptions just because Android hides the browser.
 4. Repeat with browser refresh, offline/online transition, and relay interruption.
 5. Verify several rapid focus/visibility events do not create duplicate connections.
 6. Deliberately disconnect and confirm the saved session is cleared.
