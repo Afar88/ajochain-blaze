@@ -58,12 +58,15 @@ jobs:
     steps:
       - name: Checkout BLAZE
         uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - name: Checkout pinned Libauth VMB fixtures
         uses: actions/checkout@v7.0.1
         with:
           repository: bitauth/libauth
           ref: d28da7f595cbd747c1e1125477db655f740f3dbc
           path: .ci/libauth
+          persist-credentials: false
           sparse-checkout: |
             src/lib/vmb-tests/generated/bch_2026_standard/chip.bitwise.vmb_tests.json
             src/lib/vmb-tests/generated/bch_2026_standard/chip.functions.vmb_tests.json
