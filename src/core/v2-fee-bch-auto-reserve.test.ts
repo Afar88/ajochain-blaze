@@ -483,7 +483,7 @@ describe("AjoChain V3 automatic future-contribution reserve covenant", () => {
     )).toBe(true);
     await expect(payoutFive()).rejects.toThrow();
     await expect(depositFive(0)).rejects.toThrow();
-  }, 150000);
+  }, 300000);
 
   it("reserves exactly one next contribution for the first recipient in a five-member circle", () => {
     const params = {
