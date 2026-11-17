@@ -88,7 +88,7 @@ function contractFor(p: V2FeeCircleParams, provider: NetworkProvider): Contract 
   validate(p);
   const pkhs = p.members.map(addressToPkh);
   while (pkhs.length < 5) pkhs.push(new Uint8Array(20));
-  const selectedArtifact = p.isFeeV1Covenant(covenant)
+  const selectedArtifact = p.covenant === 'fee-v1'
     ? legacyArtifact
     : p.covenant === 'fee-v2-escrow'
       ? legacyEscrowArtifact
@@ -190,11 +190,11 @@ export function summarizeV2FeeMemberAccounting(
   credits: readonly bigint[],
 ): V2FeeMemberAccounting[] {
   const memberCount = params.members.length;
-  const completed = params.!isFeeV1Covenant(covenant) && round === memberCount;
+  const completed = !isFeeV1Covenant(params.covenant) && round === memberCount;
   if (!Number.isSafeInteger(round) || round < 0 || round > memberCount || credits.length !== memberCount) {
     throw new Error('Member accounting snapshot does not match the on-chain circle state.');
   }
-  if (params.isFeeV1Covenant(covenant) && round === memberCount) {
+  if (isFeeV1Covenant(params.covenant) && round === memberCount) {
     throw new Error('Legacy rolling-credit state has an invalid round.');
   }
   const remainingRounds = completed ? 0 : memberCount - round;
@@ -204,7 +204,7 @@ export function summarizeV2FeeMemberAccounting(
   const projectFee = grossPot / 100n;
   return params.members.map((address, index) => {
     const currentCredit = credits[index];
-    const payoutReceived = params.!isFeeV1Covenant(covenant) ? index < round : null;
+    const payoutReceived = !isFeeV1Covenant(params.covenant) ? index < round : null;
     let requiredForNextPayout = completed ? 0n : params.contribution;
     if (isFeeV2EscrowCovenant(params.covenant)) {
       requiredForNextPayout = BigInt(remainingRounds) * params.contribution;
@@ -222,7 +222,7 @@ export function summarizeV2FeeMemberAccounting(
     }
     const hasConsumedAutomaticReserve = isFeeV3AutoReserveCovenant(params.covenant) &&
       index < memberCount - 1 && round > index + 1;
-    const totalPaidIn = params.isFeeV1Covenant(covenant)
+    const totalPaidIn = isFeeV1Covenant(params.covenant)
       ? null
       : isFeeV3AutoReserveCovenant(params.covenant)
         ? contributionAlreadyConsumed + currentCredit -
@@ -230,7 +230,7 @@ export function summarizeV2FeeMemberAccounting(
           (isCurrentReserveHolder ? params.contribution : 0n)
         : contributionAlreadyConsumed + currentCredit;
     const commitmentCovered = contributionAlreadyConsumed + currentCredit;
-    const remainingContributionCommitment = params.isFeeV1Covenant(covenant)
+    const remainingContributionCommitment = isFeeV1Covenant(params.covenant)
       ? null
       : (fullCycleContribution > commitmentCovered ? fullCycleContribution - commitmentCovered : 0n);
     const prepaidRounds = Number(currentCredit / params.contribution);
@@ -388,10 +388,10 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
     memberIndex,
     credited: amount,
     newCredit: oldCredit + amount,
-    shortfall: (params.!isFeeV1Covenant(covenant) ? maximumEscrow : params.contribution) > oldCredit
-      ? (params.!isFeeV1Covenant(covenant) ? maximumEscrow : params.contribution) - oldCredit
+    shortfall: (!isFeeV1Covenant(params.covenant) ? maximumEscrow : params.contribution) > oldCredit
+      ? (!isFeeV1Covenant(params.covenant) ? maximumEscrow : params.contribution) - oldCredit
       : 0n,
-    requiredCredit: params.!isFeeV1Covenant(covenant) ? maximumEscrow : params.contribution,
+    requiredCredit: !isFeeV1Covenant(params.covenant) ? maximumEscrow : params.contribution,
   };
 }
 
@@ -408,7 +408,7 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
   const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
   const hasPaid = state.token!.nft!.commitment.slice(4) === "01";
   if (!Number.isInteger(round) || round < 0 || round >= params.members.length) {
-    throw new Error(params.!isFeeV1Covenant(covenant) && round === params.members.length
+    throw new Error(!isFeeV1Covenant(params.covenant) && round === params.members.length
       ? "This circle has completed every scheduled payout."
       : "Invalid V2 fee payout round.");
   }
@@ -462,7 +462,7 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
       amount: state.satoshis - pot + autoReserve,
       token: { category: params.stateCategory, amount: 0n,
         nft: { capability: "minting", commitment: v2FeeStateCommitment(
-          params.!isFeeV1Covenant(covenant) ? round + 1 : (round + 1) % params.members.length,
+          !isFeeV1Covenant(params.covenant) ? round + 1 : (round + 1) % params.members.length,
           true,
         ) } },
     });
@@ -551,9 +551,9 @@ export async function readV2FeeCircle(params: V2FeeCircleParams) {
   const state = findState(utxos, params.stateCategory, params.covenant, params.members.length);
   const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
   const hasPaid = state.token!.nft!.commitment.slice(4) === '01';
-  const completed = params.!isFeeV1Covenant(covenant) && round === params.members.length;
+  const completed = !isFeeV1Covenant(params.covenant) && round === params.members.length;
   if (!Number.isInteger(round) || round < 0 ||
-      (params.!isFeeV1Covenant(covenant) ? round > params.members.length : round >= params.members.length)) {
+      (!isFeeV1Covenant(params.covenant) ? round > params.members.length : round >= params.members.length)) {
     throw new Error('Invalid V2 fee payout round.');
   }
   if (completed && !hasPaid) throw new Error('Completed circle state is missing its irreversible payout marker.');
