@@ -418,8 +418,8 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
 /** Any circle participant can trigger payout and sponsor miner fees from a separate BCH input. */
 export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress: string) {
   validate(params);
-  if (!feePayerAddress) throw new Error("A connected Chipnet fee-payer address is required.");
-  classicAddressToPkh(feePayerAddress, "chipnet");
+  if (!feePayerAddress) throw new Error("A connected " + (params.network === "mainnet" ? "Mainnet" : "Chipnet") + " fee-payer address is required.");
+  classicAddressToPkh(feePayerAddress, params.network);
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
   const all = await contract.getUtxos();
