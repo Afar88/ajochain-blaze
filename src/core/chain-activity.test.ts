@@ -40,9 +40,9 @@ describe("circle transaction history source routing", () => {
     const script = "76a914" + "11".repeat(20) + "88ac";
 
     await expect(readCircleTransactionHistory(provider, "chipnet", []))
-      .rejects.toThrow(/one to eight unique/);
+      .rejects.toThrow(/between one and eight unique/);
     await expect(readCircleTransactionHistory(provider, "chipnet", [script, script]))
-      .rejects.toThrow(/one to eight unique/);
+      .rejects.toThrow(/between one and eight unique/);
   });
 
   it("fails closed when a Mainnet provider has no independent-quorum history reader", async () => {
