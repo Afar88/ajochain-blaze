@@ -93,8 +93,8 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
         stateCategory: plan.stateCategory,
         feeEstimate: plan.feeEstimate.toString(),
         estimatedChange: plan.estimatedChange.toString(),
-        inputs: plan.transactionSizeBytes.inputs,
-        outputs: plan.transactionSizeBytes.outputs,
+        inputs: plan.transactionShape.inputs,
+        outputs: plan.transactionShape.outputs,
       });
       setNotice("BCH Mainnet genesis preview prepared. The transaction is unsigned and cannot be broadcast from this workspace.");
     } catch (cause) {
