@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { validateCircleDraft, type CircleDraftInput } from "./circle";
+import { MAX_CIRCLE_MEMBERS } from "./member-ledger";
 
 const validDraft: CircleDraftInput = {
   name: "Family Savings",
@@ -21,6 +22,20 @@ describe("circle draft validation", () => {
   it("enforces the two-member minimum", () => {
     expect(validateCircleDraft({ ...validDraft, members: [{ name: "Ada" }] }).errors)
       .toContain("A circle needs at least 2 members.");
+  });
+
+  it("allows up to five members and rejects a sixth for BCH and PUSD", () => {
+    const fiveMembers = Array.from({ length: MAX_CIRCLE_MEMBERS }, (_, index) => ({
+      name: "Member " + (index + 1),
+    }));
+    for (const asset of ["BCH", "PUSD"] as const) {
+      expect(validateCircleDraft({ ...validDraft, asset, members: fiveMembers }).valid).toBe(true);
+      expect(validateCircleDraft({
+        ...validDraft,
+        asset,
+        members: [...fiveMembers, { name: "Member 6" }],
+      }).errors).toContain("A circle can have at most 5 members.");
+    }
   });
 
   it("rejects zero, negative and malformed contribution amounts", () => {
