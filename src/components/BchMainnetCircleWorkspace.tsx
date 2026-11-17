@@ -117,7 +117,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
   const restoreDraft = (draft: Draft) => {
     setName(draft.name);
     setContribution(draft.contribution);
-    setMembersText(draft.members.join("\\n"));
+    setMembersText(draft.members.join("\n"));
     setMaxFee(draft.maxFee);
     setPreview(null);
     setError("");
