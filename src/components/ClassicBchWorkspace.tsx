@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { decodeClassicCircle, planClassicContribution, planClassicGenesis, planClassicPayout, readClassicCircle, type ClassicCircleParams, type ClassicCircleStatus } from "../core/classic-bch";
+import { CashTokensGenesisUtxoMissingError, decodeClassicCircle, getClassicProvider, planClassicContribution, planClassicGenesis, planClassicGenesisSetup, planClassicPayout, readClassicCircle, type ClassicCircleParams, type ClassicCircleStatus } from "../core/classic-bch";
 import { assertBchTransactionBroadcastAllowed } from "../core/bch-mainnet-guard";
 import { buildClassicInviteRoute, loadSavedClassicCircles, restoreClassicCircleFromInvite, saveClassicCircle, type SavedClassicCircle } from "../core/circle-account";
 import { parseAssetAmount } from "../core/assets";
@@ -95,14 +95,122 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
       setError("The connected wallet does not have a verified receive address for this network.");
       return;
     }
-    const members = membersText.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean);
+    const members = membersText.split(/\\r?\\n/).map((entry) => entry.trim()).filter(Boolean);
     try {
       const contribution = parseAssetAmount("BCH", amount);
       const feeCap = BigInt(maxFee.trim());
-      if (!/^\d+$/.test(maxFee.trim())) throw new Error("Maximum fee must be a whole number of satoshis.");
+      if (!/^\\d+$/.test(maxFee.trim())) throw new Error("Maximum fee must be a whole number of satoshis.");
       const draft = { version: 1 as const, name: name.trim(), network, members, contribution, maxFee: feeCap };
       setBusy(true);
-      const plan = await planClassicGenesis(draft, walletAddress);
+
+      const pendingKey = "ajochain:classic-genesis-setup:v1:" + network + ":" + walletAddress.toLowerCase();
+      let pendingSetup: { status: string; txid?: string; createdAt?: number } | null = null;
+      try {
+        const rawPending = window.localStorage.getItem(pendingKey);
+        if (rawPending) {
+          const parsed = JSON.parse(rawPending) as { status?: unknown; txid?: unknown; createdAt?: unknown };
+          if (parsed.status === "broadcast" && typeof parsed.txid === "string" && /^[0-9a-f]{64}$/i.test(parsed.txid)) {
+            pendingSetup = { status: "broadcast", txid: parsed.txid, createdAt: Number(parsed.createdAt) || undefined };
+          } else {
+            throw new Error("A previous CashTokens setup attempt is still recorded for this wallet. Check Selene and the Chipnet transaction history before trying again; AjoChain will not create a duplicate setup transaction.");
+          }
+        }
+      } catch (cause) {
+        if (cause instanceof Error && cause.message.startsWith("A previous CashTokens")) throw cause;
+        throw new Error("AjoChain could not safely read its pending setup record. No new transaction was prepared.");
+      }
+
+      let plan;
+      try {
+        plan = await planClassicGenesis(draft, walletAddress);
+      } catch (cause) {
+        if (!(cause instanceof CashTokensGenesisUtxoMissingError) || network !== "chipnet") throw cause;
+
+        if (pendingSetup?.txid) {
+          const provider = await getClassicProvider("chipnet");
+          const currentUtxos = await provider.getUtxos(walletAddress);
+          const pendingOutput = currentUtxos.find((utxo) =>
+            utxo.txid.toLowerCase() === pendingSetup!.txid!.toLowerCase() &&
+            utxo.vout === 0 && !utxo.token && utxo.satoshis > 0n
+          );
+          if (!pendingOutput) {
+            throw new Error(
+              "AjoChain already broadcast your setup transaction (" + pendingSetup.txid +
+              "), but its output-0 coin is not yet visible as spendable in the wallet. " +
+              "Do not send another setup transaction. Refresh and retry after Chipnet indexes that output.",
+            );
+          }
+          plan = await planClassicGenesis(draft, walletAddress);
+        } else {
+          const setup = await planClassicGenesisSetup(walletAddress);
+          if (!window.confirm(
+            "Step 1 of 2 · Prepare the CashTokens genesis coin on Chipnet?\\n\\n" +
+            "AjoChain will send " + setup.outputSatoshis.toString() + " sats to your wallet as output 0. " +
+            "The remaining BCH returns to your wallet as change, minus an estimated " + setup.fee.toString() +
+            "-sat miner fee.\\n\\n" +
+            "This does not create the circle NFT yet. After output 0 appears in your wallet, a second " +
+            "Selene approval will create the circle. No new deposit is requested.",
+          )) return;
+
+          // Reserve this wallet/network operation before requesting a signature so
+          // a reload cannot silently create another setup transaction.
+          try {
+            window.localStorage.setItem(pendingKey, JSON.stringify({
+              status: "signing",
+              createdAt: Date.now(),
+            }));
+          } catch {
+            throw new Error("Browser storage is unavailable. AjoChain cannot safely track a pending setup transaction, so nothing was signed or broadcast.");
+          }
+
+          let setupTxid: string;
+          try {
+            const signedSetup = await wallet.signAndVerify(
+              setup.wc,
+              setup.walletInputs,
+              "Prepare CashTokens genesis output for AjoChain",
+            );
+            setupTxid = await setup.provider.sendRawTransaction(signedSetup.signedTransaction);
+          } catch (cause) {
+            try { window.localStorage.removeItem(pendingKey); } catch { /* best effort */ }
+            throw cause;
+          }
+
+          try {
+            window.localStorage.setItem(pendingKey, JSON.stringify({
+              status: "broadcast",
+              txid: setupTxid,
+              createdAt: Date.now(),
+            }));
+          } catch {
+            setNotice(
+              "Setup transaction broadcast: " + setupTxid +
+              ". The browser could not update its pending record. Do not submit another setup transaction; check this transaction in Chipnet and refresh the wallet before continuing.",
+            );
+            return;
+          }
+
+          const refreshedUtxos = await setup.provider.getUtxos(walletAddress);
+          const setupOutputVisible = refreshedUtxos.some((utxo) =>
+            utxo.txid.toLowerCase() === setupTxid.toLowerCase() &&
+            utxo.vout === 0 && !utxo.token && utxo.satoshis > 0n
+          );
+          if (!setupOutputVisible) {
+            setNotice(
+              "Setup transaction broadcast: " + setupTxid +
+              ". The new vout-0 coin is not visible yet, so the circle NFT has not been created. " +
+              "Refresh and submit this same form again when the wallet reports the output. AjoChain will not create a duplicate setup transaction.",
+            );
+            return;
+          }
+          plan = await planClassicGenesis(draft, walletAddress);
+        }
+      }
+
+      // Once a real genesis plan has been built, a prior setup output has either
+      // been consumed as the genesis outpoint or is no longer needed.
+      try { window.localStorage.removeItem(pendingKey); } catch { /* best effort */ }
+
       setContractAddress(plan.contract.address);
       try {
         assertBchTransactionBroadcastAllowed(network);
@@ -115,9 +223,9 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
         return;
       }
       if (!window.confirm(
-        "Create this Classic BCH circle on Chipnet?\n\n" +
-        plan.contract.address + "\n" +
-        "Contribution: " + formatBch(contribution) + " per member\n" +
+        "Step 2 of 2 · Create this Classic BCH circle on Chipnet?\\n\\n" +
+        plan.contract.address + "\\n" +
+        "Contribution: " + formatBch(contribution) + " per member\\n" +
         "This deploys the circle state NFT and spends wallet BCH for the miner fee.",
       )) return;
       const signed = await wallet.signAndVerify(
