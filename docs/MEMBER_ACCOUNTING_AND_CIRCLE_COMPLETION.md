@@ -72,10 +72,10 @@ The original `AjoCircleV2.cash` contract and Classic V1 aggregate-pot circles ar
 
 ## Scope and release status
 
-- Full-cycle escrow is BCH-only and Chipnet-only in this release.
-- The covenant is experimental and unaudited. Passing automated tests is not independent security approval.
-- PUSD member receipts are not implemented by this BCH covenant.
-- Mainnet signing and broadcasting remain disabled pending the separate Mainnet release gates, current BCH consensus VM verification, external contract review, provider verification, and real Selene/WizardConnect Mainnet tests.
+- The full-cycle escrow covenant described above is BCH-only and Chipnet-only. It prefunds every remaining scheduled contribution at genesis.
+- PUSD uses a separate Mainnet V3 member-receipt and escrow-sidecar prototype. It has a different, rolling rule: the non-final scheduled recipient has exactly one next-round contribution withheld from their payout and placed in their own escrow. That exact per-member contribution is consumed at the following payout; the final recipient has no reserve. This is not full-cycle prefunding.
+- The covenant is experimental and unaudited. Passing automated tests is not independent security approval. PUSD Mainnet spending and all Mainnet circle signing/broadcasting remain disabled pending their separate release gates, current BCH consensus VM verification, external contract review, provider verification, and real Selene/WizardConnect Mainnet tests.
+- PUSD member receipts are not part of the BCH covenant described in this document; see [BCH, PUSD and Member Accounting](./BCH_PUSD_MEMBER_ACCOUNTING.md) for the separate PUSD V3 design and release status.
 
 ## Acceptance tests
 
