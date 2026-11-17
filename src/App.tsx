@@ -48,6 +48,7 @@ export default function App() {
   const [network, setNetwork] = useState<NetworkId>(() => getDefaultNetwork(import.meta.env.PROD));
   const [page, setPage] = useState<Page>("overview");
   const [circleWorkspace, setCircleWorkspace] = useState<CircleWorkspaceId>(() => getDefaultCircleWorkspace(getDefaultNetwork(import.meta.env.PROD)));
+  const [classicInviteRevision, setClassicInviteRevision] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => {
     if (typeof window === "undefined") return "system";
@@ -81,6 +82,42 @@ export default function App() {
   const walletAddress = walletClient?.address(network) ?? null;
   const connected = walletView.state === "connected";
   const menuLabel = pageLabels[page];
+
+  useEffect(() => {
+    let active = true;
+    let lastInviteHash = "";
+    const restoreInviteFromHash = () => {
+      const hash = window.location.hash;
+      if (!hash.startsWith("#/classic/") || hash === lastInviteHash) return;
+      lastInviteHash = hash;
+      // Keep the Classic contract and CashScript dependencies lazy for normal app visits.
+      void import("./core/circle-account").then(({ restoreClassicCircleFromInvite, saveClassicCircle }) => {
+        if (!active) return;
+        try {
+          // Shared Classic invite URLs are directly restorable on a fresh device.
+          // Save the decoded invite locally before attempting any network reads.
+          const params = restoreClassicCircleFromInvite(window.location.href);
+          saveClassicCircle(window.localStorage, params);
+          setClassicInviteRevision((revision) => revision + 1);
+          setNetwork(params.network);
+          setCircleWorkspace("bch-classic");
+          setPage("circles");
+          setMenuOpen(false);
+        } catch {
+          // Do not silently switch workspaces for a malformed or unsupported link.
+        }
+      }).catch(() => {
+        // Keep the app usable if the optional Classic invite module cannot load.
+        lastInviteHash = "";
+      });
+    };
+    restoreInviteFromHash();
+    window.addEventListener("hashchange", restoreInviteFromHash);
+    return () => {
+      active = false;
+      window.removeEventListener("hashchange", restoreInviteFromHash);
+    };
+  }, []);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -466,10 +503,12 @@ export default function App() {
               {network === "mainnet" && <>
                 <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-mainnet"}><BchMainnetCircleWorkspace network={network} walletConnected={connected} /></div>
                 <div className="circle-workspace-panel" hidden={circleWorkspace !== "pusd-mainnet"}><PusdMainnetCircleWorkspace network={network} walletConnected={connected} /></div>
+                {/* Legacy invite links remain accessible as a read-only compatibility workspace. */}
+                {circleWorkspace === "bch-classic" && <div className="circle-workspace-panel"><ClassicBchWorkspace key={classicInviteRevision} network={network} walletConnected={connected} /></div>}
               </>}
               {network === "chipnet" && <>
                 <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-fair-round"}><V2FeeBchWorkspace network={network} walletConnected={connected} /></div>
-                <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-classic"}><ClassicBchWorkspace network={network} walletConnected={connected} /></div>
+                <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-classic"}><ClassicBchWorkspace key={classicInviteRevision} network={network} walletConnected={connected} /></div>
               </>}
             </Suspense>
           </section>

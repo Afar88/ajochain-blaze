@@ -14,6 +14,13 @@ import artifactJson from "../../contracts/AjoCircle.json" with { type: "json" };
 import { MainnetQuorumNetworkProvider } from "./mainnet-quorum-provider";
 import { MAX_CIRCLE_MEMBERS, MIN_CIRCLE_MEMBERS } from "./member-ledger";
 import { selectCashTokensGenesisUtxo } from "./cash-token-genesis";
+import {
+  CHIPNET_ELECTRUM_ENDPOINTS,
+  ELECTRUM_PROTOCOL_VERSION,
+  ELECTRUM_SOCKET_OPTIONS,
+  ELECTRUM_TIMEOUT_MS,
+  getChipnetElectrumEndpoints,
+} from "./chipnet-electrum-config";
 
 export type ClassicNetwork = "mainnet" | "chipnet";
 export const CLASSIC_MIN_MEMBERS = MIN_CIRCLE_MEMBERS;
@@ -48,13 +55,7 @@ export interface ClassicCircleStatus {
 
 const artifact = artifactJson as unknown as Artifact;
 const servers: Record<ClassicNetwork, Array<[string, number]>> = {
-  chipnet: [
-    // Browser probe (2026-11-17): OPTN Labs completed Electrum RPC reliably.
-    ["electrum-chipnet.optnlabs.com", 443],
-    // Confirmed Chipnet RPC fallbacks from the same browser probe.
-    ["chipnet.bch.ninja", 50004],
-    ["cbch.loping.net", 62104],
-  ],
+  chipnet: CHIPNET_ELECTRUM_ENDPOINTS.map(([host, port]) => [host, port]),
   mainnet: [
     ["bch.imaginary.cash", 50004],
     ["electroncash.dk", 50004],
@@ -63,12 +64,44 @@ const servers: Record<ClassicNetwork, Array<[string, number]>> = {
 const providers: Partial<Record<ClassicNetwork, Promise<NetworkProvider>>> = {};
 
 function makeProvider(network: ClassicNetwork, host: string, port: number) {
+  // CashScript 0.14 requires Electrum protocol 1.5.0 (including headers.get_tip
+  // and token-aware listunspent). In browsers, keep the socket alive while the
+  // wallet opens in another tab and the AjoChain page is temporarily hidden.
+  const socket = new ElectrumWebSocket(host, {
+    // Keep the visibility override scoped to Chipnet browser testing. Mainnet
+    // retains the socket library's default visibility/reconnect behavior.
+    ...(network === "chipnet" ? ELECTRUM_SOCKET_OPTIONS : { encrypted: true }),
+    port,
+  } as never);
   const client = new ElectrumClient(
     "AjoChain Blaze",
-    "1.0.0",
-    new ElectrumWebSocket(host, { port, encrypted: true, timeout: 8_000 } as never),
+    ELECTRUM_PROTOCOL_VERSION,
+    socket,
   );
-  return new ElectrumNetworkProvider(network, { electrum: client } as never);
+  const provider = new ElectrumNetworkProvider(network, { electrum: client } as never);
+  return { provider, client };
+}
+
+async function withTimeout<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**
@@ -78,51 +111,63 @@ function makeProvider(network: ClassicNetwork, host: string, port: number) {
 export function getClassicProvider(network: ClassicNetwork): Promise<NetworkProvider> {
   if (!providers[network]) {
     if (network === "mainnet") {
-      const electrumProviders = servers.mainnet.map(([host, port]) =>
+      const connections = servers.mainnet.map(([host, port]) =>
         makeProvider("mainnet", host, port),
       );
+      const electrumProviders = connections.map(({ provider }) => provider);
       const quorum = new MainnetQuorumNetworkProvider(electrumProviders);
-      providers.mainnet = quorum.getBlockHeight().then(() => quorum).catch((error) => {
+      providers.mainnet = quorum.getBlockHeight().then(() => quorum).catch(async (error) => {
         delete providers.mainnet;
+        await Promise.allSettled(connections.map(({ client }) => client.disconnect()));
         throw new Error(
           "BCH Mainnet quorum could not be established (" +
           servers.mainnet.map(([host]) => host).join(", ") + "). " +
-          (error instanceof Error ? error.message : String(error)),
+          errorMessage(error),
         );
       });
     } else {
       const configured = typeof localStorage !== "undefined"
         ? localStorage.getItem("ajochain-electrum-chipnet")
         : null;
-      const endpoints: Array<[string, number]> = configured
-        ? [[configured.split(":")[0], Number(configured.split(":")[1] || 50004)]]
-        : servers.chipnet;
-      const attempts = endpoints.map(async ([host, port]) => {
-        const provider = makeProvider("chipnet", host, port);
-        await Promise.race([
+      const endpoints = getChipnetElectrumEndpoints(configured);
+      const attempts = endpoints.map(([host, port]) => {
+        const { provider, client } = makeProvider("chipnet", host, port);
+        const attempt = withTimeout(
           provider.getBlockHeight(),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(host + " timed out")), 9_000),
-          ),
-        ]);
-        return provider;
+          ELECTRUM_TIMEOUT_MS,
+          host + ":" + port + " did not complete an Electrum 1.5.0 handshake within " + ELECTRUM_TIMEOUT_MS + " ms",
+        ).then(() => ({ provider, client })).catch(async (error: unknown) => {
+          // A timed-out WebSocket must not continue reconnecting in the background.
+          await client.disconnect().catch(() => false);
+          throw new Error(host + ":" + port + ": " + errorMessage(error));
+        });
+        return { client, attempt };
       });
-      providers.chipnet = Promise.any(attempts).catch((error: unknown) => {
-        delete providers.chipnet;
-        const failures = error && typeof error === "object" &&
-          "errors" in error && Array.isArray((error as { errors?: unknown }).errors)
-          ? (error as { errors: unknown[] }).errors
-          : [error];
-        const details = failures.map((failure, index) => {
-          const message = failure instanceof Error ? failure.message : String(failure);
-          return endpoints[index]?.[0] + ": " + message;
-        }).join("; ");
-        throw new Error(
-          "No Chipnet Electrum endpoint responded (" +
-          endpoints.map(([host, port]) => host + ":" + port).join(", ") + "). " +
-          (details || "All connection attempts failed; check the network or try again."),
-        );
-      });
+      providers.chipnet = Promise.any(attempts.map(({ attempt }) => attempt))
+        .then(async (winner) => {
+          // The first endpoint to complete a real CashScript read wins. Close
+          // any slower connections so they cannot linger or compete for mobile data.
+          await Promise.allSettled(
+            attempts
+              .filter(({ client }) => client !== winner.client)
+              .map(({ client }) => client.disconnect()),
+          );
+          return winner.provider;
+        })
+        .catch(async (error: unknown) => {
+          delete providers.chipnet;
+          await Promise.allSettled(attempts.map(({ client }) => client.disconnect()));
+          const failures = error && typeof error === "object" &&
+            "errors" in error && Array.isArray((error as { errors?: unknown }).errors)
+            ? (error as { errors: unknown[] }).errors
+            : [error];
+          const details = failures.map(errorMessage).join("; ");
+          throw new Error(
+            "No Chipnet Electrum WebSocket endpoint completed the required 1.5.0 handshake (" +
+            endpoints.map(([host, port]) => host + ":" + port).join(", ") + "). " +
+            (details || "All connection attempts failed; retry after the network is available."),
+          );
+        });
     }
   }
   return providers[network]!;
