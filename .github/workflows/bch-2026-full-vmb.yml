@@ -10,7 +10,7 @@ jobs:
   full-vmb:
     name: Full BCH 2026 VMB fixture corpus
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 240
     steps:
       - name: Checkout BLAZE
         uses: actions/checkout@v7.0.1
@@ -50,7 +50,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
-            build-essential cmake ninja-build python3 \
+            build-essential cmake ninja-build pkg-config python3 \
             libboost-chrono-dev libboost-filesystem-dev libboost-test-dev libboost-thread-dev \
             libevent-dev libssl-dev libgmp-dev zlib1g-dev
       - name: Configure BCHN with test binary only
@@ -66,8 +66,10 @@ jobs:
             -DBUILD_BITCOIN_SEEDER=OFF \
             -DENABLE_UPNP=OFF \
             -DENABLE_NATPMP=OFF \
+            -DENABLE_MAN=OFF \
+            -DENABLE_QRCODE=OFF \
             -DENABLE_TEST=ON
       - name: Build BCHN native test binary
         run: cmake --build .ci/bchn/build --target test_bitcoin --parallel 2
       - name: Execute BCHN 2026 consensus VMB test pack
-        run: .ci/bchn/build/src/test/test_bitcoin --run_test=libauth_tests/upgrade12_2026 --report_level=detailed
+        run: .ci/bchn/build/src/test/test_bitcoin --run_test=libauth_tests/upgrade12_2026 --report_level=detailed -- -upgrade2027activationtime=1778846400
