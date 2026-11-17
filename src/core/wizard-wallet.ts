@@ -227,8 +227,9 @@ export function assertRequiredWalletSighash(script: Uint8Array): void {
 }
 
 /**
- * Recognize a canonical DER ECDSA signature argument including its trailing
- * BCH sighash byte. Cryptographic validity remains the BCH 2026 VM's job.
+ * Recognize a 64-byte Schnorr or canonical DER ECDSA signature argument,
+ * including its trailing BCH sighash byte. Cryptographic validity remains
+ * the BCH 2026 VM's job.
  */
 function isBchTransactionSignature(push: Uint8Array): boolean {
   // Cashonize/Selene commonly uses Schnorr (64-byte signature + 0x61 sighash).
