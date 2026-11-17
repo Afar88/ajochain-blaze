@@ -12,7 +12,7 @@ describe("WizardConnect visibility recovery bundle patch", () => {
     const patched = patchWizardConnectVisibilityHandling(input);
 
     expect(patched).toContain(WIZARDCONNECT_RELAY_VISIBILITY_REPLACEMENT);
-    expect(patched).not.toContain(WIZARDCONNECT_RELAY_VISIBILITY_NEEDLE);
+    expect(patched.match(/enableVisibilityHandling:!1/g)).toHaveLength(1);
   });
 
   it("fails closed when the published SDK call site changes", () => {
