@@ -5,6 +5,7 @@ import {
   assertRequiredWalletSighash,
   readPushOnlyUnlockingScript,
   describeWizardWalletDisconnect,
+  describeWizardRelayDisconnect,
 } from "./wizard-wallet";
 
 function push(value: Uint8Array): Uint8Array {
@@ -113,5 +114,18 @@ describe("WizardConnect disconnect diagnostics", () => {
   it("gives a recovery instruction when the manager provides no detail", () => {
     expect(describeWizardWalletDisconnect(undefined))
       .toContain("Choose Retry saved session or Fresh pairing to reconnect.");
+  });
+});
+
+
+describe("WizardConnect relay subscription diagnostics", () => {
+  it("identifies the transport-level subscription closure and automatic retry", () => {
+    expect(describeWizardRelayDisconnect(new Error("Subscription closed")))
+      .toBe("WizardConnect relay subscription closed: Subscription closed. Automatic reconnection is in progress.");
+  });
+
+  it("handles a missing relay error detail", () => {
+    expect(describeWizardRelayDisconnect(undefined))
+      .toContain("Automatic reconnection is in progress.");
   });
 });
