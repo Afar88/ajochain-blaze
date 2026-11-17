@@ -75,7 +75,30 @@ function makeProvider(network: ClassicNetwork, host: string, port: number) {
     ELECTRUM_PROTOCOL_VERSION,
     socket,
   );
-  return new ElectrumNetworkProvider(network, { electrum: client } as never);
+  const provider = new ElectrumNetworkProvider(network, { electrum: client } as never);
+  return { provider, client };
+}
+
+async function withTimeout<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**
@@ -85,16 +108,18 @@ function makeProvider(network: ClassicNetwork, host: string, port: number) {
 export function getClassicProvider(network: ClassicNetwork): Promise<NetworkProvider> {
   if (!providers[network]) {
     if (network === "mainnet") {
-      const electrumProviders = servers.mainnet.map(([host, port]) =>
+      const connections = servers.mainnet.map(([host, port]) =>
         makeProvider("mainnet", host, port),
       );
+      const electrumProviders = connections.map(({ provider }) => provider);
       const quorum = new MainnetQuorumNetworkProvider(electrumProviders);
-      providers.mainnet = quorum.getBlockHeight().then(() => quorum).catch((error) => {
+      providers.mainnet = quorum.getBlockHeight().then(() => quorum).catch(async (error) => {
         delete providers.mainnet;
+        await Promise.allSettled(connections.map(({ client }) => client.disconnect()));
         throw new Error(
           "BCH Mainnet quorum could not be established (" +
           servers.mainnet.map(([host]) => host).join(", ") + "). " +
-          (error instanceof Error ? error.message : String(error)),
+          errorMessage(error),
         );
       });
     } else {
@@ -104,35 +129,44 @@ export function getClassicProvider(network: ClassicNetwork): Promise<NetworkProv
       const endpoints: Array<[string, number]> = configured
         ? [[configured.split(":")[0], Number(configured.split(":")[1] || 50004)]]
         : servers.chipnet;
-      const attempts = endpoints.map(async ([host, port]) => {
-        const provider = makeProvider("chipnet", host, port);
-        await Promise.race([
+      const attempts = endpoints.map(([host, port]) => {
+        const { provider, client } = makeProvider("chipnet", host, port);
+        const attempt = withTimeout(
           provider.getBlockHeight(),
-          new Promise<never>((_, reject) =>
-            setTimeout(
-              () => reject(new Error(host + ":" + port + " did not complete an Electrum 1.5.0 handshake within " + ELECTRUM_TIMEOUT_MS + " ms")),
-              ELECTRUM_TIMEOUT_MS,
-            ),
-          ),
-        ]);
-        return provider;
+          ELECTRUM_TIMEOUT_MS,
+          host + ":" + port + " did not complete an Electrum 1.5.0 handshake within " + ELECTRUM_TIMEOUT_MS + " ms",
+        ).then(() => ({ provider, client })).catch(async (error: unknown) => {
+          // A timed-out WebSocket must not continue reconnecting in the background.
+          await client.disconnect().catch(() => false);
+          throw new Error(host + ":" + port + ": " + errorMessage(error));
+        });
+        return { client, attempt };
       });
-      providers.chipnet = Promise.any(attempts).catch((error: unknown) => {
-        delete providers.chipnet;
-        const failures = error && typeof error === "object" &&
-          "errors" in error && Array.isArray((error as { errors?: unknown }).errors)
-          ? (error as { errors: unknown[] }).errors
-          : [error];
-        const details = failures.map((failure, index) => {
-          const message = failure instanceof Error ? failure.message : String(failure);
-          return endpoints[index]?.[0] + ": " + message;
-        }).join("; ");
-        throw new Error(
-          "No Chipnet Electrum endpoint responded (" +
-          endpoints.map(([host, port]) => host + ":" + port).join(", ") + "). " +
-          (details || "All connection attempts failed; check the network or try again."),
-        );
-      });
+      providers.chipnet = Promise.any(attempts.map(({ attempt }) => attempt))
+        .then(async (winner) => {
+          // The first endpoint to complete a real CashScript read wins. Close
+          // any slower connections so they cannot linger or compete for mobile data.
+          await Promise.allSettled(
+            attempts
+              .filter(({ client }) => client !== winner.client)
+              .map(({ client }) => client.disconnect()),
+          );
+          return winner.provider;
+        })
+        .catch(async (error: unknown) => {
+          delete providers.chipnet;
+          await Promise.allSettled(attempts.map(({ client }) => client.disconnect()));
+          const failures = error && typeof error === "object" &&
+            "errors" in error && Array.isArray((error as { errors?: unknown }).errors)
+            ? (error as { errors: unknown[] }).errors
+            : [error];
+          const details = failures.map(errorMessage).join("; ");
+          throw new Error(
+            "No Chipnet Electrum WebSocket endpoint completed the required 1.5.0 handshake (" +
+            endpoints.map(([host, port]) => host + ":" + port).join(", ") + "). " +
+            (details || "All connection attempts failed; retry after the network is available."),
+          );
+        });
     }
   }
   return providers[network]!;
