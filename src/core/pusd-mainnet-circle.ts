@@ -14,6 +14,7 @@ import { classicAddressToPkh, getClassicProvider } from "./classic-bch";
 import { calculatePusdCircleEconomics } from "./pusd-circle-economics";
 import { fetchPusdFeeQuote, fetchPusdWalletBalance } from "./pusd-api";
 import { getMainnetProjectTreasuryPkh } from "./project-treasury";
+import { MAX_CIRCLE_MEMBERS, MIN_CIRCLE_MEMBERS } from "./member-ledger";
 
 const circleArtifact = circleArtifactJson as unknown as Artifact;
 const escrowArtifact = escrowArtifactJson as unknown as Artifact;
@@ -119,7 +120,7 @@ function validateDraft(draft: PusdMainnetCircleDraft) {
       !draft.name.trim() || draft.name.trim().length > 60) {
     throw new Error("Invalid PUSD Mainnet circle details.");
   }
-  if (!Array.isArray(draft.members) || draft.members.length < 2 || draft.members.length > 5) {
+  if (!Array.isArray(draft.members) || draft.members.length < MIN_CIRCLE_MEMBERS || draft.members.length > MAX_CIRCLE_MEMBERS) {
     throw new Error("A PUSD Mainnet circle needs 2–5 members.");
   }
   const memberKeys = draft.members.map(tokenAwareP2pkh).map(toHex);
