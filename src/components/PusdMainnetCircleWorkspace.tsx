@@ -21,7 +21,7 @@ function readDrafts(): Draft[] {
   try {
     const value: unknown = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "[]");
     if (!Array.isArray(value)) return [];
-    return value.filter((item): item is Draft =>
+    return value.filter((item: unknown): item is Draft =>
       Boolean(item) && typeof item === "object" &&
       typeof item.name === "string" && typeof item.contribution === "string" &&
       Array.isArray(item.members) && item.members.every((member) => typeof member === "string") &&
@@ -83,7 +83,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
         throw new Error("Every member must have a unique Mainnet address.");
       }
       const units = parseAssetAmount("PUSD", contribution);
-      const calculated = calculatePusdCircleEconomics(memberAddresses.length, units);
+      calculatePusdCircleEconomics(memberAddresses.length, units);
       if (!/^\d+$/.test(maxFee.trim()) || BigInt(maxFee.trim()) < 1000n) {
         throw new Error("Maximum BCH miner fee must be at least 1,000 whole satoshis.");
       }
