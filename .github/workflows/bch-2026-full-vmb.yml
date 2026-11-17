@@ -2,6 +2,9 @@ name: BCH 2026 full upstream VMB audit
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - audit/bch-2026-full
 
 permissions:
   contents: read
@@ -72,4 +75,4 @@ jobs:
       - name: Build BCHN native test binary
         run: cmake --build .ci/bchn/build --target test_bitcoin --parallel 2
       - name: Execute BCHN 2026 consensus VMB test pack
-        run: .ci/bchn/build/src/test/test_bitcoin --run_test=libauth_tests/upgrade12_2026 --report_level=detailed -- -upgrade2027activationtime=1778846400
+        run: .ci/bchn/build/src/test/test_bitcoin --run_test=libauth_tests/upgrade12_2026 --report_level=detailed
