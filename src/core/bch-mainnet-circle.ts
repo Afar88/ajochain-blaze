@@ -43,7 +43,7 @@ export async function prepareBchMainnetCircleGenesisPreview(
     stateCategory: plan.params.stateCategory,
     feeEstimate: plan.feeEstimate,
     estimatedChange: plan.estimatedChange,
-    transactionSizeBytes: (() => {
+    transactionShape: (() => {
       const tx = plan.wc as { transaction?: { inputs?: unknown[]; outputs?: unknown[] } };
       return { inputs: tx.transaction?.inputs?.length ?? 0, outputs: tx.transaction?.outputs?.length ?? 0 };
     })(),
