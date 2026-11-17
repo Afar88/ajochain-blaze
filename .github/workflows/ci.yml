@@ -26,23 +26,35 @@ jobs:
         run: npm install
       - name: Dependency security report
         run: |
-          npm audit --json > npm-audit.json || true
+          # Production dependencies are the release gate. Development/build/test
+          # tooling is audited separately and remains visible as a warning until
+          # upstream advisories publish patched versions.
+          npm audit --omit=dev --json > npm-audit-runtime.json || true
+          npm audit --json > npm-audit-all.json || true
           node --input-type=module -e '
             import fs from "node:fs";
-            const report = JSON.parse(fs.readFileSync("npm-audit.json", "utf8"));
-            const counts = report.metadata?.vulnerabilities;
-            if (!counts) {
+            const read = (path) => JSON.parse(fs.readFileSync(path, "utf8"));
+            const runtime = read("npm-audit-runtime.json");
+            const all = read("npm-audit-all.json");
+            const runtimeCounts = runtime.metadata?.vulnerabilities;
+            const allCounts = all.metadata?.vulnerabilities;
+            if (!runtimeCounts || !allCounts) {
               console.error("npm audit did not return a valid vulnerability summary; failing closed.");
               process.exit(1);
             }
-            console.log("Dependency audit summary:", JSON.stringify(counts));
-            for (const [name, item] of Object.entries(report.vulnerabilities ?? {})) {
+            console.log("Production dependency audit:", JSON.stringify(runtimeCounts));
+            console.log("Full dependency-tree audit:", JSON.stringify(allCounts));
+            for (const [name, item] of Object.entries(all.vulnerabilities ?? {})) {
               console.log(JSON.stringify({ package: name, severity: item.severity, direct: item.isDirect, range: item.range, fixAvailable: item.fixAvailable, via: item.via.map(v => typeof v === "string" ? v : { title: v.title, url: v.url, range: v.range }) }));
             }
-            const blocking = Number(counts.high ?? 0) + Number(counts.critical ?? 0);
+            const blocking = Number(runtimeCounts.high ?? 0) + Number(runtimeCounts.critical ?? 0);
             if (blocking > 0) {
-              console.error("CI blocked: high/critical dependency vulnerabilities were found.");
+              console.error("CI blocked: high/critical vulnerabilities affect production dependencies.");
               process.exit(1);
+            }
+            const tooling = Number(allCounts.high ?? 0) + Number(allCounts.critical ?? 0);
+            if (tooling > 0) {
+              console.warn("Non-blocking warning: high/critical findings remain in the development/build/test dependency tree. Review and remove when upstream fixes are available; they are not included in the production dependency audit.");
             }
           '
       - name: Typecheck
