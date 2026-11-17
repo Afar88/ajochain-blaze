@@ -4,6 +4,7 @@ import {
   ELECTRUM_PROTOCOL_VERSION,
   ELECTRUM_SOCKET_OPTIONS,
   ELECTRUM_TIMEOUT_MS,
+  getChipnetElectrumEndpoints,
 } from "./chipnet-electrum-config";
 
 describe("Chipnet Electrum browser transport", () => {
@@ -19,6 +20,21 @@ describe("Chipnet Electrum browser transport", () => {
     });
     expect(ELECTRUM_SOCKET_OPTIONS).not.toHaveProperty("timeout");
     expect(ELECTRUM_TIMEOUT_MS).toBeGreaterThanOrEqual(8_000);
+  });
+
+  it("keeps known fallbacks after a valid custom endpoint and ignores invalid saved overrides", () => {
+    expect(getChipnetElectrumEndpoints("custom.example:5443")).toEqual([
+      ["custom.example", 5443],
+      ["electrum-chipnet.optnlabs.com", 443],
+      ["chipnet.bch.ninja", 50004],
+      ["cbch.loping.net", 62104],
+    ]);
+    expect(getChipnetElectrumEndpoints("not-a-valid-endpoint")).toEqual([
+      ["electrum-chipnet.optnlabs.com", 443],
+      ["chipnet.bch.ninja", 50004],
+      ["cbch.loping.net", 62104],
+    ]);
+    expect(getChipnetElectrumEndpoints("custom.example:99999")).toHaveLength(3);
   });
 
   it("uses the probed secure Chipnet endpoints and keeps the standard WSS port first", () => {
