@@ -24,11 +24,17 @@ export const BCH_MAINNET_FORK_CHECKPOINT_HEIGHT = 478_559;
 export const BCH_MAINNET_FORK_CHECKPOINT_HASH =
   "000000000000000000651ef99cb9fcbe0dadde1d424bd9f15ff20136191a5eec";
 
+/** BCH-specific block after the 2018 BCH/BSV split. */
+export const BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT = 556_767;
+export const BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH =
+  "0000000000000000004626ff6e3b936941d341c5932ece4357eeccac44e6d56c";
+
 export interface MainnetTipSnapshot {
   height: number;
   headerHex: string;
   genesisHeaderHex: string;
   forkCheckpointHash: string;
+  postBsvForkCheckpointHash: string;
 }
 
 export function hashMainnetHeader(headerHex: string): string {
@@ -61,7 +67,13 @@ export function validateMainnetTipQuorum(
       throw new Error("Electrum tip predates the BCH Mainnet chain-identity checkpoint.");
     }
     if (snapshot.forkCheckpointHash.toLowerCase() !== BCH_MAINNET_FORK_CHECKPOINT_HASH) {
-      throw new Error("An Electrum endpoint is not on the Bitcoin Cash Mainnet fork chain.");
+      throw new Error("An Electrum endpoint is not on the Bitcoin Cash Mainnet fork chain (2017 BCH/BTC split).");
+    }
+    if (snapshot.height < BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT) {
+      throw new Error("Electrum tip predates the BCH/BSV chain-identity checkpoint.");
+    }
+    if (snapshot.postBsvForkCheckpointHash.toLowerCase() !== BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH) {
+      throw new Error("An Electrum endpoint is not on the Bitcoin Cash Mainnet chain after the 2018 BCH/BSV split.");
     }
     const hash = hashMainnetHeader(snapshot.headerHex);
     const bytes = hexToBin(snapshot.headerHex);
@@ -213,7 +225,12 @@ export class MainnetQuorumNetworkProvider implements NetworkProvider {
 
   private async verifyTip() {
     const snapshots = await Promise.all(this.providers.map(async (provider) => {
-      const [tip, genesisHeader, forkCheckpointHeader] = await Promise.all([
+      const [
+        tip,
+        genesisHeader,
+        forkCheckpointHeader,
+        postBsvForkCheckpointHeader,
+      ] = await Promise.all([
         provider.performRequest("blockchain.headers.subscribe") as Promise<{
           height: number;
           hex: string;
@@ -223,12 +240,17 @@ export class MainnetQuorumNetworkProvider implements NetworkProvider {
           "blockchain.block.header",
           BCH_MAINNET_FORK_CHECKPOINT_HEIGHT,
         ) as Promise<string>,
+        provider.performRequest(
+          "blockchain.block.header",
+          BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT,
+        ) as Promise<string>,
       ]);
       return {
         height: tip.height,
         headerHex: tip.hex,
         genesisHeaderHex: genesisHeader,
         forkCheckpointHash: hashMainnetHeader(forkCheckpointHeader),
+        postBsvForkCheckpointHash: hashMainnetHeader(postBsvForkCheckpointHeader),
       };
     }));
     return validateMainnetTipQuorum(snapshots);
