@@ -147,7 +147,7 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
             "Step 1 of 2 · Prepare the CashTokens genesis coin on Chipnet?\n\n" +
             "AjoChain will send " + setup.outputSatoshis.toString() + " sats to your wallet as output 0. " +
             "The remaining BCH returns to your wallet as change, minus an estimated " + setup.fee.toString() +
-            "-sat miner fee.\n\n" +
+            "-sat miner fee, with " + setup.changeSatoshis.toString() + " sats returned as wallet change.\n\n" +
             "This does not create the circle NFT yet. After output 0 appears in your wallet, a second " +
             "Selene approval will create the circle. No new deposit is requested.",
           )) return;
