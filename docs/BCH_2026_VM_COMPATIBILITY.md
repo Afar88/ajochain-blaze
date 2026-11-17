@@ -1,6 +1,6 @@
 # BCH 2026 VM compatibility in AjoChain BLAZE
 
-**Status:** BCH 2026 VM compatibility is present on `main` (including commit `350e4b7c9fe206c5c6702ad5c57774c5789a1402`). Full BCHN/VMB consensus-vector evidence, dependency provenance review and independent consensus review are still outstanding.
+**Status:** BCH 2026 VM compatibility is present on `main`. The full upstream Libauth/BCHN BCH 2026 corpus audit passed on 2026-11-17; dependency provenance review, AjoChain-specific compiled-covenant vectors and independent security/consensus review remain outstanding.
 
 ## Why the change is required
 
@@ -30,14 +30,22 @@ The CI workflow checks a selected set of upstream Libauth BCH 2026 VMB fixtures,
 
 This targeted subset is intentionally small enough to run on every BLAZE CI build. It is not the complete Libauth/BCHN VMB corpus and does not replace BCHN integration tests or external review.
 
-## Full upstream VMB audit (manual)
+## Full upstream VMB audit result (2026-11-17)
 
-The pinned Libauth source commit `d28da7f595cbd747c1e1125477db655f740f3dbc` contains 164 BCH 2026 VMB fixture files (about 268 MB) across standard, nonstandard and invalid cases. BCHN `v29.2.0` includes the same 164 files; all 164 corresponding Git blob hashes match the pinned Libauth fixture set. The separate `.github/workflows/bch-2026-full-vmb.yml` workflow can be started manually or triggered by pushing a commit to the dedicated `audit/bch-2026-full` branch. The dedicated branch is intended to launch and retain the complete audit without adding the 268 MB fixture download and BCHN source build to normal per-push CI. One job checks out the complete pinned Libauth fixture tree and runs this verifier with `--full`; a second builds the BCHN `v29.2.0` `test_bitcoin` binary with the documented Linux test dependencies and runs `libauth_tests/upgrade12_2026` under BCHN's upgrade-activated test configuration. That native test pack loads and checks all 164 BCH 2026 fixtures. Both jobs must pass for the two-implementation corpus check to be considered complete. The regular per-push CI remains on the smaller targeted subset to keep normal builds quick, and also smoke-tests the `--full` discovery path against that same sparse fixture checkout. The manual workflow uses a complete checkout, so only that manual run evaluates all 164 files. The BCHN job exercises the same fixture files using BCHN's own consensus interpreter and standardness policy, providing an independent implementation cross-check. This is still not an external security audit of AjoChain's covenants or proof of Mainnet operational readiness.
+<badge color="success">Both generic VM corpus checks passed</badge>
+
+The full audit ran on the dedicated `audit/bch-2026-full` branch. BCHN `v29.2.0` and the pinned Libauth source commit `d28da7f595cbd747c1e1125477db655f740f3dbc` contain the same 164 BCH 2026 VMB fixture files; all 164 corresponding Git blob hashes match.
+
+- **Libauth:** all **29,731 vectors across 164 fixture files** passed for standard and nonstandard BCH 2026 VM policies.
+- **BCHN:** the native `test_bitcoin` `libauth_tests/upgrade12_2026` test case passed with **1,065,105 / 1,065,105 assertions**.
+- **Evidence:** [successful full audit run](https://github.com/Afar88/ajochain-blaze/actions/runs/43994936516), pinned [BCHN v29.2.0](https://github.com/bitcoin-cash-node/bitcoin-cash-node/releases/tag/v29.2.0), and pinned [Libauth source commit](https://github.com/bitauth/libauth/commit/d28da7f595cbd747c1e1125477db655f740f3dbc).
+
+This verifies the generic upstream BCH 2026 VM vectors against both implementations. It does **not** yet test AjoChain-specific transactions spending every exact compiled legacy and guarded covenant artifact, and it is not an external contract security audit or proof of Mainnet operational readiness.
 
 ## Remaining requirements
 
 This compatibility change is necessary but not a Mainnet-readiness certification:
-- Run the manual full-corpus VMB audit and retain its report. Separately run BCHN integration checks against a pinned, current BCHN release and the exact compiled covenant artifacts intended for Mainnet; retain those reports.
+- Add AjoChain-specific fixtures for every exact compiled legacy and guarded covenant artifact intended for Mainnet, then run those fixtures against BCHN and Libauth and retain the reports. The generic upstream 2026 corpus comparison passed on 2026-11-17 (29,731 Libauth vectors and 1,065,105 BCHN assertions; [audit run](https://github.com/Afar88/ajochain-blaze/actions/runs/43994936516)).
 - Review the upstream prerelease status and dependency integrity before production pinning.
 - Independently validate the actual compiled AjoChain covenant artifacts under the same VM.
 - Complete the missing fresh-state, fee/carrier, idempotent relay, confirmation and reorg protections.
