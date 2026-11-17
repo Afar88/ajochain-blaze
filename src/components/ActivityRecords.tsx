@@ -365,7 +365,7 @@ export default function ActivityRecords() {
                   <div className="activity-history">
                     <div className="activity-subheading">
                       <b>Recent on-chain activity</b>
-                      <small>{result.history?.truncated ? "Showing the latest records only" : "Complete provider response for this script set"}</small>
+                      <small>{result.historyError ? "Provider lookup failed" : result.history?.truncated ? "Showing the latest 20 records" : "All returned records for this script set"}</small>
                     </div>
                     {result.historyError ? (
                       <div className="activity-unavailable">
