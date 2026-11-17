@@ -133,6 +133,41 @@ function validate(p: V2FeeCircleDraft | V2FeeCircleParams): void {
   treasuryAddressToPkh(p.treasury, p.network);
 }
 
+/**
+ * Register the creator's connected wallet as Member 1, followed by the
+ * additional member addresses supplied in the invite form.
+ */
+export function buildV2FeeMemberOrder(
+  creatorAddress: string,
+  additionalMemberAddresses: readonly string[],
+  network: ClassicNetwork,
+): string[] {
+  const creator = creatorAddress.trim();
+  if (!creator) throw new Error("Connect the creator's Selene wallet first.");
+  const creatorKey = hex(addressToPkh(creator, network));
+  const additional = additionalMemberAddresses.map((address) => address.trim()).filter(Boolean);
+
+  if (additional.length < 1) {
+    throw new Error("Add at least one other member. Your connected wallet is automatically registered as Member 1.");
+  }
+  if (additional.length > MAX_CIRCLE_MEMBERS - 1) {
+    throw new Error("A circle supports up to 5 members, including you as Member 1.");
+  }
+
+  const seen = new Set<string>([creatorKey]);
+  for (const address of additional) {
+    const key = hex(addressToPkh(address, network));
+    if (key === creatorKey) {
+      throw new Error("Your connected creator wallet is already Member 1. Do not enter your own address again.");
+    }
+    if (seen.has(key)) {
+      throw new Error("Each additional member must have a unique BCH address.");
+    }
+    seen.add(key);
+  }
+  return [creator, ...additional];
+}
+
 /** Validate a saved or newly-created circle draft without connecting to a provider. */
 export function validateV2FeeCircleDraft(draft: V2FeeCircleDraft): void {
   validate(draft);
