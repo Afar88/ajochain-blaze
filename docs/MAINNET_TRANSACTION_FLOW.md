@@ -8,7 +8,7 @@ The executable fail-closed policy is in `src/core/mainnet-flow.ts`. It is a read
 
 ## Required user journey
 
-1. **Select network** — display Bitcoin Cash Mainnet explicitly. Verify the shared genesis header, the BCH-specific checkpoint at height 478,559, and the post-BSV-split BCH checkpoint at height 556,767, then verify the current tip against independent sources; never infer chain identity from the address prefix or shared genesis alone.
+1. **Select network** — display Bitcoin Cash Mainnet explicitly. Verify the shared genesis header, the BCH-specific checkpoint at height 478,559, and the post-BSV-split BCH checkpoint at height 556,767, then verify the current tip against independent sources. The PUSD API must perform the same identity checks before returning UTXO or unspent-state responses; never infer chain identity from the address prefix or shared genesis alone.
 2. **Connect wallet** — use WizardConnect, confirm the active session and wallet identity, derive the correct receive/change paths, and verify the address/network shown in Selene. A reconnecting or stale session blocks progress.
 3. **Load circle** — discover the circle contract and its state/receipt NFTs from confirmed chain data. Validate contract bytecode/version, token category, NFT commitments, member order, contribution amount, fee policy, and current round. Browser storage is only a cache.
 4. **Reconcile member accounting** — reconcile every member receipt against confirmed deposits and prior payouts. Check payment uniqueness, ownership, per-member credit, current-round due, carry-forward credit, and payout order. Any missing, duplicated, or inconsistent receipt blocks the circle.
