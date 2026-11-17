@@ -44,17 +44,18 @@ describe("CashTokens genesis outpoint selection", () => {
 describe("CashTokens genesis setup output accounting", () => {
   it("creates a 1,000-satoshi output zero without a 3,000-satoshi coin floor", () => {
     expect(CASH_TOKEN_GENESIS_SETUP_OUTPUT_SATOSHIS).toBe(1_000n);
-    expect(calculateGenesisSetupChange(2_000n, 454n)).toBe(546n);
+    expect(calculateGenesisSetupChange(3_000n, 1_500n)).toBeUndefined();
+    expect(calculateGenesisSetupChange(3_000n, 500n)).toBe(1_500n);
   });
 
   it("keeps the required dust-safe wallet change after the fee", () => {
-    expect(CASH_TOKEN_GENESIS_SETUP_MIN_CHANGE_SATOSHIS).toBe(546n);
-    expect(calculateGenesisSetupChange(2_000n, 453n)).toBe(547n);
-    expect(calculateGenesisSetupChange(2_000n, 455n)).toBeUndefined();
+    expect(CASH_TOKEN_GENESIS_SETUP_MIN_CHANGE_SATOSHIS).toBe(1_500n);
+    expect(calculateGenesisSetupChange(3_001n, 500n)).toBe(1_501n);
+    expect(calculateGenesisSetupChange(2_999n, 500n)).toBeUndefined();
   });
 
   it("rejects impossible or negative setup accounting", () => {
-    expect(calculateGenesisSetupChange(1_545n, 0n)).toBeUndefined();
+    expect(calculateGenesisSetupChange(2_499n, 0n)).toBeUndefined();
     expect(calculateGenesisSetupChange(-1n, 0n)).toBeUndefined();
     expect(calculateGenesisSetupChange(2_000n, -1n)).toBeUndefined();
   });
