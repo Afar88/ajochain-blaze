@@ -49,6 +49,7 @@ export default function App() {
   const [network, setNetwork] = useState<NetworkId>(() => getDefaultNetwork(import.meta.env.PROD));
   const [page, setPage] = useState<Page>("overview");
   const [circleWorkspace, setCircleWorkspace] = useState<CircleWorkspaceId>(() => getDefaultCircleWorkspace(getDefaultNetwork(import.meta.env.PROD)));
+  const [classicInviteRevision, setClassicInviteRevision] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => {
     if (typeof window === "undefined") return "system";
@@ -91,6 +92,7 @@ export default function App() {
         // Save the decoded invite locally before attempting any network reads.
         const params = restoreClassicCircleFromInvite(window.location.href);
         saveClassicCircle(window.localStorage, params);
+        setClassicInviteRevision((revision) => revision + 1);
         setNetwork(params.network);
         setCircleWorkspace("bch-classic");
         setPage("circles");
@@ -489,11 +491,11 @@ export default function App() {
                 <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-mainnet"}><BchMainnetCircleWorkspace network={network} walletConnected={connected} /></div>
                 <div className="circle-workspace-panel" hidden={circleWorkspace !== "pusd-mainnet"}><PusdMainnetCircleWorkspace network={network} walletConnected={connected} /></div>
                 {/* Legacy invite links remain accessible as a read-only compatibility workspace. */}
-                {circleWorkspace === "bch-classic" && <div className="circle-workspace-panel"><ClassicBchWorkspace network={network} walletConnected={connected} /></div>}
+                {circleWorkspace === "bch-classic" && <div className="circle-workspace-panel"><ClassicBchWorkspace key={classicInviteRevision} network={network} walletConnected={connected} /></div>}
               </>}
               {network === "chipnet" && <>
                 <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-fair-round"}><V2FeeBchWorkspace network={network} walletConnected={connected} /></div>
-                <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-classic"}><ClassicBchWorkspace network={network} walletConnected={connected} /></div>
+                <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-classic"}><ClassicBchWorkspace key={classicInviteRevision} network={network} walletConnected={connected} /></div>
               </>}
             </Suspense>
           </section>
