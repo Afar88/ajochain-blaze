@@ -35,6 +35,7 @@ type CircleResult = {
   recipient?: string | null;
   details?: string;
   memberRecords?: MemberRecord[];
+  aggregatePool?: { available: bigint; required: bigint; shortfall: bigint };
   history?: CircleActivitySnapshot;
   historyError?: string;
   error?: string;
@@ -160,6 +161,11 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
           : (status.round + 1) + " / " + ref.params.members.length,
         recipient: status.recipient,
         details: "Classic V1 uses an aggregate pot. The chain cannot identify which member funded an individual contribution.",
+        aggregatePool: {
+          available: status.available,
+          required: status.required,
+          shortfall: status.shortfall,
+        },
         ...historyResult,
         ...(!stateVerified ? { error: status.issues.join(" ") || "Classic circle state could not be validated." } : {}),
       };
@@ -328,6 +334,13 @@ export default function ActivityRecords() {
                     <div><span>Transaction source</span><b>{!result.history ? "History unavailable" : result.history.network === "mainnet" ? "Independent Mainnet Electrum quorum" : "Single Chipnet Electrum provider"}</b></div>
                   </div>
                   {result.details && <p className="activity-source-note">{result.details}</p>}
+                  {result.aggregatePool && (
+                    <div className="activity-state-grid">
+                      <div><span>On-chain aggregate pot</span><b>{formatBch(result.aggregatePool.available)}</b></div>
+                      <div><span>Required for payout</span><b>{formatBch(result.aggregatePool.required)}</b></div>
+                      <div><span>Pot shortfall</span><b>{formatBch(result.aggregatePool.shortfall)}</b></div>
+                    </div>
+                  )}
                   {result.memberRecords && (
                     <div className="activity-member-records">
                       <div className="activity-subheading"><b>Member receipts and accounting</b><small>Live values derived from on-chain receipts</small></div>
