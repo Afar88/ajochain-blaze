@@ -86,8 +86,8 @@ describe("BCH Mainnet quorum provider", () => {
     const fresh = headerWithTimestamp(Math.floor(now / 1000) - 30, "01");
     const wrongGenesis = "00".repeat(80);
     expect(() => validateMainnetTipQuorum([
-      { height: 900_000, headerHex: fresh, genesisHeaderHex: wrongGenesis },
-      { height: 900_000, headerHex: fresh, genesisHeaderHex: wrongGenesis },
+      { height: 900_000, headerHex: fresh, genesisHeaderHex: wrongGenesis, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH },
+      { height: 900_000, headerHex: fresh, genesisHeaderHex: wrongGenesis, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH },
     ], now)).toThrow(/genesis chain/);
     const stale = headerWithTimestamp(Math.floor(now / 1000) - 31 * 60, "01");
     expect(() => validateMainnetTipQuorum([
