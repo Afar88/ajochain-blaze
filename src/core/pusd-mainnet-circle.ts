@@ -21,7 +21,6 @@ const escrowArtifact = escrowArtifactJson as unknown as Artifact;
 const STATE_DUST = 1_000n;
 const RECEIPT_DUST = 1_000n;
 const ESCROW_DUST = 1_000n;
-const TOKEN_OUTPUT_CARRIER = 1_000n;
 const CHANGE_DUST = 546n;
 const CASH_SCRIPT_INT_MAX = 0x7fffffffffffffffn;
 
@@ -453,7 +452,7 @@ export async function planPusdMainnetDeposit(
   const provider = await getClassicProvider("mainnet");
   const bchUtxos = (await provider.getUtxos(walletAddress)).filter((utxo) => !utxo.token);
   const tokenChange = tokenInput.token!.amount - amount;
-  const memberLockingBytecode = hexToBin(toHex(classicAddressToPkh(walletAddress, "mainnet")) === "" ? "" : "76a914" + toHex(classicAddressToPkh(walletAddress, "mainnet")) + "88ac");
+  const memberLockingBytecode = hexToBin("76a914" + toHex(classicAddressToPkh(walletAddress, "mainnet")) + "88ac");
   const tokenChangeCarrier = tokenChange > 0n ? pusdCarrierSatoshis(memberLockingBytecode, tokenChange) : 0n;
   const reserve = selectSingleBchCoin(bchUtxos, params.maxFee + CHANGE_DUST + tokenChangeCarrier);
   if (!reserve) throw new Error("No BCH-only input is available to sponsor the PUSD deposit miner fee.");
@@ -534,7 +533,18 @@ export async function planPusdMainnetPayout(
   const payoutAmount = economics.grossPot - economics.projectFee - reserve;
   const provider = await getClassicProvider("mainnet");
   const bchUtxos = (await provider.getUtxos(initiatorAddress)).filter((utxo) => !utxo.token);
-  const feeInput = selectSingleBchCoin(bchUtxos, 2n * TOKEN_OUTPUT_CARRIER + params.maxFee + CHANGE_DUST);
+  const treasuryCarrier = pusdCarrierSatoshis(
+    hexToBin("76a914" + toHex(getMainnetProjectTreasuryPkh()) + "88ac"),
+    economics.projectFee,
+  );
+  const recipientCarrier = pusdCarrierSatoshis(
+    hexToBin("76a914" + toHex(classicAddressToPkh(params.members[snapshot.round], "mainnet")) + "88ac"),
+    payoutAmount,
+  );
+  const feeInput = selectSingleBchCoin(
+    bchUtxos,
+    treasuryCarrier + recipientCarrier + params.maxFee + CHANGE_DUST,
+  );
   const count = params.members.length;
   const makeBuilder = (feeChange: bigint) => {
     const unlock = snapshot.contract.unlock.payout();
