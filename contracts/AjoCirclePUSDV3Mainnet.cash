@@ -208,6 +208,7 @@ contract AjoCirclePUSDV3Mainnet(
         int payoutOutput = 2 * memberCount + 2;
         int feeChangeOutput = 2 * memberCount + 3;
         int feeInput = 2 * memberCount + 1;
+        // A wallet-signed BCH input bound to the registered initiator authorizes cancellation.
         require(tx.inputs[feeInput].tokenCategory == 0x);
         require(tx.inputs[feeInput].lockingBytecode == new LockingBytecodeP2PKH(initiator));
 
@@ -236,10 +237,8 @@ contract AjoCirclePUSDV3Mainnet(
      * Every member receives their exact escrowed PUSD plus the BCH backing
      * attached to their receipt and escrow UTXO. No project fee is charged.
      */
-    function cancel(pubkey initiatorPk, sig initiatorSig) {
+    function cancel() {
         require(this.activeInputIndex >= 0 && this.activeInputIndex <= memberCount);
-        require(hash160(initiatorPk) == initiator);
-        require(checkSig(initiatorSig, initiatorPk));
         require(memberCount >= 2 && memberCount <= 5);
         require(maxFee >= 1000);
         require(tx.inputs.length == 2 * memberCount + 2);
