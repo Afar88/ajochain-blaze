@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { encodeCashAddress } from "@bitauth/libauth";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "./project-treasury";
 import { createBchMainnetCircleDraft } from "./bch-mainnet-circle";
-import { validateV2FeeCircleDraft, v2FeeCancelWalletInputIndex } from "./v2-fee-bch";
+import { validateV2FeeCircleDraft, v2FeeCancelWalletInputIndex, validateV2FeePayoutFeePayerAddress } from "./v2-fee-bch";
 
 function address(seed: number): string {
   const result = encodeCashAddress({
@@ -65,5 +65,18 @@ describe("BCH Mainnet V3 circle adapter", () => {
     expect(v2FeeCancelWalletInputIndex(2)).toBe(3);
     expect(v2FeeCancelWalletInputIndex(5)).toBe(6);
     expect(() => v2FeeCancelWalletInputIndex(1)).toThrow(/2–5 members/);
+  });
+
+  it("validates payout fee sponsors against the selected Mainnet or Chipnet address prefix", () => {
+    const mainnetAddress = address(9);
+    const chipnetResult = encodeCashAddress({
+      prefix: "bchtest",
+      type: "p2pkh",
+      payload: new Uint8Array(20).fill(9),
+    });
+    if (typeof chipnetResult === "string") throw new Error(chipnetResult);
+    expect(() => validateV2FeePayoutFeePayerAddress(mainnetAddress, "mainnet")).not.toThrow();
+    expect(() => validateV2FeePayoutFeePayerAddress(chipnetResult.address, "mainnet")).toThrow();
+    expect(() => validateV2FeePayoutFeePayerAddress(mainnetAddress, "chipnet")).toThrow();
   });
 });
