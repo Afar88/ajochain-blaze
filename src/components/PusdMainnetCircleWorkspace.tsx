@@ -250,7 +250,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
 
       <div className="pusd-mainnet-build-status">
         <LockKeyhole size={16} />
-        <span><b>Next engineering stage: contract transaction planner and signed-byte verifier</b><small>The Mainnet V3 covenant source is being built with immutable treasury, fee, member receipt, reserve and cancellation rules. The current form saves a local draft only; it does not deploy or accept PUSD.</small></span>
+        <span><b>Next engineering stage: lifecycle workspace and signed-byte verification</b><small>Unsigned genesis, deposit, payout and pre-payout cancellation planners now exist. This form currently saves a local draft and previews genesis only; lifecycle wallet integration, exact signed-byte verification and broadcast/reorg handling remain locked.</small></span>
       </div>
 
       <div className="pusd-mainnet-saved">
