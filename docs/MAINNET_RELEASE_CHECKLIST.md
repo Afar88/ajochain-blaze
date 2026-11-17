@@ -2,6 +2,8 @@
 
 **Current status: NOT APPROVED FOR REAL-VALUE CIRCLE OPERATIONS.**
 
+External reviewer handoff: [`MAINNET_EXTERNAL_REVIEW_BRIEF.md`](./MAINNET_EXTERNAL_REVIEW_BRIEF.md).
+
 This checklist is a release control, not a list of UI switches. A checkbox may be marked complete only when the evidence is attached to the release and independently reviewed by someone other than the author of the implementation.
 
 ## BCH Classic V1
