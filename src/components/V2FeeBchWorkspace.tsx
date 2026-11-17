@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Copy, RefreshCw, ShieldCheck } from "lucide-react";
 import { parseAssetAmount } from "../core/assets";
-import { classicAddressToPkh, getClassicProvider } from "../core/classic-bch";
+import { classicAddressToPkh, getClassicProvider, probeChipnetWebSockets, type ChipnetWebSocketProbe } from "../core/classic-bch";
 import { formatBch, type NetworkId } from "../core/network";
 import { wallet } from "../core/wizard-wallet";
 import {
@@ -96,6 +96,12 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<{
+    endpoints: ChipnetWebSocketProbe[];
+    providerOk: boolean;
+    providerDetail: string;
+  } | null>(null);
 
   const active = useMemo(() => {
     if (!selected) return null;
@@ -135,6 +141,34 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
     });
     return () => { current = false; };
   }, [selected]);
+
+  const runConnectionDiagnostics = async () => {
+    setDiagnosticsBusy(true);
+    setDiagnostics(null);
+    const endpointCheck = probeChipnetWebSockets().catch((cause: unknown) => [{
+      host: "Browser",
+      port: 0,
+      status: "failed" as const,
+      detail: errorText(cause),
+      elapsedMs: 0,
+    }]);
+    const providerCheck = (async () => {
+      try {
+        const provider = await getClassicProvider("chipnet");
+        const height = await provider.getBlockHeight();
+        return { ok: true, detail: "Electrum provider read Chipnet block height " + height + "." };
+      } catch (cause) {
+        return { ok: false, detail: errorText(cause) };
+      }
+    })();
+    const [endpoints, provider] = await Promise.all([endpointCheck, providerCheck]);
+    setDiagnostics({
+      endpoints,
+      providerOk: provider.ok,
+      providerDetail: provider.detail,
+    });
+    setDiagnosticsBusy(false);
+  };
 
   const memberIndex = useMemo(() => {
     if (!active || !walletConnected || wallet.state !== "connected") return -1;
@@ -334,6 +368,28 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
       <div className="safety-note-inline">
         <ShieldCheck size={17} />
         <span>Experimental and unaudited. Chipnet only. Every payout except the final payout reserves exactly one next contribution for the recipient. It covers the following round; after it is consumed, that member must fund later installments again. No Mainnet signing or broadcasting is enabled.</span>
+      </div>
+
+      <div className="classic-account-summary classic-chain-diagnostics">
+        <div>
+          <b>Chipnet connection test</b>
+          <span>Tests browser WSS and then the Electrum provider. Read-only; no wallet approval or transaction.</span>
+        </div>
+        <button type="button" className="secondary-button" onClick={() => void runConnectionDiagnostics()} disabled={diagnosticsBusy || network !== "chipnet"}>
+          {diagnosticsBusy ? "Testing connection…" : "Run connection test"}
+        </button>
+        {diagnostics && (
+          <div className="classic-diagnostic-results" role="status">
+            <p><b>Electrum provider:</b> {diagnostics.providerOk ? "Connected" : "Failed"} — {diagnostics.providerDetail}</p>
+            <ul className="classic-issues">
+              {diagnostics.endpoints.map((item) => (
+                <li key={item.host + ":" + item.port}>
+                  <b>{item.host}:{item.port}</b> — {item.status.replaceAll("-", " ")} ({item.elapsedMs} ms): {item.detail}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       <div className="circle-workspace-grid">
