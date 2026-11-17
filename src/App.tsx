@@ -13,6 +13,7 @@ const ClassicBchWorkspace = lazy(() => import("./components/ClassicBchWorkspace"
 const V2FeeBchWorkspace = lazy(() => import("./components/V2FeeBchWorkspace"));
 const PusdMainnetCircleWorkspace = lazy(() => import("./components/PusdMainnetCircleWorkspace"));
 const BchMainnetCircleWorkspace = lazy(() => import("./components/BchMainnetCircleWorkspace"));
+const ActivityRecords = lazy(() => import("./components/ActivityRecords"));
 
 type Page = "overview" | "circles" | "assets" | "activity";
 type ThemePreference = "system" | "light" | "dark";
@@ -553,23 +554,9 @@ export default function App() {
         )}
 
         {page === "activity" && (
-          <section className="page-section">
-            <div className="page-intro">
-              <span className="section-kicker">ON-CHAIN RECORDS</span>
-              <h1>Activity and records</h1>
-              <p>Circle state is refreshed from the chain. Local saved circles are only bookmarks, not evidence of funds.</p>
-            </div>
-            <article className="asset-detail-card activity-panel">
-              <div className="asset-detail-heading">
-                <span className="status-card-icon"><Activity size={18} /></span>
-                <div><span className="section-kicker">VERIFICATION POLICY</span><h2>Chain-backed records only</h2>
-                  <p>Unconfirmed transfers, mixed-input contributions, duplicate receipts and reorged transactions must not be credited.</p></div>
-              </div>
-              <div className="asset-detail-row"><span>Member receipt accounting</span><b>V2 BCH covenant</b></div>
-              <div className="asset-detail-row"><span>Append-only receipt model</span><b>Imported and tested</b></div>
-              <div className="asset-detail-row"><span>PUSD circle transactions</span><b className="locked-state">Not enabled</b></div>
-            </article>
-          </section>
+          <Suspense fallback={<section className="page-section"><p className="classic-empty">Loading chain-backed activity…</p></section>}>
+            <ActivityRecords />
+          </Suspense>
         )}
       </div>
 
