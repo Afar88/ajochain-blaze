@@ -4,6 +4,8 @@ import { PUSD_ASSET, formatAssetAmount, parseAssetAmount } from "../core/assets"
 import { classicAddressToPkh } from "../core/classic-bch";
 import { calculatePusdCircleEconomics } from "../core/pusd-circle-economics";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "../core/project-treasury";
+import { planPusdMainnetCircleGenesis } from "../core/pusd-mainnet-circle";
+import { wallet } from "../core/wizard-wallet";
 import type { NetworkId } from "../core/network-config";
 
 type Props = { network: NetworkId; walletConnected: boolean };
@@ -54,6 +56,13 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
   const [drafts, setDrafts] = useState<Draft[]>(readDrafts);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [preparedPlan, setPreparedPlan] = useState<{
+    contractAddress: string;
+    escrowAddresses: string[];
+    feeEstimate: string;
+    transactionSizeBytes: number;
+  } | null>(null);
 
   const memberAddresses = useMemo(() =>
     membersText.split(/\r?\n/).map((address) => address.trim()).filter(Boolean),
@@ -111,6 +120,46 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
       setContribution(formatAssetAmount("PUSD", units));
     } catch (cause) {
       setError(errorMessage(cause));
+    }
+  };
+
+  const prepareCreationPlan = async () => {
+    setNotice("");
+    setError("");
+    setPreparedPlan(null);
+    if (network !== "mainnet") {
+      setError("PUSD circle creation plans are Mainnet-only.");
+      return;
+    }
+    if (!walletConnected || wallet.state !== "connected") {
+      setError("Connect Selene through WizardConnect before preparing a Mainnet creation plan.");
+      return;
+    }
+    const initiatorAddress = wallet.address("mainnet");
+    if (!initiatorAddress) {
+      setError("The connected wallet does not expose a verified Mainnet receive address.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const units = parseAssetAmount("PUSD", contribution);
+      const plan = await planPusdMainnetCircleGenesis({
+        name: name.trim(),
+        members: memberAddresses,
+        contribution: units,
+        maxFee: BigInt(maxFee.trim()),
+      }, initiatorAddress);
+      setPreparedPlan({
+        contractAddress: plan.contractAddress!,
+        escrowAddresses: plan.escrowAddresses ?? [],
+        feeEstimate: plan.feeEstimate.toString(),
+        transactionSizeBytes: plan.transactionSizeBytes,
+      });
+      setNotice("Mainnet PUSD genesis transaction plan prepared. It is unsigned; nothing has been broadcast.");
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -176,11 +225,26 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
           </div>
         )}
 
-        <button className="primary-button" type="submit" disabled={network !== "mainnet"}>
-          Save Mainnet circle draft <ArrowRight size={15} />
-        </button>
+        <div className="pusd-mainnet-actions">
+          <button className="secondary-button" type="submit" disabled={network !== "mainnet"}>Save Mainnet circle draft</button>
+          <button className="primary-button" type="button" onClick={() => void prepareCreationPlan()} disabled={network !== "mainnet" || !walletConnected || busy}>
+            {busy ? "Preparing Mainnet plan…" : "Prepare on-chain creation plan"} <ArrowRight size={15} />
+          </button>
+        </div>
       </form>
 
+      {preparedPlan && (
+        <div className="pusd-mainnet-breakdown" role="status">
+          <b>Unsigned Mainnet genesis plan ready</b>
+          <div><span>PUSD circle contract</span><strong><code>{preparedPlan.contractAddress}</code></strong></div>
+          {preparedPlan.escrowAddresses.map((address, index) => (
+            <div key={address}><span>Member {index + 1} escrow</span><strong><code>{address}</code></strong></div>
+          ))}
+          <div><span>Estimated BCH miner fee</span><strong>{preparedPlan.feeEstimate} sats</strong></div>
+          <div><span>Estimated transaction size</span><strong>{preparedPlan.transactionSizeBytes} bytes</strong></div>
+          <small>This is a prepared transaction plan only. No wallet signature, contract deployment or broadcast has occurred.</small>
+        </div>
+      )}
       {error && <p className="classic-error" role="alert">{error}</p>}
       {notice && <p className="classic-notice" role="status">{notice}</p>}
 
