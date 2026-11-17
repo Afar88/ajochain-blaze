@@ -452,31 +452,36 @@ export async function planPusdMainnetDeposit(
   const escrow = snapshot.escrowUtxos[memberIndex];
   const unlock = contract.unlock.deposit(BigInt(memberIndex), amount);
 
-  const makeBuilder = (change: bigint) => new TransactionBuilder({ provider })
-    .addInput(state, unlock)
-    .addInput(receipt, unlock)
-    .addInput(escrow, escrows[memberIndex].unlock.attest())
-    .addInput(funding, placeholderP2PKHUnlocker(walletAddress))
-    .addInput(reserve, placeholderP2PKHUnlocker(walletAddress))
-    .addOutput({
-      to: contract.tokenAddress, amount: state.satoshis,
-      token: { category: params.stateCategory, amount: 0n, nft: { capability: "minting", commitment: state.token!.nft!.commitment } },
-    })
-    .addOutput({
-      to: contract.tokenAddress, amount: receipt.satoshis,
-      token: { category: params.stateCategory, amount: 0n, nft: { capability: "none", commitment: receiptCommitment(memberIndex, oldCredit + amount) } },
-    })
-    .addOutput({
-      to: escrows[memberIndex].tokenAddress,
-      amount: escrow.satoshis + funding.satoshis,
-      token: { category: PUSD_ASSET.categoryId, amount: oldCredit + amount },
-    })
-    .addOutput(...(tokenChange > 0n ? [{
-      to: walletAddress,
-      amount: TOKEN_OUTPUT_CARRIER,
-      token: { category: PUSD_ASSET.categoryId, amount: tokenChange },
-    }] : []))
-    .addOutput({ to: walletAddress, amount: change });
+  const makeBuilder = (change: bigint) => {
+    const builder = new TransactionBuilder({ provider })
+      .addInput(state, unlock)
+      .addInput(receipt, unlock)
+      .addInput(escrow, escrows[memberIndex].unlock.attest())
+      .addInput(funding, placeholderP2PKHUnlocker(walletAddress))
+      .addInput(reserve, placeholderP2PKHUnlocker(walletAddress))
+      .addOutput({
+        to: contract.tokenAddress, amount: state.satoshis,
+        token: { category: params.stateCategory, amount: 0n, nft: { capability: "minting", commitment: state.token!.nft!.commitment } },
+      })
+      .addOutput({
+        to: contract.tokenAddress, amount: receipt.satoshis,
+        token: { category: params.stateCategory, amount: 0n, nft: { capability: "none", commitment: receiptCommitment(memberIndex, oldCredit + amount) } },
+      })
+      .addOutput({
+        to: escrows[memberIndex].tokenAddress,
+        amount: escrow.satoshis + funding.satoshis,
+        token: { category: PUSD_ASSET.categoryId, amount: oldCredit + amount },
+      });
+    if (tokenChange > 0n) {
+      builder.addOutput({
+        to: walletAddress,
+        amount: TOKEN_OUTPUT_CARRIER,
+        token: { category: PUSD_ASSET.categoryId, amount: tokenChange },
+      });
+    }
+    builder.addOutput({ to: walletAddress, amount: change });
+    return builder;
+  };
 
   const estimateBuilder = makeBuilder(CHANGE_DUST);
   const { fee, size } = await estimateFee(estimateBuilder, params.maxFee);
