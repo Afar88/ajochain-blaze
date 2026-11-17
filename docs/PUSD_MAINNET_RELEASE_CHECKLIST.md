@@ -2,6 +2,8 @@
 
 **Current status: READ-ONLY. PUSD Mainnet spending is not approved.**
 
+External reviewer handoff: [`MAINNET_EXTERNAL_REVIEW_BRIEF.md`](./MAINNET_EXTERNAL_REVIEW_BRIEF.md).
+
 This document is the release checklist referenced by `src/core/pusd-mainnet-guard.ts`. Passing unit tests or building a transfer preview does not satisfy these requirements.
 
 ## Token identity and policy
@@ -62,6 +64,6 @@ Do not deploy the circle contracts or send PUSD/BCH to prototype scripts while a
 
 ## Hard stop
 
-The server broadcast endpoint is compiled with `MAINNET_BROADCAST_ENABLED = false`. The client additionally rejects direct calls to its PUSD broadcast function while `PUSD_MAINNET_SPENDING_ENABLED = false`. Setting `ENABLE_MAINNET_BROADCAST=true` in the deployment environment does not enable spending. Do not change either compile-time lock until every required item above is evidenced and approved.
+The server broadcast endpoint is compiled with `MAINNET_BROADCAST_ENABLED = false`. The API's PUSD relay path now submits once to a single provider and resolves ambiguous responses by looking up the exact transaction ID across the configured providers; it never blindly retries through a second relay. An `already-known` or relay-accepted result is not a confirmation, and confirmation/reorg tracking remains outstanding. The client additionally rejects direct calls to its PUSD broadcast function while `PUSD_MAINNET_SPENDING_ENABLED = false`. Setting `ENABLE_MAINNET_BROADCAST=true` in the deployment environment does not enable spending. Do not change either compile-time lock until every required item above is evidenced and approved.
 
 PUSD circles and escrow are separate work. Their prototype covenants must not be treated as supported PUSD circle functionality.
