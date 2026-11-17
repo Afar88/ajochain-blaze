@@ -66,25 +66,55 @@ async function readCircle(contract: Contract) {
   return { state, receipts };
 }
 
-async function depositCurrentRound(provider: MockNetworkProvider, contract: Contract, index: number) {
+async function depositCurrentRound(
+  provider: MockNetworkProvider,
+  contract: Contract,
+  index: number,
+  amount = CONTRIBUTION,
+) {
   const { state, receipts } = await readCircle(contract);
   const address = pkhToAddress(members[index].pkh, "chipnet");
-  const funding = provider.addUtxo(address, randomUtxo({ satoshis: CONTRIBUTION + 20_000n }));
+  const oldCredit = v2FeeCreditFromCommitment(receipts[index].token!.nft!.commitment);
+  const funding = provider.addUtxo(address, randomUtxo({ satoshis: amount + 20_000n }));
   const builder = new TransactionBuilder({ provider })
-    .addInput(state, contract.unlock.addCredit(BigInt(index), CONTRIBUTION))
-    .addInput(receipts[index], contract.unlock.addCredit(BigInt(index), CONTRIBUTION))
+    .addInput(state, contract.unlock.addCredit(BigInt(index), amount))
+    .addInput(receipts[index], contract.unlock.addCredit(BigInt(index), amount))
     .addInput(funding, members[index].signer.unlockP2PKH())
     .addOutput({
       to: contract.tokenAddress,
-      amount: state.satoshis + CONTRIBUTION,
+      amount: state.satoshis + amount,
       token: { category: CATEGORY, amount: 0n, nft: { capability: "minting", commitment: state.token!.nft!.commitment } },
     })
     .addOutput({
       to: contract.tokenAddress,
       amount: receipts[index].satoshis,
-      token: { category: CATEGORY, amount: 0n, nft: { capability: "none", commitment: commitment(index, v2FeeCreditFromCommitment(receipts[index].token!.nft!.commitment) + CONTRIBUTION) } },
+      token: { category: CATEGORY, amount: 0n, nft: { capability: "none", commitment: commitment(index, oldCredit + amount) } },
     })
     .addOutput({ to: address, amount: 10_000n });
+  await builder.send();
+}
+
+async function cancelV3Circle(
+  provider: MockNetworkProvider,
+  contract: Contract,
+  authorizer = initiator,
+) {
+  const { state, receipts } = await readCircle(contract);
+  const feeAddress = pkhToAddress(initiator.pkh, "chipnet");
+  const feeFunding = provider.addUtxo(feeAddress, randomUtxo({ satoshis: 20_000n }));
+  const unlocker = contract.unlock.cancel(authorizer.publicKey, authorizer.signer);
+  const builder = new TransactionBuilder({ provider })
+    .addInput(state, unlocker)
+    .addInputs(receipts, unlocker)
+    .addInput(feeFunding, initiator.signer.unlockP2PKH());
+  receipts.forEach((receipt, index) => {
+    const credit = v2FeeCreditFromCommitment(receipt.token!.nft!.commitment);
+    builder.addOutput({
+      to: pkhToAddress(members[index].pkh, "chipnet"),
+      amount: receipt.satoshis + credit,
+    });
+  });
+  builder.addOutput({ to: feeAddress, amount: 14_000n });
   await builder.send();
 }
 
@@ -152,6 +182,43 @@ describe("V2/V3 state NFT commitment encoding", () => {
     ]) {
       expect(isValidV2FeeStateCommitment(commitment)).toBe(false);
     }
+  });
+});
+
+describe("AjoChain V3 initiator cancellation covenant", () => {
+  it("refunds each member's exact recorded credit and receipt backing before the first payout", async () => {
+    const provider = new MockNetworkProvider();
+    const contract = makeContract(provider);
+    addGenesis(provider, contract);
+    const expectedCredits = [CONTRIBUTION / 2n, CONTRIBUTION];
+    await depositCurrentRound(provider, contract, 0, expectedCredits[0]);
+    await depositCurrentRound(provider, contract, 1, expectedCredits[1]);
+
+    await cancelV3Circle(provider, contract);
+
+    expect(await contract.getUtxos()).toHaveLength(0);
+    for (let index = 0; index < members.length; index++) {
+      const address = pkhToAddress(members[index].pkh, "chipnet");
+      const memberUtxos = await provider.getUtxos(address);
+      expect(memberUtxos.some((utxo) => utxo.satoshis === DUST + expectedCredits[index])).toBe(true);
+    }
+  });
+
+  it("rejects cancellation authorized by a non-initiator", async () => {
+    const provider = new MockNetworkProvider();
+    const contract = makeContract(provider);
+    addGenesis(provider, contract);
+    await expect(cancelV3Circle(provider, contract, key(20))).rejects.toThrow();
+  });
+
+  it("permanently rejects cancellation after the first payout", async () => {
+    const provider = new MockNetworkProvider();
+    const contract = makeContract(provider);
+    addGenesis(provider, contract);
+    await depositCurrentRound(provider, contract, 0);
+    await depositCurrentRound(provider, contract, 1);
+    await triggerPayout(provider, contract);
+    await expect(cancelV3Circle(provider, contract)).rejects.toThrow();
   });
 });
 
