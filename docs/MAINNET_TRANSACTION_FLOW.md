@@ -50,7 +50,7 @@ The Mainnet API now exposes `GET /api/transaction/status?txid=<64-hex-txid>`.
 
 - Every configured Electrum provider must return identical raw transaction bytes whose computed txid matches the request.
 - A transaction is reported as `confirmed` only when every provider returns the same confirmation height, position and merkle branch, every provider returns the same block header for that height, and the merkle proof verifies against the header's serialized merkle root.
-- A transaction is reported as `pending` only when every provider knows the same raw transaction and both return an ordinary no-inclusion-proof response.
+- A transaction is reported as `pending` only when every provider knows the same raw transaction and every provider returns a narrowly recognized ordinary no-inclusion-proof response; unsupported RPC methods and other provider errors remain `unknown`.
 - Provider disagreement, missing raw bytes, malformed proofs, or lookup failures return `unknown`. An unknown result is not proof of failure and must not trigger an automatic replacement or rebroadcast.
 - The endpoint recalculates status from current provider observations. A transaction previously reported as confirmed can later return pending or unknown after a reorganisation or provider disagreement.
 
