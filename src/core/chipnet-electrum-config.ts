@@ -22,3 +22,28 @@ export const ELECTRUM_SOCKET_OPTIONS = {
   timeoutInMilliSeconds: ELECTRUM_TIMEOUT_MS,
   enforceConsistentBrowserBehavior: false,
 } as const;
+
+/**
+ * A valid user override is preferred, never allowed to remove the known
+ * fallback endpoints. Ignore malformed or out-of-range local settings.
+ */
+export function getChipnetElectrumEndpoints(configured: string | null): Array<[string, number]> {
+  const defaults: Array<[string, number]> = CHIPNET_ELECTRUM_ENDPOINTS.map(([host, port]) => [host, port]);
+  if (!configured) return defaults;
+
+  const parts = configured.trim().split(":");
+  if (parts.length !== 2) return defaults;
+  const [host, rawPort] = parts;
+  const port = Number(rawPort);
+  if (!/^[a-z0-9.-]+$/i.test(host) ||
+      !Number.isInteger(port) || port < 1 || port > 65_535) {
+    return defaults;
+  }
+
+  return [
+    [host, port],
+    ...defaults.filter(([defaultHost, defaultPort]) =>
+      defaultHost !== host || defaultPort !== port
+    ),
+  ];
+}
