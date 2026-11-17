@@ -559,7 +559,7 @@ export async function planV2FeeCancel(params: V2FeeCircleParams, walletAddress: 
   receipts.forEach((receipt, i) => builder.addOutput({ to: params.members[i], amount: receipt.satoshis + credits[i] }));
   builder.addOutput({ to: walletAddress, amount: change });
   const wc = builder.generateWcTransactionObject({ broadcast: false, userPrompt: `Cancel V2 circle "${params.name}" and refund every member` });
-  return { wc, walletInputs: Array.from({ length: params.members.length + 2 }, (_, i) => i), minerFee, refunds: credits };
+  return { wc, walletInputs: [params.members.length + 1], minerFee, refunds: credits };
 }
 
 /** Read and validate the complete V2 fee state before showing balances or actions. */
