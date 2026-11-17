@@ -422,6 +422,20 @@ test("transaction status is pending only when all providers know identical raw b
   assert.match(result.reason, /not confirmation/);
 });
 
+test("transaction status treats unsupported merkle RPC errors as unknown, not pending", async () => {
+  const raw = sampleRawTransactionHex();
+  const txid = transactionIdFromHex(raw);
+  const tip = { height: 900_000, hash: "55".repeat(32) };
+  const sessions = [
+    makeStatusSession({ raw, proofError: "method not found" }),
+    makeStatusSession({ raw, proofError: "method not found" }),
+  ];
+
+  const result = await getVerifiedTransactionStatus(sessions, tip, txid);
+  assert.equal(result.status, "unknown");
+  assert.match(result.reason, /proof lookup failed for a reason other than an ordinary unconfirmed transaction/);
+});
+
 test("transaction status returns unknown when only one provider supplies a merkle proof", async () => {
   const raw = sampleRawTransactionHex();
   const txid = transactionIdFromHex(raw);
