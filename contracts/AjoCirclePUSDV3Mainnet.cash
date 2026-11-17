@@ -90,7 +90,7 @@ contract AjoCirclePUSDV3Mainnet(
         require(tx.inputs[3].nftCommitment == 0x);
         require(tx.inputs[3].lockingBytecode == new LockingBytecodeP2PKH(member));
         require(tx.inputs[4].tokenCategory == 0x);
-        require(tx.inputs[4].lockingBytecode == new LockingBytecodeP2PKH(initiator));
+        require(tx.inputs[4].lockingBytecode == new LockingBytecodeP2PKH(member));
 
         require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
         require(tx.outputs[0].tokenCategory == stateCategory + 0x02);
