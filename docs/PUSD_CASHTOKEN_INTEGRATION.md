@@ -24,6 +24,17 @@ The category ID is pinned in `src/core/assets.ts`. A ticker or token name is nev
 - Strict PUSD UTXO selection helper: exact category only, deterministic smallest-sufficient selection, duplicate outpoint rejection, and NFT-bearing UTXO rejection.
 - Tests for amount parsing, formatting, precision, category identity, byte order, network scope, maximum amount, and UTXO selection.
 
+## Mainnet V3 circle build (in progress)
+
+- A separate `AjoCirclePUSDV3Mainnet.cash` contract and `AjoPUSDMemberEscrowV3.cash` sidecar have been added. They target the real ParyonUSD Mainnet category; no Chipnet/test token is substituted.
+- The V3 source pins the shared BCH/PUSD Mainnet project treasury `bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q` into its constructor.
+- The proposed payout transition pays 1% of the gross PUSD pot to that treasury as a separate PUSD output, retains one next contribution in the non-final recipient's own escrow, and pays no reserve to the final recipient.
+- A pre-first-payout cancellation branch refunds each member's exact PUSD escrow and associated BCH carrier backing. Cancellation is unavailable after the first payout.
+- The Circles page now has a Mainnet-only PUSD circle draft form with exact base-unit fee and reserve previews. Saving a draft is local only; it does not deploy a contract, authorize a wallet signature or transfer funds.
+- CashScript compilation and MockNetworkProvider tests have been added to CI. These are prototype checks, not independent Mainnet evidence.
+
+The V3 planner, genesis deployment inspection, authenticated member funding/deposit plan, payout/cancellation transaction construction, exact signed-byte verification and confirmation/reorg handling are still outstanding. The Mainnet spend guard remains closed.
+
 ## Not yet implemented — deliberately blocked
 
 The current `AjoCircleV2.cash` contract is a BCH-only prototype. Its member receipts and state NFT are defined under one circle category, and contribution funding currently expects a BCH P2PKH input. It does not accept, preserve, account for, or pay out PUSD CashTokens.
