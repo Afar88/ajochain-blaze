@@ -13,7 +13,7 @@ import type {
 } from "cashscript";
 
 export const BCH_MAINNET_GENESIS_HASH =
-  "000000000019d6689c085ae165831e934ff763ae46a2c172b3f1b60a8ce26f";
+  "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f";
 
 /**
  * Bitcoin and Bitcoin Cash share the same genesis block. The first BCH-only
