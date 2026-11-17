@@ -273,7 +273,7 @@ export function validatePusdMainnetCircleParams(params: PusdMainnetCircleParams)
 }
 
 export async function planPusdMainnetCircleGenesis(
-  draft: Omit<PusdMainnetCircleDraft, "initiator">,
+  draft: { name: string; members: string[]; contribution: bigint; maxFee: bigint },
   initiatorAddress: string,
 ): Promise<PusdMainnetTransactionPlan & { params: PusdMainnetCircleParams }> {
   const normalized: PusdMainnetCircleDraft = {
@@ -453,7 +453,7 @@ export async function planPusdMainnetDeposit(
     .addInput(receipt, unlock)
     .addInput(escrow, escrows[memberIndex].unlock.attest())
     .addInput(funding, placeholderP2PKHUnlocker(walletAddress))
-    .addInput(reserve.selected[0], placeholderP2PKHUnlocker(walletAddress))
+    .addInput(reserve, placeholderP2PKHUnlocker(walletAddress))
     .addOutput({
       to: contract.tokenAddress, amount: state.satoshis,
       token: { category: params.stateCategory, amount: 0n, nft: { capability: "minting", commitment: state.token!.nft!.commitment } },
@@ -471,7 +471,7 @@ export async function planPusdMainnetDeposit(
 
   const estimateBuilder = makeBuilder(CHANGE_DUST);
   const { fee, size } = await estimateFee(estimateBuilder, params.maxFee);
-  const feeChange = reserve.selected[0].satoshis - fee;
+  const feeChange = reserve.satoshis - fee;
   if (feeChange < CHANGE_DUST) throw new Error("BCH fee reserve cannot cover the quoted deposit fee and change.");
   const builder = makeBuilder(feeChange);
   const wc = builder.generateWcTransactionObject({
