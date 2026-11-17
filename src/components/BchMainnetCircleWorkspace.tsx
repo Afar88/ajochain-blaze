@@ -1,11 +1,8 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
 import { formatAssetAmount, parseAssetAmount } from "../core/assets";
-import { classicAddressToPkh } from "../core/classic-bch";
+import { createBchMainnetCircleDraft, prepareBchMainnetCircleGenesisPreview } from "../core/bch-mainnet-circle";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "../core/project-treasury";
-import {
-  prepareBchMainnetCircleGenesisPreview,
-} from "../core/bch-mainnet-circle";
 import { wallet } from "../core/wizard-wallet";
 import type { NetworkId } from "../core/network-config";
 
@@ -86,12 +83,18 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
       if (network !== "mainnet") throw new Error("BCH Mainnet drafts can only be saved while the app is set to Mainnet.");
       if (!name.trim() || name.trim().length > 60) throw new Error("Enter a circle name between 1 and 60 characters.");
       if (members.length < 2 || members.length > 5) throw new Error("Enter 2–5 unique BCH Mainnet member addresses.");
-      const keys = members.map((member) => Array.from(classicAddressToPkh(member, "mainnet")).join(","));
-      if (new Set(keys).size !== keys.length) throw new Error("Every member must have a unique Mainnet address.");
       const units = parseAssetAmount("BCH", contribution);
-      if (!/^\\d+$/.test(maxFee.trim()) || BigInt(maxFee.trim()) < 7_000n) {
-        throw new Error("Maximum miner fee must be at least 7,000 whole satoshis for a two-member genesis estimate.");
+      if (!/^\d+$/.test(maxFee.trim())) {
+        throw new Error("Maximum miner fee must be a whole number of satoshis.");
       }
+      createBchMainnetCircleDraft({
+        version: 2,
+        name: name.trim(),
+        members,
+        contribution: units,
+        maxFee: BigInt(maxFee.trim()),
+        initiator: members[0],
+      });
       const draft: Draft = {
         name: name.trim(),
         contribution: formatAssetAmount("BCH", units),
