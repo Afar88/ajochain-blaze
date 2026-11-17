@@ -341,6 +341,8 @@ export async function verifyAndBroadcastPusdTransfer(options: {
 
   const broadcast = await requestJson<{
     txid: string;
+    relayStatus: "accepted" | "already-known";
+    confirmationStatus: "not-checked";
     feeSatoshis: string;
     inputPusdAmount: string;
     recipientPusdAmount: string;
@@ -365,6 +367,8 @@ export async function verifyAndBroadcastPusdTransfer(options: {
   }
   return {
     txid: broadcast.txid,
+    relayStatus: broadcast.relayStatus,
+    confirmationStatus: broadcast.confirmationStatus,
     feeSatoshis: BigInt(broadcast.feeSatoshis),
     inputPusdAmount: BigInt(broadcast.inputPusdAmount),
     recipientPusdAmount: BigInt(broadcast.recipientPusdAmount),
