@@ -8,7 +8,7 @@ The executable fail-closed policy is in `src/core/mainnet-flow.ts`. It is a read
 
 ## Required user journey
 
-1. **Select network** — display Bitcoin Cash Mainnet explicitly. Verify chain identity against an independent mainnet source; never infer it from the address prefix alone.
+1. **Select network** — display Bitcoin Cash Mainnet explicitly. Verify the shared genesis header and the BCH-specific fork checkpoint at height 478,559, then verify the current tip against independent sources; never infer chain identity from the address prefix or shared genesis alone.
 2. **Connect wallet** — use WizardConnect, confirm the active session and wallet identity, derive the correct receive/change paths, and verify the address/network shown in Selene. A reconnecting or stale session blocks progress.
 3. **Load circle** — discover the circle contract and its state/receipt NFTs from confirmed chain data. Validate contract bytecode/version, token category, NFT commitments, member order, contribution amount, fee policy, and current round. Browser storage is only a cache.
 4. **Reconcile member accounting** — reconcile every member receipt against confirmed deposits and prior payouts. Check payment uniqueness, ownership, per-member credit, current-round due, carry-forward credit, and payout order. Any missing, duplicated, or inconsistent receipt blocks the circle.
