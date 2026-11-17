@@ -16,6 +16,7 @@ import legacyArtifactJson from '../../contracts/AjoCircleV2Fee.legacy.json' with
 import legacyEscrowArtifactJson from '../../contracts/AjoCircleV2FeeEscrow.legacy.json' with { type: 'json' };
 import legacyAutoReserveArtifactJson from '../../contracts/AjoCircleV3AutoReserve.legacy.json' with { type: 'json' };
 import { classicAddressToPkh, getClassicProvider, type ClassicNetwork } from "./classic-bch";
+import { selectCashTokensGenesisUtxo } from "./cash-token-genesis";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "./project-treasury";
 import { MAX_CIRCLE_MEMBERS, MIN_CIRCLE_MEMBERS } from "./member-ledger";
 
@@ -401,9 +402,19 @@ export async function planV2FeeGenesis(draft: V2FeeCircleDraft, walletAddress: s
   const paramsBase = { ...draft, initiator: walletAddress };
   validate({ ...paramsBase, stateCategory: '00'.repeat(32) });
   const provider = await getProvider(draft.network);
-  const coins = (await provider.getUtxos(walletAddress)).filter(u => !u.token);
-  const genesis = coins.find(u => u.vout === 0 && u.satoshis >= 3_000n);
-  if (!genesis) throw new Error('V2 fee creation needs a non-token BCH UTXO at vout 0 for its CashTokens category. Check wallet funding before sending more BCH.');
+  const coins = (await provider.getUtxos(walletAddress))
+    .filter(u => !u.token && u.satoshis > 0n)
+    .sort((a, b) => a.satoshis === b.satoshis
+      ? a.txid.localeCompare(b.txid) || a.vout - b.vout
+      : a.satoshis > b.satoshis ? -1 : 1);
+  const genesis = selectCashTokensGenesisUtxo(coins);
+  if (!genesis) {
+    throw new Error(
+      'CashTokens category creation requires a non-token wallet UTXO at output index 0. ' +
+      'There is no 3,000-satoshi minimum for that coin. If your wallet has no eligible output-0 coin, ' +
+      'a setup transaction can create one using existing BCH; do not add funds until the wallet UTXOs are checked.'
+    );
+  }
   const params: V2FeeCircleParams = { ...paramsBase, stateCategory: genesis.txid };
   const contract = contractFor(params, provider);
   const inputs: SpendableUtxo[] = [genesis];
