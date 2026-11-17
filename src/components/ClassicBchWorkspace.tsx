@@ -95,11 +95,11 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
       setError("The connected wallet does not have a verified receive address for this network.");
       return;
     }
-    const members = membersText.split(/\\r?\\n/).map((entry) => entry.trim()).filter(Boolean);
+    const members = membersText.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean);
     try {
       const contribution = parseAssetAmount("BCH", amount);
       const feeCap = BigInt(maxFee.trim());
-      if (!/^\\d+$/.test(maxFee.trim())) throw new Error("Maximum fee must be a whole number of satoshis.");
+      if (!/^\d+$/.test(maxFee.trim())) throw new Error("Maximum fee must be a whole number of satoshis.");
       const draft = { version: 1 as const, name: name.trim(), network, members, contribution, maxFee: feeCap };
       setBusy(true);
 
@@ -120,7 +120,7 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
         throw new Error("AjoChain could not safely read its pending setup record. No new transaction was prepared.");
       }
 
-      let plan;
+      let plan: Awaited<ReturnType<typeof planClassicGenesis>>;
       try {
         plan = await planClassicGenesis(draft, walletAddress);
       } catch (cause) {
@@ -144,10 +144,10 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
         } else {
           const setup = await planClassicGenesisSetup(walletAddress);
           if (!window.confirm(
-            "Step 1 of 2 · Prepare the CashTokens genesis coin on Chipnet?\\n\\n" +
+            "Step 1 of 2 · Prepare the CashTokens genesis coin on Chipnet?\n\n" +
             "AjoChain will send " + setup.outputSatoshis.toString() + " sats to your wallet as output 0. " +
             "The remaining BCH returns to your wallet as change, minus an estimated " + setup.fee.toString() +
-            "-sat miner fee.\\n\\n" +
+            "-sat miner fee.\n\n" +
             "This does not create the circle NFT yet. After output 0 appears in your wallet, a second " +
             "Selene approval will create the circle. No new deposit is requested.",
           )) return;
@@ -223,9 +223,9 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
         return;
       }
       if (!window.confirm(
-        "Step 2 of 2 · Create this Classic BCH circle on Chipnet?\\n\\n" +
-        plan.contract.address + "\\n" +
-        "Contribution: " + formatBch(contribution) + " per member\\n" +
+        "Step 2 of 2 · Create this Classic BCH circle on Chipnet?\n\n" +
+        plan.contract.address + "\n" +
+        "Contribution: " + formatBch(contribution) + " per member\n" +
         "This deploys the circle state NFT and spends wallet BCH for the miner fee.",
       )) return;
       const signed = await wallet.signAndVerify(
