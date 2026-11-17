@@ -9,6 +9,12 @@ import {
   assertUnspentSnapshotsAgree,
   cashAddressToLockingBytecode,
   hashBlockHeader,
+  MAINNET_GENESIS,
+  BCH_MAINNET_FORK_CHECKPOINT_HASH,
+  BCH_MAINNET_FORK_CHECKPOINT_HEIGHT,
+  BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH,
+  BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT,
+  assertBchMainnetChainIdentity,
   lockingBytecodeToScriptHash,
   normalizeElectrumUnspent,
   MAINNET_BROADCAST_ENABLED,
@@ -75,6 +81,28 @@ test("Electrum script hash uses SHA256 digest in reversed byte order", () => {
   const expected = Buffer.from(digest).reverse().toString("hex");
   assert.equal(lockingBytecodeToScriptHash(script), expected);
   assert.throws(() => lockingBytecodeToScriptHash(""), /non-empty/);
+});
+
+test("server Mainnet quorum distinguishes BCH from BTC and BSV using both fork checkpoints", () => {
+  const valid = {
+    height: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT + 100,
+    genesisHash: MAINNET_GENESIS,
+    forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH,
+    postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH,
+  };
+  assert.doesNotThrow(() => assertBchMainnetChainIdentity(valid));
+  assert.throws(() => assertBchMainnetChainIdentity({
+    ...valid, forkCheckpointHash: "00".repeat(32),
+  }), /2017 BCH\/BTC split/);
+  assert.throws(() => assertBchMainnetChainIdentity({
+    ...valid, postBsvForkCheckpointHash: "00".repeat(32),
+  }), /2018 BCH\/BSV split/);
+  assert.throws(() => assertBchMainnetChainIdentity({
+    ...valid, height: BCH_MAINNET_FORK_CHECKPOINT_HEIGHT - 1,
+  }), /predates the BCH\/BTC chain-identity checkpoint/);
+  assert.throws(() => assertBchMainnetChainIdentity({
+    ...valid, height: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT - 1,
+  }), /predates the BCH\/BSV chain-identity checkpoint/);
 });
 
 test("BCH genesis header is recognized by its canonical mainnet hash", () => {
