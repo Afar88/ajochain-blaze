@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import {
   Activity, ArrowRight, Check, ChevronDown, Coins, Home,
-  Menu, ShieldCheck, Users, Wallet, X,
+  Monitor, MoreVertical, Moon, ShieldCheck, Sun, Users, Wallet, X,
 } from "lucide-react";
 import { getDefaultNetwork, NETWORKS, type NetworkId } from "./core/network-config";
 import { getDefaultCircleWorkspace, resolveCircleWorkspaceForNetwork, type CircleWorkspaceId } from "./core/circle-network-options";
@@ -15,6 +15,7 @@ const PusdMainnetCircleWorkspace = lazy(() => import("./components/PusdMainnetCi
 const BchMainnetCircleWorkspace = lazy(() => import("./components/BchMainnetCircleWorkspace"));
 
 type Page = "overview" | "circles" | "assets" | "activity";
+type ThemePreference = "system" | "light" | "dark";
 type WalletClient = typeof import("./core/wizard-wallet").wallet;
 type WalletView = {
   state: "idle" | "connecting" | "connected" | "reconnecting" | "disconnecting" | "disconnected";
@@ -47,6 +48,15 @@ export default function App() {
   const [page, setPage] = useState<Page>("overview");
   const [circleWorkspace, setCircleWorkspace] = useState<CircleWorkspaceId>(() => getDefaultCircleWorkspace(getDefaultNetwork(import.meta.env.PROD)));
   const [menuOpen, setMenuOpen] = useState(false);
+  const [themePreference, setThemePreference] = useState<ThemePreference>(() => {
+    if (typeof window === "undefined") return "system";
+    try {
+      const saved = window.localStorage.getItem("ajochain-theme");
+      return saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
+    } catch {
+      return "system";
+    }
+  });
   const [walletClient, setWalletClient] = useState<WalletClient | null>(null);
   const [walletView, setWalletView] = useState<WalletView>({
     state: "idle", uri: null, qrUri: null, walletName: null, error: null, receiveIndex: 0,
@@ -70,6 +80,27 @@ export default function App() {
   const walletAddress = walletClient?.address(network) ?? null;
   const connected = walletView.state === "connected";
   const menuLabel = pageLabels[page];
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const applyTheme = () => {
+      const resolved = themePreference === "system"
+        ? (media.matches ? "dark" : "light")
+        : themePreference;
+      root.dataset.theme = resolved;
+      root.style.colorScheme = resolved;
+    };
+    applyTheme();
+    try {
+      window.localStorage.setItem("ajochain-theme", themePreference);
+    } catch {
+      // The selected theme still works for this session when storage is unavailable.
+    }
+    if (themePreference !== "system") return;
+    media.addEventListener("change", applyTheme);
+    return () => media.removeEventListener("change", applyTheme);
+  }, [themePreference]);
 
   useEffect(() => {
     let active = true;
@@ -270,9 +301,7 @@ export default function App() {
             aria-controls="ajochain-dropdown"
             onClick={() => setMenuOpen((value) => !value)}
           >
-            {menuOpen ? <X size={19} /> : <Menu size={19} />}
-            <span>Menu</span>
-            <ChevronDown size={15} />
+            {menuOpen ? <X size={19} /> : <MoreVertical size={21} />}
           </button>
         </div>
         {menuOpen && (
@@ -297,6 +326,34 @@ export default function App() {
                   <Activity size={17} /><span>Activity & records</span>{page === "activity" && <Check size={15} />}
                 </button>
               </nav>
+              <div className="dropdown-divider" />
+              <div className="dropdown-label">APPEARANCE</div>
+              <div className="theme-choice" role="group" aria-label="Appearance">
+                <button
+                  type="button"
+                  className={themePreference === "system" ? "theme-choice-item selected" : "theme-choice-item"}
+                  aria-pressed={themePreference === "system"}
+                  onClick={() => setThemePreference("system")}
+                >
+                  <Monitor size={15} /><span>System</span>
+                </button>
+                <button
+                  type="button"
+                  className={themePreference === "light" ? "theme-choice-item selected" : "theme-choice-item"}
+                  aria-pressed={themePreference === "light"}
+                  onClick={() => setThemePreference("light")}
+                >
+                  <Sun size={15} /><span>Light</span>
+                </button>
+                <button
+                  type="button"
+                  className={themePreference === "dark" ? "theme-choice-item selected" : "theme-choice-item"}
+                  aria-pressed={themePreference === "dark"}
+                  onClick={() => setThemePreference("dark")}
+                >
+                  <Moon size={15} /><span>Dark</span>
+                </button>
+              </div>
               <div className="dropdown-divider" />
               <div className="dropdown-label">NETWORK</div>
               <div className="network-choice">
