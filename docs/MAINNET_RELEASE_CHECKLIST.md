@@ -29,7 +29,7 @@ This checklist is a release control, not a list of UI switches. A checkbox may b
 - [ ] Test each payout position: recipient reserve equals all remaining installments; already-paid members retain their full remaining reserve; unpaid members only need the current installment; final recipient reserve is zero.
 - [ ] Reconcile every receipt commitment and the state UTXO value after every payout, including duplicate observations, reorgs, missing receipts and conflicting outputs.
 - [ ] Verify exact recipient net payout, immutable 1% treasury output, reserve backing and separately funded miner fee in the actual signed transaction.
-- [ ] Port and validate a separate Mainnet artifact and network-aware address/provider path; V3 is Chipnet-only today.
+- [ ] The feature branch now has a distinct `fee-v3-auto-reserve-mainnet` adapter using the Mainnet quorum reader, Mainnet address validation, and the exact shared BCH/PUSD treasury; only unsigned genesis preview is exposed. Independently audit the exact compiled artifact and constructor binding, then complete full Mainnet lifecycle, wallet and broadcast review before release.
 - [ ] Complete the same external security review, current-consensus VM validation, independent wallet signing and confirmation testing required for all real-value BCH circles.
 
 ## PUSD transfers
@@ -64,7 +64,7 @@ This checklist is a release control, not a list of UI switches. A checkbox may b
 
 - BCH Mainnet circle signing/broadcast is locked by `BCH_MAINNET_OPERATIONS_ENABLED = false`.
 - PUSD Mainnet spending is locked by `PUSD_MAINNET_SPENDING_ENABLED = false` in the client and `MAINNET_BROADCAST_ENABLED = false` in the API. Runtime environment variables cannot override the API lock.
-- V2 full-cycle escrow and V3 automatic future-contribution reserve circles are Chipnet-only.
+- V2 full-cycle escrow remains Chipnet-only. BCH V3 now has an unsigned Mainnet genesis-preview adapter, but deposits, payouts, cancellation signing and every Mainnet broadcast remain disabled pending full review.
 - PUSD circle/escrow contracts are prototypes and are not an active product flow.
 
 Do not remove a hard stop until the corresponding section has evidence, independent approval, and a release commit that has passed the complete test suite. Do not mark the product “Mainnet ready” while any required item remains unchecked.
