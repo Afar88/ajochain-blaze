@@ -13,7 +13,7 @@ import { ElectrumWebSocket } from "@electrum-cash/web-socket";
 import artifactJson from "../../contracts/AjoCircle.json" with { type: "json" };
 import { MainnetQuorumNetworkProvider } from "./mainnet-quorum-provider";
 import { MAX_CIRCLE_MEMBERS, MIN_CIRCLE_MEMBERS } from "./member-ledger";
-import { selectCashTokensGenesisUtxo } from "./cash-token-genesis";
+import { calculateGenesisSetupChange, CASH_TOKEN_GENESIS_SETUP_MIN_CHANGE_SATOSHIS, CASH_TOKEN_GENESIS_SETUP_OUTPUT_SATOSHIS, selectCashTokensGenesisUtxo } from "./cash-token-genesis";
 import {
   CHIPNET_ELECTRUM_ENDPOINTS,
   ELECTRUM_PROTOCOL_VERSION,
@@ -28,6 +28,16 @@ export const CLASSIC_MAX_MEMBERS = MAX_CIRCLE_MEMBERS;
 export const CLASSIC_STATE_DUST = 1_000n;
 export const CLASSIC_CHANGE_DUST = 546n;
 export const CLASSIC_DEFAULT_MAX_FEE = 10_000n;
+
+export class CashTokensGenesisUtxoMissingError extends Error {
+  constructor() {
+    super(
+      "CashTokens category creation requires a non-token wallet UTXO at output index 0. " +
+      "There is no 3,000-satoshi minimum for that coin. A setup transaction can create the required output using existing BCH.",
+    );
+    this.name = "CashTokensGenesisUtxoMissingError";
+  }
+}
 
 export interface ClassicCircleParams {
   version: 1;
@@ -312,8 +322,10 @@ export function inspectClassicCircle(
 }
 
 function feeFor(builder: TransactionBuilder, feeRateSatsPerByte = 1): bigint {
-  const encoded = builder.build();
-  const byteLength = encoded.length / 2;
+  // getTransactionSize() includes the eventual P2PKH placeholder signature sizes
+  // but skips balance/fee validation, so provisional builders can be measured
+  // while the planner is still selecting enough wallet inputs.
+  const byteLength = Number(builder.getTransactionSize());
   return BigInt(Math.ceil(byteLength * feeRateSatsPerByte)) + 20n;
 }
 
@@ -340,6 +352,82 @@ function createGenesisBuilder(
   return builder;
 }
 
+/**
+ * Build a separate, wallet-approved transaction that creates a clean BCH
+ * output at vout 0. CashTokens category creation can then spend that outpoint.
+ * Output 1 returns the remaining value as wallet change.
+ */
+function createGenesisSetupBuilder(
+  provider: NetworkProvider,
+  walletAddress: string,
+  inputs: SpendableUtxo[],
+  change: bigint,
+) {
+  const builder = new TransactionBuilder({ provider });
+  inputs.forEach((utxo) => builder.addInput(utxo, placeholderP2PKHUnlocker(walletAddress)));
+  // Keep this as the first output: the next transaction uses txid:vout 0.
+  builder.addOutput({ to: walletAddress, amount: CASH_TOKEN_GENESIS_SETUP_OUTPUT_SATOSHIS });
+  builder.addOutput({ to: walletAddress, amount: change });
+  return builder;
+}
+
+/**
+ * Prepare (but never broadcast) the Chipnet setup transaction. Signing and
+ * broadcasting remain in the UI after an explicit Selene approval.
+ */
+export async function planClassicGenesisSetup(walletAddress: string) {
+  const provider = await getClassicProvider("chipnet");
+  const walletUtxos = (await provider.getUtxos(walletAddress))
+    .filter((utxo) => !utxo.token && utxo.satoshis > 0n)
+    .sort((a, b) =>
+      a.satoshis === b.satoshis
+        ? a.txid.localeCompare(b.txid) || a.vout - b.vout
+        : a.satoshis > b.satoshis ? -1 : 1
+    );
+
+  if (walletUtxos.length === 0) {
+    throw new Error("No spendable non-token BCH UTXOs were found in this Chipnet wallet. No setup transaction was created.");
+  }
+
+  const inputs: SpendableUtxo[] = [];
+  let total = 0n;
+  for (const utxo of walletUtxos) {
+    inputs.push(utxo);
+    total += utxo.satoshis;
+
+    const provisional = createGenesisSetupBuilder(
+      provider, walletAddress, inputs, CLASSIC_CHANGE_DUST,
+    );
+    const fee = feeFor(provisional);
+    const change = calculateGenesisSetupChange(total, fee);
+    if (change === undefined) continue;
+
+    const builder = createGenesisSetupBuilder(provider, walletAddress, inputs, change);
+    const wc = builder.generateWcTransactionObject({
+      broadcast: false,
+      userPrompt: "Prepare AjoChain CashTokens genesis output on Chipnet",
+    });
+    return {
+      provider,
+      builder,
+      wc,
+      walletInputs: inputs.map((_, index) => index),
+      fee,
+      outputSatoshis: CASH_TOKEN_GENESIS_SETUP_OUTPUT_SATOSHIS,
+      totalInputSatoshis: total,
+      changeSatoshis: change,
+    };
+  }
+
+  throw new Error(
+    "The wallet's available non-token BCH is not enough to create a " +
+    CASH_TOKEN_GENESIS_SETUP_OUTPUT_SATOSHIS.toString() +
+    "-satoshi vout-0 output, pay the miner fee, and retain at least " +
+    CASH_TOKEN_GENESIS_SETUP_MIN_CHANGE_SATOSHIS.toString() +
+    " sats of change reserved for the follow-up circle transaction. No transaction was prepared; do not add funds until the wallet UTXOs are reviewed.",
+  );
+}
+
 export async function planClassicGenesis(
   draft: ClassicCircleDraft,
   walletAddress: string,
@@ -353,11 +441,7 @@ export async function planClassicGenesis(
       : a.satoshis > b.satoshis ? -1 : 1);
   const genesis = selectCashTokensGenesisUtxo(walletUtxos);
   if (!genesis) {
-    throw new Error(
-      "CashTokens category creation requires a non-token wallet UTXO at output index 0. " +
-      "There is no 3,000-satoshi minimum for that coin. If your wallet has no eligible output-0 coin, " +
-      "a setup transaction can create one using existing BCH; do not add funds until the wallet UTXOs are checked.",
-    );
+    throw new CashTokensGenesisUtxoMissingError();
   }
   const params: ClassicCircleParams = { ...draft, stateCategory: genesis.txid };
   const contract = classicCircleContract(params, provider);

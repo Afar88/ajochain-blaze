@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { SpendableUtxo } from "cashscript";
-import { selectCashTokensGenesisUtxo } from "./cash-token-genesis";
+import {
+  calculateGenesisSetupChange,
+  CASH_TOKEN_GENESIS_SETUP_MIN_CHANGE_SATOSHIS,
+  CASH_TOKEN_GENESIS_SETUP_OUTPUT_SATOSHIS,
+  selectCashTokensGenesisUtxo,
+} from "./cash-token-genesis";
 
 function coin(vout: number, satoshis: bigint, token = false, txid = "11".repeat(32)) {
   return {
@@ -32,5 +37,26 @@ describe("CashTokens genesis outpoint selection", () => {
     const small = coin(0, 5n, false, "11".repeat(32));
     const large = coin(0, 20_000n, false, "22".repeat(32));
     expect(selectCashTokensGenesisUtxo([small, large])).toBe(large);
+  });
+});
+
+
+describe("CashTokens genesis setup output accounting", () => {
+  it("creates a 1,000-satoshi output zero without a 3,000-satoshi coin floor", () => {
+    expect(CASH_TOKEN_GENESIS_SETUP_OUTPUT_SATOSHIS).toBe(1_000n);
+    expect(calculateGenesisSetupChange(7_046n, 500n)).toBe(5_546n);
+    expect(calculateGenesisSetupChange(7_045n, 500n)).toBeUndefined();
+  });
+
+  it("reserves enough wallet change for the follow-up category transaction", () => {
+    expect(CASH_TOKEN_GENESIS_SETUP_MIN_CHANGE_SATOSHIS).toBe(5_546n);
+    expect(calculateGenesisSetupChange(7_047n, 500n)).toBe(5_547n);
+    expect(calculateGenesisSetupChange(7_045n, 500n)).toBeUndefined();
+  });
+
+  it("rejects impossible or negative setup accounting", () => {
+    expect(calculateGenesisSetupChange(6_545n, 0n)).toBeUndefined();
+    expect(calculateGenesisSetupChange(-1n, 0n)).toBeUndefined();
+    expect(calculateGenesisSetupChange(2_000n, -1n)).toBeUndefined();
   });
 });
