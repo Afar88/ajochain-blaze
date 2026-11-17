@@ -32,8 +32,8 @@ export const CLASSIC_DEFAULT_MAX_FEE = 10_000n;
 export class CashTokensGenesisUtxoMissingError extends Error {
   constructor() {
     super(
-      "CashTokens category creation requires a non-token wallet UTXO at output index 0. " +
-      "There is no 3,000-satoshi minimum for that coin. A setup transaction can create the required output using existing BCH.",
+      "CashTokens category creation requires a spendable non-token wallet output at index 0. " +
+      "A setup transaction can create the required output using existing BCH.",
     );
     this.name = "CashTokensGenesisUtxoMissingError";
   }
