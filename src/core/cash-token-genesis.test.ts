@@ -48,7 +48,7 @@ describe("CashTokens genesis setup output accounting", () => {
     expect(calculateGenesisSetupChange(3_000n, 500n)).toBe(1_500n);
   });
 
-  it("keeps the required dust-safe wallet change after the fee", () => {
+  it("reserves enough wallet change for the follow-up category transaction", () => {
     expect(CASH_TOKEN_GENESIS_SETUP_MIN_CHANGE_SATOSHIS).toBe(1_500n);
     expect(calculateGenesisSetupChange(3_001n, 500n)).toBe(1_501n);
     expect(calculateGenesisSetupChange(2_999n, 500n)).toBeUndefined();
