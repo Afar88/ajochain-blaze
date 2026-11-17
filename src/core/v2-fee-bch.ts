@@ -16,8 +16,9 @@ import legacyArtifactJson from '../../contracts/AjoCircleV2Fee.legacy.json' with
 import legacyEscrowArtifactJson from '../../contracts/AjoCircleV2FeeEscrow.legacy.json' with { type: 'json' };
 import legacyAutoReserveArtifactJson from '../../contracts/AjoCircleV3AutoReserve.legacy.json' with { type: 'json' };
 import { classicAddressToPkh, getClassicProvider, type ClassicNetwork } from "./classic-bch";
+import { MAINNET_PROJECT_TREASURY_ADDRESS } from "./project-treasury";
 
-const addressToPkh = (address: string) => classicAddressToPkh(address, "chipnet");
+const addressToPkh = (address: string, network: ClassicNetwork) => classicAddressToPkh(address, network);
 const treasuryAddressToPkh = (address: string, network: ClassicNetwork) => classicAddressToPkh(address, network);
 const assertNewBchContribution = (amount: bigint) => {
   if (amount < 200_000n) throw new Error("New BCH circles require at least 0.002 BCH (200,000 sats) per member per round.");
@@ -44,7 +45,8 @@ export interface V2FeeCircleParams {
     | 'fee-v3-auto-reserve'
     | 'fee-v1-guarded'
     | 'fee-v2-escrow-guarded'
-    | 'fee-v3-auto-reserve-guarded';
+    | 'fee-v3-auto-reserve-guarded'
+    | 'fee-v3-auto-reserve-mainnet';
   name: string;
   network: ClassicNetwork;
   members: string[];
@@ -60,14 +62,23 @@ const hex = (v: Uint8Array) => Array.from(v, b => b.toString(16).padStart(2, '0'
 type V2FeeCovenant = V2FeeCircleParams['covenant'];
 const isFeeV1Covenant = (c: V2FeeCovenant) => c === "fee-v1" || c === "fee-v1-guarded";
 const isFeeV2EscrowCovenant = (c: V2FeeCovenant) => c === "fee-v2-escrow" || c === "fee-v2-escrow-guarded";
-const isFeeV3AutoReserveCovenant = (c: V2FeeCovenant) => c === "fee-v3-auto-reserve" || c === "fee-v3-auto-reserve-guarded";
+const isFeeV3AutoReserveCovenant = (c: V2FeeCovenant) => c === "fee-v3-auto-reserve" || c === "fee-v3-auto-reserve-guarded" || c === "fee-v3-auto-reserve-mainnet";
 const feeEstimate = (memberCount: number) => 6_000n + BigInt(memberCount) * 500n;
 
 function validate(p: V2FeeCircleDraft | V2FeeCircleParams): void {
   if (p.version !== 2 ||
-      !['fee-v1', 'fee-v2-escrow', 'fee-v3-auto-reserve', 'fee-v1-guarded', 'fee-v2-escrow-guarded', 'fee-v3-auto-reserve-guarded'].includes(p.covenant) ||
+      !['fee-v1', 'fee-v2-escrow', 'fee-v3-auto-reserve', 'fee-v1-guarded', 'fee-v2-escrow-guarded', 'fee-v3-auto-reserve-guarded', 'fee-v3-auto-reserve-mainnet'].includes(p.covenant) ||
       !p.name.trim()) throw new Error('Invalid V2 fee-circle details');
-  if (p.network !== 'chipnet') throw new Error('The V2 fee covenant is Chipnet-only.');
+  if (p.network === 'mainnet') {
+    if (p.covenant !== 'fee-v3-auto-reserve-mainnet') {
+      throw new Error('BCH Mainnet circles must use the separately identified V3 auto-reserve covenant.');
+    }
+    if (p.treasury !== MAINNET_PROJECT_TREASURY_ADDRESS) {
+      throw new Error('BCH Mainnet circles must use the shared BCH/PUSD project-fee treasury.');
+    }
+  } else if (p.network !== 'chipnet' || p.covenant === 'fee-v3-auto-reserve-mainnet') {
+    throw new Error('The Mainnet V3 covenant cannot be used on Chipnet, and legacy fee covenants remain Chipnet-only.');
+  }
   if (p.members.length < 2 || p.members.length > 5) throw new Error('A V2 fee circle needs 2–5 members');
   const members = p.members.map(a => hex(treasuryAddressToPkh(a, p.network)));
   if (new Set(members).size !== members.length) throw new Error('Each member must have a unique BCH address');
@@ -84,6 +95,36 @@ function validate(p: V2FeeCircleDraft | V2FeeCircleParams): void {
   treasuryAddressToPkh(p.treasury, p.network);
 }
 
+/** Validate a saved or newly-created circle draft without connecting to a provider. */
+export function validateV2FeeCircleDraft(draft: V2FeeCircleDraft): void {
+  validate(draft);
+}
+
+/**
+ * Contract state/receipt inputs are unlocked by the covenant, not by the
+ * connected wallet. Only the final initiator funding input is wallet-owned.
+ */
+/**
+ * The V3 cancel branch checks the initiator signature on the state NFT and
+ * every member receipt, then the final BCH fee input also needs its P2PKH
+ * signature. All inputs therefore belong in the WizardConnect signing request.
+ */
+export function v2FeeCancelWalletInputIndexes(memberCount: number): number[] {
+  if (!Number.isInteger(memberCount) || memberCount < 2 || memberCount > 5) {
+    throw new Error("A V2 fee circle needs 2–5 members.");
+  }
+  return Array.from({ length: memberCount + 2 }, (_, index) => index);
+}
+
+/** Validate the fee sponsor against the circle's actual network prefix. */
+export function validateV2FeePayoutFeePayerAddress(
+  address: string,
+  network: ClassicNetwork,
+): void {
+  if (!address) throw new Error("A connected " + (network === "mainnet" ? "Mainnet" : "Chipnet") + " fee-payer address is required.");
+  classicAddressToPkh(address, network);
+}
+
 /** Resolve the immutable script artifact selected by a saved circle covenant identifier. */
 export function v2FeeArtifactForCovenant(covenant: V2FeeCovenant): Artifact {
   switch (covenant) {
@@ -93,20 +134,21 @@ export function v2FeeArtifactForCovenant(covenant: V2FeeCovenant): Artifact {
     case 'fee-v1-guarded': return artifact;
     case 'fee-v2-escrow-guarded': return escrowArtifact;
     case 'fee-v3-auto-reserve-guarded': return autoReserveArtifact;
+    case 'fee-v3-auto-reserve-mainnet': return autoReserveArtifact;
   }
   throw new Error('Unsupported V2 fee covenant.');
 }
 
 function contractFor(p: V2FeeCircleParams, provider: NetworkProvider): Contract {
   validate(p);
-  const pkhs = p.members.map(addressToPkh);
+  const pkhs = p.members.map(address => addressToPkh(address, p.network));
   while (pkhs.length < 5) pkhs.push(new Uint8Array(20));
   const selectedArtifact = v2FeeArtifactForCovenant(p.covenant);
   return new Contract(selectedArtifact, [
     pkhs[0], pkhs[1], pkhs[2], pkhs[3], pkhs[4],
     BigInt(p.members.length), p.contribution, p.maxFee,
     hexToBin(p.stateCategory).reverse(),
-    addressToPkh(p.initiator),
+    addressToPkh(p.initiator, p.network),
     treasuryAddressToPkh(p.treasury, p.network),
   ] as any, { provider, contractType: 'p2sh32' });
 }
@@ -343,7 +385,7 @@ export async function planV2FeeGenesis(draft: V2FeeCircleDraft, walletAddress: s
   builder.addOutput({ to: contract.tokenAddress, amount: STATE_DUST, token: { category: params.stateCategory, amount: 0n, nft: { capability: 'minting', commitment: v2FeeStateCommitment(0, false) } } });
   for (let i = 0; i < params.members.length; i++) builder.addOutput({ to: contract.tokenAddress, amount: RECEIPT_DUST, token: { category: params.stateCategory, amount: 0n, nft: { capability: 'none', commitment: v2FeeReceiptCommitment(i, 0n) } } });
   builder.addOutput({ to: walletAddress, amount: change });
-  return { params, contract, wc: builder.generateWcTransactionObject({ broadcast: false, userPrompt: `Create V2 fee circle "${params.name}" and mint ${params.members.length} member receipts` }), walletInputs: inputs.map((_, i) => i) };
+  return { params, contract, wc: builder.generateWcTransactionObject({ broadcast: false, userPrompt: `Create V2 fee circle "${params.name}" and mint ${params.members.length} member receipts` }), walletInputs: inputs.map((_, i) => i), feeEstimate: fee, estimatedChange: change };
 }
 
 /** Member-specific deposit preserves the 0x54 state and increments only that member's receipt. */
@@ -351,7 +393,7 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
   validate(params);
   if (!Number.isInteger(memberIndex) || memberIndex < 0 || memberIndex >= params.members.length) throw new Error('Invalid member index');
   if (amount <= 0n || amount > CASH_SCRIPT_INT_MAX) throw new Error('Deposit amount is outside the supported CashScript integer range');
-  if (hex(addressToPkh(params.members[memberIndex])) !== hex(addressToPkh(walletAddress))) throw new Error('Connected wallet does not match this member slot.');
+  if (hex(addressToPkh(params.members[memberIndex], params.network)) !== hex(addressToPkh(walletAddress, params.network))) throw new Error('Connected wallet does not match this member slot.');
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
   const all = await contract.getUtxos();
@@ -390,6 +432,7 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
     walletInputs: [2],
     memberIndex,
     credited: amount,
+    feeEstimate: fee,
     newCredit: oldCredit + amount,
     shortfall: (!isFeeV1Covenant(params.covenant) ? maximumEscrow : params.contribution) > oldCredit
       ? (!isFeeV1Covenant(params.covenant) ? maximumEscrow : params.contribution) - oldCredit
@@ -401,8 +444,7 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
 /** Any circle participant can trigger payout and sponsor miner fees from a separate BCH input. */
 export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress: string) {
   validate(params);
-  if (!feePayerAddress) throw new Error("A connected Chipnet fee-payer address is required.");
-  classicAddressToPkh(feePayerAddress, "chipnet");
+  validateV2FeePayoutFeePayerAddress(feePayerAddress, params.network);
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
   const all = await contract.getUtxos();
@@ -511,7 +553,7 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
 /** Initiator-only cancellation refunds every member's exact receipt credit and attached BCH. */
 export async function planV2FeeCancel(params: V2FeeCircleParams, walletAddress: string) {
   validate(params);
-  if (hex(addressToPkh(walletAddress)) !== hex(addressToPkh(params.initiator))) throw new Error('Only the circle initiator can cancel before the first payout.');
+  if (hex(addressToPkh(walletAddress, params.network)) !== hex(addressToPkh(params.initiator, params.network))) throw new Error('Only the circle initiator can cancel before the first payout.');
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
   const all = await contract.getUtxos();
@@ -541,7 +583,7 @@ export async function planV2FeeCancel(params: V2FeeCircleParams, walletAddress: 
   receipts.forEach((receipt, i) => builder.addOutput({ to: params.members[i], amount: receipt.satoshis + credits[i] }));
   builder.addOutput({ to: walletAddress, amount: change });
   const wc = builder.generateWcTransactionObject({ broadcast: false, userPrompt: `Cancel V2 circle "${params.name}" and refund every member` });
-  return { wc, walletInputs: Array.from({ length: params.members.length + 2 }, (_, i) => i), minerFee, refunds: credits };
+  return { wc, walletInputs: v2FeeCancelWalletInputIndexes(params.members.length), minerFee, refunds: credits };
 }
 
 /** Read and validate the complete V2 fee state before showing balances or actions. */

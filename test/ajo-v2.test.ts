@@ -25,6 +25,17 @@ const members = [1, 2].map((n) => {
   return { priv, pub, pkh: hash160(pub), sig: new SignatureTemplate(priv) };
 });
 
+// Keep every mock prevout distinct inside a constructed transaction. The
+// randomUtxo helper can reuse a txid/vout during a fast fixture sequence.
+let nextFixtureOutpoint = 1n;
+function uniqueUtxo(options: Parameters<typeof randomUtxo>[0]) {
+  const utxo = randomUtxo(options);
+  const txid = nextFixtureOutpoint.toString(16).padStart(64, "0");
+  nextFixtureOutpoint += 1n;
+  return { ...utxo, txid, vout: 0 };
+}
+
+
 function makeContract(provider: MockNetworkProvider) {
   return new Contract(artifact, [
     members[0].pkh, members[1].pkh,
@@ -49,12 +60,12 @@ function creditFromCommitment(commitment: string) {
 }
 
 function addGenesis(provider: MockNetworkProvider, contract: Contract) {
-  provider.addUtxo(contract.address, randomUtxo({
+  provider.addUtxo(contract.address, uniqueUtxo({
     satoshis: 200_000n,
     token: { category: CATEGORY, amount: 0n, nft: { capability: 'minting', commitment: '5300' } },
   }));
   for (let i = 0; i < members.length; i++) {
-    provider.addUtxo(contract.address, randomUtxo({
+    provider.addUtxo(contract.address, uniqueUtxo({
       satoshis: DUST,
       token: { category: CATEGORY, amount: 0n, nft: { capability: 'none', commitment: creditCommitment(i, 0n) } },
     }));
@@ -73,7 +84,7 @@ async function deposit(
   const receipt = all.find((u) => u.token?.nft?.commitment?.startsWith('52' + memberIndex.toString(16).padStart(2, '0'))) as SpendableUtxo;
   const oldCredit = creditFromCommitment(receipt.token!.nft!.commitment);
   const fundingAddress = pkhToAddress(members[fundingIndex].pkh, 'chipnet');
-  const funding = provider.addUtxo(fundingAddress, randomUtxo({ satoshis: amount + 20_000n }));
+  const funding = provider.addUtxo(fundingAddress, uniqueUtxo({ satoshis: amount + 20_000n }));
   const builder = new TransactionBuilder({ provider })
     .addInput(state, contract.unlock.addCredit(BigInt(memberIndex), amount))
     .addInput(receipt, contract.unlock.addCredit(BigInt(memberIndex), amount))
@@ -181,12 +192,12 @@ describe('AjoCircleV2 member-credit covenant prototype', () => {
   it('rejects deposits when the state NFT round is outside the member range', async () => {
     const provider = new MockNetworkProvider();
     const contract = makeContract(provider);
-    provider.addUtxo(contract.address, randomUtxo({
+    provider.addUtxo(contract.address, uniqueUtxo({
       satoshis: 200_000n,
       token: { category: CATEGORY, amount: 0n, nft: { capability: 'minting', commitment: '53ff' } },
     }));
     for (let i = 0; i < members.length; i++) {
-      provider.addUtxo(contract.address, randomUtxo({
+      provider.addUtxo(contract.address, uniqueUtxo({
         satoshis: DUST,
         token: { category: CATEGORY, amount: 0n, nft: { capability: 'none', commitment: creditCommitment(i, 0n) } },
       }));
@@ -284,7 +295,7 @@ describe('AjoCircleV2 member-credit covenant prototype', () => {
     const state = all.find((u) => u.token?.nft?.capability === 'minting') as SpendableUtxo;
     const receipt = all.find((u) => u.token?.nft?.commitment?.startsWith('5200')) as SpendableUtxo;
     const fundingAddress = pkhToAddress(members[0].pkh, 'chipnet');
-    const funding = provider.addUtxo(fundingAddress, randomUtxo({ satoshis: CONTRIBUTION + 20_000n }));
+    const funding = provider.addUtxo(fundingAddress, uniqueUtxo({ satoshis: CONTRIBUTION + 20_000n }));
     const tx = new TransactionBuilder({ provider })
       .addInput(state, contract.unlock.addCredit(0n, CONTRIBUTION))
       .addInput(receipt, contract.unlock.addCredit(0n, CONTRIBUTION))
@@ -347,11 +358,11 @@ describe('AjoCircleV2 member-credit covenant prototype', () => {
   it('rejects payout when a member receipt is missing', async () => {
     const provider = new MockNetworkProvider();
     const contract = makeContract(provider);
-    provider.addUtxo(contract.address, randomUtxo({
+    provider.addUtxo(contract.address, uniqueUtxo({
       satoshis: 500_000n,
       token: { category: CATEGORY, amount: 0n, nft: { capability: 'minting', commitment: '5300' } },
     }));
-    provider.addUtxo(contract.address, randomUtxo({
+    provider.addUtxo(contract.address, uniqueUtxo({
       satoshis: DUST,
       token: { category: CATEGORY, amount: 0n, nft: { capability: 'none', commitment: creditCommitment(0, CONTRIBUTION) } },
     }));

@@ -2,7 +2,7 @@
 
 ## Current BCH V3 automatic-reserve fee circles
 
-The new-circle creation flow selects the guarded successor `fee-v3-auto-reserve-guarded`, compiled from `AjoCircleV3AutoReserve.cash`. Existing saved circles using `fee-v1`, `fee-v2-escrow` or `fee-v3-auto-reserve` continue to resolve to preserved original CashScript sources and separately compiled `.legacy.json` artifacts. Guarded successors use distinct covenant identifiers and derived addresses; they do not silently replace an already-created circle's locking bytecode. It is a Chipnet-only prototype and requires 2–5 unique BCH member addresses and a minimum contribution of **0.002 BCH per member per round**. The covenant carries one state NFT and one member receipt NFT per member. Each receipt holds that member's own credit. Existing Classic V1, legacy fee-v1, V2 full-escrow and already-created V3 circles remain on their original versioned covenant; they are not upgraded or reinterpreted.
+The new-circle creation flow selects the guarded successor `fee-v3-auto-reserve-guarded`, compiled from `AjoCircleV3AutoReserve.cash`. Existing saved circles using `fee-v1`, `fee-v2-escrow` or `fee-v3-auto-reserve` continue to resolve to preserved original CashScript sources and separately compiled `.legacy.json` artifacts. Guarded successors use distinct covenant identifiers and derived addresses; they do not silently replace an already-created circle's locking bytecode. The existing transaction-execution workspace remains Chipnet-only and requires 2–5 unique BCH member addresses and a minimum contribution of **0.002 BCH per member per round**. A separate `fee-v3-auto-reserve-mainnet` adapter now validates Mainnet drafts and can prepare an unsigned genesis preview with the shared Mainnet treasury; it is not a deployed or spend-enabled Mainnet circle. The covenant carries one state NFT and one member receipt NFT per member. Each receipt holds that member's own credit. Existing Classic V1, legacy fee-v1, V2 full-escrow and already-created V3 circles remain on their original versioned covenant; they are not upgraded or reinterpreted.
 
 For each scheduled round, every member must have one contribution available in their own receipt. When a non-final recipient receives the pot, exactly one next-round contribution is withheld from that payout and credited to that recipient's own receipt. It is consumed at the following payout. The reserve does not cover any later installments; after it is consumed, the member must contribute again. The final recipient has no future installment reserve.
 
@@ -52,17 +52,21 @@ This ledger module is **not itself a blockchain verifier**. Only a trusted trans
 
 The selected V3 auto-reserve covenant's on-chain receipt NFTs are the enforcement source for its BCH credit and payout eligibility. The separate V2 full-escrow and fee-v1 contracts retain their own historical rules. The event ledger is an auditable accounting/indexing layer. Classic V1 remains an aggregate pool and cannot attribute pooled deposits to individual members.
 
+## Shared Mainnet project-fee treasury
+
+New BCH and PUSD Mainnet covenant versions use the same immutable project-fee destination: `bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q`. For PUSD, the 1% fee is a separate fungible PUSD CashToken output to this address; for BCH, the fee output uses its matching P2PKH locking script. Miner fees and token carrier satoshis are accounted for separately. Existing Chipnet BCH prototypes keep their separate `bchtest:` treasury.
+
 ## PUSD status
 
 The canonical ParyonUSD category is pinned to the published Mainnet category and the balance reader authenticates PUSD UTXOs using raw previous transactions and live unspent-state checks through an Electrum quorum. The same-origin API route is `/api/*`; by default the browser calls the API on the deployed AjoChain origin.
 
 To provide PUSD read-only balance service in Vercel, configure `ELECTRUM_SERVERS` with at least two independent secure `wss://` Electrum endpoints on different hostnames. `ALLOWED_ORIGINS` may be configured for separately hosted frontends. Do not enable `ENABLE_MAINNET_BROADCAST`.
 
-PUSD circle escrow source and tests are ported as a separate prototype, but PUSD circle creation, member deposits, payout and cancellation are **not enabled**. There is no authenticated PUSD Chipnet category or approved PUSD fee treasury destination, and no complete wallet planner/raw-genesis inspection for the PUSD sidecar escrow flow. Do not use the Mainnet PUSD category as a Chipnet category. PUSD wallet verification is not permission to spend.
+A separate Mainnet-targeted PUSD V3 covenant, member escrow sidecar, lifecycle planners, state/receipt/escrow chain reader, fee/reserve/cancellation tests and Mainnet-only workspace are now present on the feature branch. The UI can prepare unsigned genesis, deposit, payout and pre-payout cancellation previews, and display current per-member escrow credit after a read-quorum check. It does not sign or broadcast. The shared Mainnet treasury address is pinned for both BCH and PUSD; it still requires independent verification and review as part of the release. PUSD circle operations remain **disabled** until exact signed-byte verification, fresh-prevout revalidation, independent Selene/WizardConnect tests, broadcast/confirmation/reorg handling and external audit are complete. There is no authenticated PUSD Chipnet category. Do not use the Mainnet PUSD category as a Chipnet category. PUSD wallet verification is not permission to spend.
 
 ## Mainnet safety
 
-- BCH Mainnet transaction broadcast remains disabled by `BCH_MAINNET_OPERATIONS_ENABLED = false`.
+- BCH Mainnet transaction broadcast remains disabled by `BCH_MAINNET_OPERATIONS_ENABLED = false`; the new Mainnet V3 workspace stops at an unsigned genesis preview.
 - PUSD Mainnet spend/broadcast remains disabled by `PUSD_MAINNET_SPENDING_ENABLED = false` and the server's `ENABLE_MAINNET_BROADCAST` guard.
 - Chipnet contract tests and a passing deployment do not constitute an independent audit or prove real-wallet end-to-end correctness.
 - No real funds should be sent to the experimental V2 BCH or PUSD prototype contracts until the contracts, transaction plans, exact outputs/fees, wallet signing and recovery paths have independent review and live test evidence.

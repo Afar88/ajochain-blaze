@@ -15,10 +15,13 @@ pragma cashscript ^0.14.0;
 // payout outputs: 0 state, 1..N updated receipts, N+1 treasury fee,
 //                 N+2 recipient net of project fee and future-contribution reserve, N+3 caller fee change
 //
-// Chipnet prototype only. This is a new immutable covenant version; never reuse its address for fee-v1 circles. The fee and pre-first-payout cancellation branches are
-// implemented in this versioned covenant and exposed in the Chipnet workspace.
-// Independent genesis-output inspection, independent-wallet testing, PUSD transaction
-// integration, and an external security review remain outstanding.
+// Network-neutral script template. Network-specific adapters bind member,
+// initiator and treasury PKHs and select the matching BCH provider. The V3
+// covenant identifier is immutable; never reuse an existing circle's address
+// for a different fee-covenant version. Chipnet has the transaction-execution
+// prototype. The Mainnet adapter currently prepares unsigned genesis previews
+// only; Mainnet signing/broadcast remains disabled pending independent review,
+// exact signed-transaction verification and real-wallet lifecycle testing.
 
 contract AjoCircleV3AutoReserve(
     bytes20 m0,

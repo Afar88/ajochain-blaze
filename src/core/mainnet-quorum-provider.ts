@@ -15,10 +15,26 @@ import type {
 export const BCH_MAINNET_GENESIS_HASH =
   "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f";
 
+/**
+ * Bitcoin and Bitcoin Cash share the same genesis block. The first BCH-only
+ * block is therefore required as a chain-identity checkpoint, not genesis alone.
+ * Hash pinned to Bitcoin Cash Node's Mainnet chainparams UAHF checkpoint.
+ */
+export const BCH_MAINNET_FORK_CHECKPOINT_HEIGHT = 478_559;
+export const BCH_MAINNET_FORK_CHECKPOINT_HASH =
+  "000000000000000000651ef99cb9fcbe0dadde1d424bd9f15ff20136191a5eec";
+
+/** BCH-specific block after the 2018 BCH/BSV split. */
+export const BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT = 556_767;
+export const BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH =
+  "0000000000000000004626ff6e3b936941d341c5932ece4357eeccac44e6d56c";
+
 export interface MainnetTipSnapshot {
   height: number;
   headerHex: string;
   genesisHeaderHex: string;
+  forkCheckpointHash: string;
+  postBsvForkCheckpointHash: string;
 }
 
 export function hashMainnetHeader(headerHex: string): string {
@@ -46,6 +62,18 @@ export function validateMainnetTipQuorum(
     const genesisHash = hashMainnetHeader(snapshot.genesisHeaderHex);
     if (genesisHash !== BCH_MAINNET_GENESIS_HASH) {
       throw new Error("An Electrum endpoint is not on the Bitcoin Cash Mainnet genesis chain.");
+    }
+    if (snapshot.height < BCH_MAINNET_FORK_CHECKPOINT_HEIGHT) {
+      throw new Error("Electrum tip predates the BCH Mainnet chain-identity checkpoint.");
+    }
+    if (snapshot.forkCheckpointHash.toLowerCase() !== BCH_MAINNET_FORK_CHECKPOINT_HASH) {
+      throw new Error("An Electrum endpoint is not on the Bitcoin Cash Mainnet fork chain (2017 BCH/BTC split).");
+    }
+    if (snapshot.height < BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT) {
+      throw new Error("Electrum tip predates the BCH/BSV chain-identity checkpoint.");
+    }
+    if (snapshot.postBsvForkCheckpointHash.toLowerCase() !== BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH) {
+      throw new Error("An Electrum endpoint is not on the Bitcoin Cash Mainnet chain after the 2018 BCH/BSV split.");
     }
     const hash = hashMainnetHeader(snapshot.headerHex);
     const bytes = hexToBin(snapshot.headerHex);
@@ -197,17 +225,32 @@ export class MainnetQuorumNetworkProvider implements NetworkProvider {
 
   private async verifyTip() {
     const snapshots = await Promise.all(this.providers.map(async (provider) => {
-      const [tip, genesisHeader] = await Promise.all([
+      const [
+        tip,
+        genesisHeader,
+        forkCheckpointHeader,
+        postBsvForkCheckpointHeader,
+      ] = await Promise.all([
         provider.performRequest("blockchain.headers.subscribe") as Promise<{
           height: number;
           hex: string;
         }>,
         provider.performRequest("blockchain.block.header", 0) as Promise<string>,
+        provider.performRequest(
+          "blockchain.block.header",
+          BCH_MAINNET_FORK_CHECKPOINT_HEIGHT,
+        ) as Promise<string>,
+        provider.performRequest(
+          "blockchain.block.header",
+          BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT,
+        ) as Promise<string>,
       ]);
       return {
         height: tip.height,
         headerHex: tip.hex,
         genesisHeaderHex: genesisHeader,
+        forkCheckpointHash: hashMainnetHeader(forkCheckpointHeader),
+        postBsvForkCheckpointHash: hashMainnetHeader(postBsvForkCheckpointHeader),
       };
     }));
     return validateMainnetTipQuorum(snapshots);

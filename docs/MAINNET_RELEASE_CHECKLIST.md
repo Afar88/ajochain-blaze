@@ -2,6 +2,8 @@
 
 **Current status: NOT APPROVED FOR REAL-VALUE CIRCLE OPERATIONS.**
 
+External reviewer handoff: [`MAINNET_EXTERNAL_REVIEW_BRIEF.md`](./MAINNET_EXTERNAL_REVIEW_BRIEF.md).
+
 This checklist is a release control, not a list of UI switches. A checkbox may be marked complete only when the evidence is attached to the release and independently reviewed by someone other than the author of the implementation.
 
 ## BCH Classic V1
@@ -9,7 +11,7 @@ This checklist is a release control, not a list of UI switches. A checkbox may b
 - [ ] Independent review of `contracts/AjoCircle.cash` and the exact compiled artifact deployed by the app.
 - [ ] Adversarial tests for genesis/category creation, payout order, empty/duplicate/missing state NFTs, unexpected tokens, dust, fee ceilings, malformed commitments, and completed circles.
 - [ ] Confirm the deployed script template and constructor arguments against independently derived test vectors.
-- [ ] Mainnet chain reader with at least two independently operated providers; verify chain identity, tip, script history, complete UTXO set, raw previous transactions and reorg handling. The new browser quorum reader cross-checks chain tips, UTXO snapshots and previous-transaction bytes, but does not prove provider operator independence or replace SPV/consensus validation.
+- [ ] Mainnet chain reader with at least two independently operated providers; verify the shared genesis header, the BCH-specific fork checkpoint at height 478,559, and the post-BSV-split BCH checkpoint at height 556,767, then verify tip, script history, complete UTXO set, raw previous transactions and reorg handling. Both the browser read quorum and the PUSD API now check the BCH/BTC and BCH/BSV fork checkpoints before trusting Mainnet tips, UTXOs or unspent-state responses. They also compare tip/UTXO/raw previous-transaction data, but do not prove provider-operator independence or replace SPV/consensus validation.
 - [ ] Complete dependency provenance and independent review for the exact pinned `@bitauth/libauth` `3.1.0-next.8` prerelease, which is currently used to invoke `createVirtualMachineBch2026` in the wallet and PUSD verification paths. It remains a prerelease, not a stable audited release. The full generic BCH 2026 corpus comparison completed on 2026-11-17: 29,731 Libauth vectors across 164 files passed, and BCHN `v29.2.0`'s native `libauth_tests/upgrade12_2026` passed 1,065,105 assertions ([audit report](https://github.com/Afar88/ajochain-blaze/actions/runs/43994936516)). Add AjoChain-specific fixtures for every exact compiled legacy and guarded covenant artifact intended for Mainnet and run them against both implementations; this remains outstanding, as do provenance and independent consensus reviews.
 - [ ] End-to-end create, contribute, payout, failure, reconnect, and confirmation tests with two independently controlled Selene/WizardConnect wallets.
 - [ ] Exact signed transaction verification covering every input outpoint, prevout script and value, sequence, signature/sighash policy, output, fee, and change.
@@ -29,7 +31,7 @@ This checklist is a release control, not a list of UI switches. A checkbox may b
 - [ ] Test each payout position: recipient reserve equals all remaining installments; already-paid members retain their full remaining reserve; unpaid members only need the current installment; final recipient reserve is zero.
 - [ ] Reconcile every receipt commitment and the state UTXO value after every payout, including duplicate observations, reorgs, missing receipts and conflicting outputs.
 - [ ] Verify exact recipient net payout, immutable 1% treasury output, reserve backing and separately funded miner fee in the actual signed transaction.
-- [ ] Port and validate a separate Mainnet artifact and network-aware address/provider path; V3 is Chipnet-only today.
+- [ ] The feature branch now has a distinct `fee-v3-auto-reserve-mainnet` adapter using the Mainnet quorum reader, Mainnet address validation, and the exact shared BCH/PUSD treasury; only unsigned genesis preview is exposed. Independently audit the exact compiled artifact and constructor binding, then complete full Mainnet lifecycle, wallet and broadcast review before release.
 - [ ] Complete the same external security review, current-consensus VM validation, independent wallet signing and confirmation testing required for all real-value BCH circles.
 
 ## PUSD transfers
@@ -64,7 +66,7 @@ This checklist is a release control, not a list of UI switches. A checkbox may b
 
 - BCH Mainnet circle signing/broadcast is locked by `BCH_MAINNET_OPERATIONS_ENABLED = false`.
 - PUSD Mainnet spending is locked by `PUSD_MAINNET_SPENDING_ENABLED = false` in the client and `MAINNET_BROADCAST_ENABLED = false` in the API. Runtime environment variables cannot override the API lock.
-- V2 full-cycle escrow and V3 automatic future-contribution reserve circles are Chipnet-only.
+- V2 full-cycle escrow remains Chipnet-only. BCH V3 now has an unsigned Mainnet genesis-preview adapter, but deposits, payouts, cancellation signing and every Mainnet broadcast remain disabled pending full review.
 - PUSD circle/escrow contracts are prototypes and are not an active product flow.
 
 Do not remove a hard stop until the corresponding section has evidence, independent approval, and a release commit that has passed the complete test suite. Do not mark the product “Mainnet ready” while any required item remains unchecked.

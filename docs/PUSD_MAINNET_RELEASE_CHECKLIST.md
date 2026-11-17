@@ -2,6 +2,8 @@
 
 **Current status: READ-ONLY. PUSD Mainnet spending is not approved.**
 
+External reviewer handoff: [`MAINNET_EXTERNAL_REVIEW_BRIEF.md`](./MAINNET_EXTERNAL_REVIEW_BRIEF.md).
+
 This document is the release checklist referenced by `src/core/pusd-mainnet-guard.ts`. Passing unit tests or building a transfer preview does not satisfy these requirements.
 
 ## Token identity and policy
@@ -43,8 +45,25 @@ This document is the release checklist referenced by `src/core/pusd-mainnet-guar
 - [ ] Independent review of token identity and policy.
 - [ ] Release owner signs off on the exact tested commit and deployment artifact.
 
+## PUSD Mainnet V3 circle and escrow release gates
+
+The separate PUSD circle covenant is a different execution path from ordinary PUSD wallet transfers. Its Mainnet workspace currently supports unsigned genesis, deposit, payout and pre-first-payout cancellation previews, plus read-only state/receipt/escrow reconciliation. Those previews do not authorize real funds.
+
+- [ ] Independently review `AjoCirclePUSDV3Mainnet.cash` and `AjoPUSDMemberEscrowV3.cash`, including exact compiled artifact hashes and every constructor argument.
+- [ ] Independently verify the token category, token-aware member scripts, receipt NFT commitments, escrow contract bindings and CashToken carrier values.
+- [ ] Inspect the exact genesis transaction and prove the state category, minting NFT, one receipt per member, and one empty PUSD escrow sidecar per member are created at the intended outputs.
+- [ ] Adversarially test deposit, excess-token change, payout, reserve carry-forward, final-recipient no-reserve, cancellation, member order, missing/duplicate UTXOs, dust, integer bounds and inconsistent state commitments.
+- [ ] Independently verify the exact PUSD fee output to the shared BCH/PUSD Mainnet treasury, and verify BCH carrier and miner fee amounts separately.
+- [ ] Add a Mainnet signed-byte verifier for all contract and wallet inputs, prevouts, token categories/amounts, NFT commitments, outputs, change and fee.
+- [ ] Recheck all state, receipt, escrow, token and fee UTXOs immediately before any future wallet authorization.
+- [ ] Complete real Selene/WizardConnect lifecycle tests with independent member wallets, including app switching, reconnect, timeout, cancellation and confirmation.
+- [ ] Add idempotent broadcast, unknown-result resolution, mempool-conflict handling, confirmation and reorg recovery.
+- [ ] Obtain external review and written approval for the exact deployed circle/escrow artifacts and wallet transaction path.
+
+Do not deploy the circle contracts or send PUSD/BCH to prototype scripts while any item above remains open.
+
 ## Hard stop
 
-The server broadcast endpoint is compiled with `MAINNET_BROADCAST_ENABLED = false`. The client additionally rejects direct calls to its PUSD broadcast function while `PUSD_MAINNET_SPENDING_ENABLED = false`. Setting `ENABLE_MAINNET_BROADCAST=true` in the deployment environment does not enable spending. Do not change either compile-time lock until every required item above is evidenced and approved.
+The server broadcast endpoint is compiled with `MAINNET_BROADCAST_ENABLED = false`. The API's PUSD relay path now submits once to a single provider and resolves ambiguous responses by looking up the exact transaction ID across the configured providers; it never blindly retries through a second relay. An `already-known` or relay-accepted result is not a confirmation, and confirmation/reorg tracking remains outstanding. The client additionally rejects direct calls to its PUSD broadcast function while `PUSD_MAINNET_SPENDING_ENABLED = false`. Setting `ENABLE_MAINNET_BROADCAST=true` in the deployment environment does not enable spending. Do not change either compile-time lock until every required item above is evidenced and approved.
 
 PUSD circles and escrow are separate work. Their prototype covenants must not be treated as supported PUSD circle functionality.

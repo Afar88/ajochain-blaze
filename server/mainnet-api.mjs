@@ -15,7 +15,13 @@ import {
 const PUSD_CATEGORY = "2469acc5afa4b10cb5b5c04afb89c3a3ffd61c5da9c01e26d00951cae2a02544";
 // Hard release gate: runtime environment variables must never activate real-value broadcasts.
 export const MAINNET_BROADCAST_ENABLED = false;
-const MAINNET_GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f";
+export const MAINNET_GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f";
+export const BCH_MAINNET_FORK_CHECKPOINT_HEIGHT = 478_559;
+export const BCH_MAINNET_FORK_CHECKPOINT_HASH =
+  "000000000000000000651ef99cb9fcbe0dadde1d424bd9f15ff20136191a5eec";
+export const BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT = 556_767;
+export const BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH =
+  "0000000000000000004626ff6e3b936941d341c5932ece4357eeccac44e6d56c";
 const DEFAULT_TIMEOUT_MS = 12_000;
 const MAX_TIP_AGE_MS = 30 * 60 * 1000;
 const MAX_UTXOS_PER_ADDRESS = 1_000;
@@ -213,18 +219,54 @@ async function withElectrumSessions(callback) {
   }
 }
 
+/**
+ * Bitcoin and Bitcoin Cash share genesis. Verify both BCH-specific fork
+ * checkpoints before the API trusts a server for PUSD UTXO/unspent responses.
+ */
+export function assertBchMainnetChainIdentity({
+  height, genesisHash, forkCheckpointHash, postBsvForkCheckpointHash,
+}) {
+  if (!Number.isSafeInteger(height) || height < 1) {
+    throw new Error("Electrum returned an invalid Mainnet tip height.");
+  }
+  if (genesisHash !== MAINNET_GENESIS) {
+    throw new Error("Electrum endpoint is not on the Bitcoin Cash mainnet genesis chain.");
+  }
+  if (height < BCH_MAINNET_FORK_CHECKPOINT_HEIGHT) {
+    throw new Error("Electrum tip predates the BCH/BTC chain-identity checkpoint.");
+  }
+  if (forkCheckpointHash !== BCH_MAINNET_FORK_CHECKPOINT_HASH) {
+    throw new Error("Electrum endpoint is not on the Bitcoin Cash mainnet chain after the 2017 BCH/BTC split.");
+  }
+  if (height < BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT) {
+    throw new Error("Electrum tip predates the BCH/BSV chain-identity checkpoint.");
+  }
+  if (postBsvForkCheckpointHash !== BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH) {
+    throw new Error("Electrum endpoint is not on the Bitcoin Cash mainnet chain after the 2018 BCH/BSV split.");
+  }
+}
+
 async function getServerTip(session) {
-  const [header, genesisHeader] = await Promise.all([
+  const [
+    header,
+    genesisHeader,
+    forkCheckpointHeader,
+    postBsvForkCheckpointHeader,
+  ] = await Promise.all([
     session.call("blockchain.headers.subscribe", []),
     session.call("blockchain.block.header", [0]),
+    session.call("blockchain.block.header", [BCH_MAINNET_FORK_CHECKPOINT_HEIGHT]),
+    session.call("blockchain.block.header", [BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT]),
   ]);
   if (!header || !Number.isSafeInteger(header.height) || !isHex(header.hex) || header.hex.length !== 160) {
     throw new Error("Electrum returned an invalid current chain tip.");
   }
-  const genesisHash = hashBlockHeader(genesisHeader);
-  if (genesisHash !== MAINNET_GENESIS) {
-    throw new Error("Electrum endpoint is not on the Bitcoin Cash mainnet genesis chain.");
-  }
+  assertBchMainnetChainIdentity({
+    height: header.height,
+    genesisHash: hashBlockHeader(genesisHeader),
+    forkCheckpointHash: hashBlockHeader(forkCheckpointHeader),
+    postBsvForkCheckpointHash: hashBlockHeader(postBsvForkCheckpointHeader),
+  });
   const timestamp = Buffer.from(header.hex, "hex").readUInt32LE(68) * 1000;
   if (timestamp > Date.now() + 10 * 60 * 1000 || Date.now() - timestamp > MAX_TIP_AGE_MS) {
     throw new Error("Electrum chain tip is stale or has an implausible timestamp.");
@@ -544,6 +586,71 @@ function normalizeWalletAddresses(value) {
   return scripts;
 }
 
+/**
+ * Relay a fully verified transaction exactly once. If the relay response is
+ * lost or malformed, query every configured provider for the exact txid before
+ * returning an outcome. Never blindly relay to a second provider after an
+ * ambiguous result: the first provider may already have accepted the spend.
+ */
+export async function broadcastPusdTransactionOnce(sessions, signedTransactionHex, expectedTxid) {
+  if (!Array.isArray(sessions) || sessions.length < 2) {
+    throw new Error("PUSD broadcast recovery requires the configured Electrum quorum.");
+  }
+  if (!isHex(signedTransactionHex) || !/^[0-9a-f]{64}$/i.test(expectedTxid)) {
+    throw new Error("A valid signed transaction and expected transaction ID are required.");
+  }
+
+  const normalizedHex = signedTransactionHex.toLowerCase();
+  const actualTxid = hashTransaction(hexToBin(normalizedHex)).toLowerCase();
+  const normalizedTxid = expectedTxid.toLowerCase();
+  if (actualTxid !== normalizedTxid) {
+    throw new Error("Expected transaction ID does not match the exact signed transaction bytes.");
+  }
+
+  let relayFailure;
+  try {
+    const relayResult = await sessions[0].call(
+      "blockchain.transaction.broadcast",
+      [normalizedHex],
+    );
+    if (typeof relayResult === "string" && relayResult.toLowerCase() === normalizedTxid) {
+      return { txid: normalizedTxid, relayStatus: "accepted" };
+    }
+    relayFailure = new Error(
+      "Electrum relay returned a transaction ID that does not match the signed bytes.",
+    );
+  } catch (error) {
+    relayFailure = error instanceof Error ? error : new Error("Unknown Electrum relay error.");
+  }
+
+  // A successful lookup is evidence that the exact transaction is already
+  // known to a provider. It is not evidence of block confirmation.
+  for (const session of sessions) {
+    try {
+      const knownTransactionHex = await session.call(
+        "blockchain.transaction.get",
+        [normalizedTxid],
+      );
+      if (typeof knownTransactionHex === "string" &&
+          isHex(knownTransactionHex) &&
+          knownTransactionHex.toLowerCase() === normalizedHex) {
+        return { txid: normalizedTxid, relayStatus: "already-known" };
+      }
+    } catch {
+      // Continue observing the remaining providers. A lookup failure does not
+      // authorize another broadcast attempt.
+    }
+  }
+
+  const detail = relayFailure?.message ?? "No valid relay response was received.";
+  throw new Error(
+    "PUSD broadcast result is UNKNOWN for " + normalizedTxid +
+    ". It was not retried. Check this exact transaction ID with the configured " +
+    "providers and reconcile its mempool/confirmation state before any manual retry. " +
+    "Initial relay result: " + detail,
+  );
+}
+
 async function verifyPusdSpendAndBroadcast(sessions, tip, body) {
   const walletScripts = normalizeWalletAddresses(body.walletAddresses);
   const recipientScript = cashAddressToLockingBytecode(body.recipientAddress);
@@ -670,23 +777,16 @@ async function verifyPusdSpendAndBroadcast(sessions, tip, body) {
   }
 
   const expectedTxid = hashTransaction(signedBytes).toLowerCase();
-  let broadcastResult;
-  let lastError;
-  for (const session of sessions) {
-    try {
-      broadcastResult = await session.call("blockchain.transaction.broadcast", [body.signedTransactionHex.toLowerCase()]);
-      if (typeof broadcastResult !== "string" || broadcastResult.toLowerCase() !== expectedTxid) {
-        throw new Error("Electrum broadcast returned a transaction ID that does not match the signed bytes.");
-      }
-      break;
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  if (!broadcastResult) throw lastError ?? new Error("No Electrum server accepted the transaction.");
+  const relay = await broadcastPusdTransactionOnce(
+    sessions,
+    body.signedTransactionHex,
+    expectedTxid,
+  );
 
   return {
     txid: expectedTxid,
+    relayStatus: relay.relayStatus,
+    confirmationStatus: "not-checked",
     feeSatoshis: fee.toString(),
     inputPusdAmount: inputPusd.toString(),
     recipientPusdAmount: recipientAmount.toString(),
@@ -755,6 +855,15 @@ function applyRateLimit(request) {
   if (entries.length >= RATE_LIMIT_MAX) throw new Error("Rate limit exceeded; retry in one minute.");
   entries.push(now);
   rateLimit.set(key, entries);
+}
+
+export function mainnetApiErrorStatus(message) {
+  if (/Rate limit exceeded/.test(message)) return 429;
+  if (/Request body exceeds/.test(message)) return 413;
+  if (/Origin is not allowed/.test(message)) return 403;
+  // An ambiguous relay result must remain visibly retry-blocked to callers.
+  if (/result is UNKNOWN/.test(message)) return 503;
+  return 400;
 }
 
 export function createMainnetApiServer() {
@@ -846,10 +955,7 @@ export function createMainnetApiServer() {
       sendJson(response, 404, { error: "Not found." });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown service error.";
-      const status = /Rate limit exceeded/.test(message) ? 429 :
-        /Request body exceeds/.test(message) ? 413 :
-        /Origin is not allowed/.test(message) ? 403 : 400;
-      sendJson(response, status, { error: message });
+      sendJson(response, mainnetApiErrorStatus(message), { error: message });
     }
   });
 }

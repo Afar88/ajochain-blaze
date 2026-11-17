@@ -8,7 +8,7 @@ The executable fail-closed policy is in `src/core/mainnet-flow.ts`. It is a read
 
 ## Required user journey
 
-1. **Select network** — display Bitcoin Cash Mainnet explicitly. Verify chain identity against an independent mainnet source; never infer it from the address prefix alone.
+1. **Select network** — display Bitcoin Cash Mainnet explicitly. Verify the shared genesis header, the BCH-specific checkpoint at height 478,559, and the post-BSV-split BCH checkpoint at height 556,767, then verify the current tip against independent sources. The PUSD API must perform the same identity checks before returning UTXO or unspent-state responses; never infer chain identity from the address prefix or shared genesis alone.
 2. **Connect wallet** — use WizardConnect, confirm the active session and wallet identity, derive the correct receive/change paths, and verify the address/network shown in Selene. A reconnecting or stale session blocks progress.
 3. **Load circle** — discover the circle contract and its state/receipt NFTs from confirmed chain data. Validate contract bytecode/version, token category, NFT commitments, member order, contribution amount, fee policy, and current round. Browser storage is only a cache.
 4. **Reconcile member accounting** — reconcile every member receipt against confirmed deposits and prior payouts. Check payment uniqueness, ownership, per-member credit, current-round due, carry-forward credit, and payout order. Any missing, duplicated, or inconsistent receipt blocks the circle.
@@ -38,9 +38,9 @@ These are evidence requirements, not checkboxes that a user can toggle. Evidence
 
 ## Scope and safety limits
 
-- Current UI is a preview and local draft experience. It does not yet load authoritative on-chain circles or create contracts.
-- The current wallet adapter can request a signature and compare selected transaction fields, but it does not yet independently verify all prevouts, scripts, values, fee/change policy, contract invariants, or confirmation status.
-- No mainnet broadcast implementation is enabled.
+- Current BCH and PUSD Mainnet workspaces can validate drafts, prepare unsigned genesis previews, and read chain state for saved circle identities. Their lifecycle planners can prepare unsigned deposit, payout and pre-payout cancellation previews. They do not deploy, sign or broadcast transactions. A saved circle identity is a local reference, not proof that a contract exists.
+- The WizardConnect adapter can request signatures for supported experimental paths and inspect selected transaction intent. Mainnet circle preview buttons do not call it. A complete Mainnet signed-byte verifier for every prevout, script, value, fee/change rule, token output and covenant invariant is still outstanding.
+- Mainnet broadcast remains disabled by the BCH and PUSD fail-closed guards.
 - The BCH V2 contract is experimental and not independently audited. PUSD is not implemented by that covenant.
 - Never label the app mainnet-ready until the contract, wallet, chain reconciliation, signed-transaction inspection, and operational gates have evidence and independent review.
 
@@ -48,7 +48,7 @@ These are evidence requirements, not checkboxes that a user can toggle. Evidence
 
 - **Wallet disconnect before signing:** discard the pending plan and require fresh session verification.
 - **Wallet disconnect after signing:** retain the raw signed transaction only for safe local inspection; do not broadcast automatically.
-- **Unknown broadcast result:** query the transaction/inputs before retrying to avoid duplicate spends.
+- **Unknown broadcast result:** the PUSD API submits the exact signed bytes to one relay endpoint only. If its response is ambiguous, it queries the transaction ID across the configured providers and accepts an exact raw-transaction match as `already-known`. If no provider can prove the exact transaction is known, the API returns an explicit `UNKNOWN` result and does not relay to another endpoint. The user/operator must reconcile that transaction ID and mempool state before any manual retry. A relay-accepted or already-known result is **not** a confirmation; confirmation tracking remains a separate release requirement.
 - **Chain reorganization:** mark affected activity as unconfirmed/reorged and rebuild the view from chain data.
 - **State mismatch or stale UTXO:** invalidate the plan and restart from circle-state reconciliation.
 - **Any verification exception:** fail closed, explain the failed check, and keep broadcast unavailable.

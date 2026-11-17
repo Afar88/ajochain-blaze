@@ -10,6 +10,8 @@ import type { AuthenticatedPusdUtxo } from "./core/pusd-utxo";
 import { PUSD_MAINNET_SPENDING_ENABLED } from "./core/pusd-mainnet-guard";
 const ClassicBchWorkspace = lazy(() => import("./components/ClassicBchWorkspace"));
 const V2FeeBchWorkspace = lazy(() => import("./components/V2FeeBchWorkspace"));
+const PusdMainnetCircleWorkspace = lazy(() => import("./components/PusdMainnetCircleWorkspace"));
+const BchMainnetCircleWorkspace = lazy(() => import("./components/BchMainnetCircleWorkspace"));
 
 type Page = "overview" | "circles" | "assets" | "activity";
 type WalletClient = typeof import("./core/wizard-wallet").wallet;
@@ -347,7 +349,7 @@ export default function App() {
             <section className="asset-preview">
               <div><span className="section-kicker">SUPPORTED ASSETS</span><h2>BCH and PUSD</h2><p>Separate asset paths, with token verification and fees kept visible.</p></div>
               <div className="asset-preview-rows">
-                <div><span className="asset-symbol">B</span><span><b>Bitcoin Cash</b><small>Circle contracts on Chipnet · Mainnet inspection only</small></span><span className="asset-state">Available</span></div>
+                <div><span className="asset-symbol">B</span><span><b>Bitcoin Cash</b><small>Chipnet testing · Mainnet V3 genesis preview only</small></span><span className="asset-state">Available</span></div>
                 <div><span className="asset-symbol pusd-symbol">P</span><span><b>ParyonUSD</b><small>Mainnet identity pinned · verified balance requires the quorum API</small></span><span className="asset-state neutral">Read only</span></div>
               </div>
               <button type="button" className="text-action" onClick={() => navigate("assets")}>View asset details <ArrowRight size={14} /></button>
@@ -360,9 +362,11 @@ export default function App() {
             <div className="page-intro">
               <span className="section-kicker">YOUR SAVINGS GROUPS</span>
               <h1>Circle tools</h1>
-              <p>Create, restore and manage circles. Choose the member-credit fee covenant for the new BCH test flow.</p>
+              <p>BCH and PUSD have separate Mainnet V3 workspaces. Mainnet signing and broadcast remain locked while the covenant and wallet paths are reviewed.</p>
             </div>
             <Suspense fallback={<div className="workspace-loading"><span className="loading-orb" />Loading circle tools…</div>}>
+              <PusdMainnetCircleWorkspace network={network} walletConnected={connected} />
+              <BchMainnetCircleWorkspace network={network} walletConnected={connected} />
               <ClassicBchWorkspace network={network} walletConnected={connected} />
               <V2FeeBchWorkspace network={network} walletConnected={connected} />
             </Suspense>
@@ -380,9 +384,10 @@ export default function App() {
               <div className="asset-detail-heading">
                 <span className="asset-symbol">B</span>
                 <div><span className="section-kicker">BITCOIN CASH</span><h2>BCH</h2><p>Native BCH for circle reserves, miner fees and payouts.</p></div>
-                <span className="asset-state">Chipnet testing</span>
+                <span className="asset-state neutral">Mainnet preview only</span>
               </div>
-              <div className="asset-detail-row"><span>Circle creation and member-credit flow</span><b>Chipnet enabled</b></div>
+              <div className="asset-detail-row"><span>Chipnet circle tests</span><b>Available</b></div>
+              <div className="asset-detail-row"><span>Mainnet V3 genesis preview</span><b>Unsigned only</b></div>
               <div className="asset-detail-row"><span>Mainnet transaction broadcast</span><b className="locked-state">Locked</b></div>
             </article>
             <article className="asset-detail-card">
@@ -441,7 +446,7 @@ export default function App() {
               </div>
               <div className="asset-detail-row"><span>Token category</span><code>{PUSD_ASSET.categoryId}</code></div>
               <div className="asset-detail-row"><span>Display precision</span><b>2 decimals</b></div>
-              <div className="asset-detail-row"><span>PUSD circle escrow / payout</span><b className="locked-state">Prototype only · locked</b></div>
+              <div className="asset-detail-row"><span>PUSD circle covenant</span><b className="locked-state">Mainnet V3 build · signing locked</b></div>
             </article>
           </section>
         )}

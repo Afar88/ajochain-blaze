@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { ElectrumNetworkProvider, SpendableUtxo } from "cashscript";
 import {
   BCH_MAINNET_GENESIS_HASH,
+  BCH_MAINNET_FORK_CHECKPOINT_HASH,
+  BCH_MAINNET_FORK_CHECKPOINT_HEIGHT,
+  BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH,
+  BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT,
   MainnetQuorumNetworkProvider,
   assertMainnetUtxoSnapshotsAgree,
   hashMainnetHeader,
@@ -43,8 +47,8 @@ describe("BCH Mainnet quorum provider", () => {
     const now = 1_800_000_000_000;
     const tipHeader = headerWithTimestamp(Math.floor(now / 1000) - 30, "01");
     expect(validateMainnetTipQuorum([
-      { height: 900_000, headerHex: tipHeader, genesisHeaderHex: genesisHeader },
-      { height: 900_000, headerHex: tipHeader, genesisHeaderHex: genesisHeader },
+      { height: 900_000, headerHex: tipHeader, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
+      { height: 900_000, headerHex: tipHeader, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
     ], now)).toEqual({ height: 900_000, hash: hashMainnetHeader(tipHeader) });
   });
 
@@ -53,9 +57,39 @@ describe("BCH Mainnet quorum provider", () => {
     const first = headerWithTimestamp(Math.floor(now / 1000) - 30, "01");
     const second = headerWithTimestamp(Math.floor(now / 1000) - 29, "02");
     expect(() => validateMainnetTipQuorum([
-      { height: 900_000, headerHex: first, genesisHeaderHex: genesisHeader },
-      { height: 900_001, headerHex: second, genesisHeaderHex: genesisHeader },
+      { height: 900_000, headerHex: first, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
+      { height: 900_001, headerHex: second, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
     ], now)).toThrow(/disagree/);
+  });
+
+  it("requires BCH fork checkpoints beyond shared BTC genesis and the 2018 BCH/BSV split", () => {
+    const now = 1_800_000_000_000;
+    const fresh = headerWithTimestamp(Math.floor(now / 1000) - 30, "01");
+    const valid = {
+      height: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT + 10,
+      headerHex: fresh,
+      genesisHeaderHex: genesisHeader,
+      forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH,
+      postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH,
+    };
+    expect(validateMainnetTipQuorum([valid, valid], now).height)
+      .toBe(BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT + 10);
+    expect(() => validateMainnetTipQuorum([
+      { ...valid, forkCheckpointHash: "00".repeat(32) },
+      { ...valid, forkCheckpointHash: "00".repeat(32) },
+    ], now)).toThrow(/Bitcoin Cash Mainnet fork chain/);
+    expect(() => validateMainnetTipQuorum([
+      { ...valid, postBsvForkCheckpointHash: "00".repeat(32) },
+      { ...valid, postBsvForkCheckpointHash: "00".repeat(32) },
+    ], now)).toThrow(/Bitcoin Cash Mainnet chain after the 2018 BCH\/BSV split/);
+    expect(() => validateMainnetTipQuorum([
+      { ...valid, height: BCH_MAINNET_FORK_CHECKPOINT_HEIGHT - 1 },
+      { ...valid, height: BCH_MAINNET_FORK_CHECKPOINT_HEIGHT - 1 },
+    ], now)).toThrow(/predates the BCH Mainnet chain-identity checkpoint/);
+    expect(() => validateMainnetTipQuorum([
+      { ...valid, height: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT - 1 },
+      { ...valid, height: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT - 1 },
+    ], now)).toThrow(/predates the BCH\/BSV chain-identity checkpoint/);
   });
 
   it("rejects a non-Mainnet genesis or stale tip", () => {
@@ -63,13 +97,13 @@ describe("BCH Mainnet quorum provider", () => {
     const fresh = headerWithTimestamp(Math.floor(now / 1000) - 30, "01");
     const wrongGenesis = "00".repeat(80);
     expect(() => validateMainnetTipQuorum([
-      { height: 900_000, headerHex: fresh, genesisHeaderHex: wrongGenesis },
-      { height: 900_000, headerHex: fresh, genesisHeaderHex: wrongGenesis },
+      { height: 900_000, headerHex: fresh, genesisHeaderHex: wrongGenesis, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
+      { height: 900_000, headerHex: fresh, genesisHeaderHex: wrongGenesis, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
     ], now)).toThrow(/genesis chain/);
     const stale = headerWithTimestamp(Math.floor(now / 1000) - 31 * 60, "01");
     expect(() => validateMainnetTipQuorum([
-      { height: 900_000, headerHex: stale, genesisHeaderHex: genesisHeader },
-      { height: 900_000, headerHex: stale, genesisHeaderHex: genesisHeader },
+      { height: 900_000, headerHex: stale, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
+      { height: 900_000, headerHex: stale, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
     ], now)).toThrow(/stale/);
   });
 

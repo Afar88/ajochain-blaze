@@ -24,6 +24,19 @@ The category ID is pinned in `src/core/assets.ts`. A ticker or token name is nev
 - Strict PUSD UTXO selection helper: exact category only, deterministic smallest-sufficient selection, duplicate outpoint rejection, and NFT-bearing UTXO rejection.
 - Tests for amount parsing, formatting, precision, category identity, byte order, network scope, maximum amount, and UTXO selection.
 
+## Mainnet V3 circle build (in progress)
+
+- A separate `AjoCirclePUSDV3Mainnet.cash` contract and `AjoPUSDMemberEscrowV3.cash` sidecar have been added. They target the real ParyonUSD Mainnet category; no Chipnet/test token is substituted.
+- The V3 source pins the shared BCH/PUSD Mainnet project treasury `bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q` into its constructor.
+- The proposed payout transition pays 1% of the gross PUSD pot to that treasury as a separate PUSD output, retains one next contribution in the non-final recipient's own escrow, and pays no reserve to the final recipient.
+- A pre-first-payout cancellation branch refunds each member's exact PUSD escrow and associated BCH carrier backing. Cancellation is unavailable after the first payout.
+- The Circles page now has a Mainnet-only PUSD workspace with exact base-unit fee and reserve previews, local draft persistence, and an unsigned genesis planner.
+- The PUSD core now has unsigned genesis, member-deposit, payout and pre-first-payout cancellation planners, plus a chain-state reader that reconciles the state NFT, every member receipt and each member escrow.
+- The Circles page can restore the saved circle identity, read current Mainnet state, display per-member escrow credits, and prepare unsigned deposit, payout and cancellation previews. It does not call the wallet signer or broadcast endpoint.
+- The payout covenant/state logic rejects an advanced round carrying an unpaid genesis marker. CashScript compilation and MockNetworkProvider lifecycle tests run in CI. These are prototype checks, not independent Mainnet evidence.
+
+Outstanding work includes independent genesis output inspection, fresh UTXO revalidation immediately before a future signature, exact signed-byte verification of every input/output/fee/carrier, independent Selene/WizardConnect lifecycle tests, idempotent broadcast and confirmation/reorg handling, provider-operator verification, and external security review. The Mainnet spend and broadcast guards remain closed.
+
 ## Not yet implemented — deliberately blocked
 
 The current `AjoCircleV2.cash` contract is a BCH-only prototype. Its member receipts and state NFT are defined under one circle category, and contribution funding currently expects a BCH P2PKH input. It does not accept, preserve, account for, or pay out PUSD CashTokens.

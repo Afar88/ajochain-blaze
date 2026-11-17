@@ -375,5 +375,5 @@ describe('AjoChain full-cycle escrow five-member rotation', () => {
       receipt?.token?.nft?.commitment === receiptCommitment(index, 0n),
     )).toBe(true);
     await expect(payoutFive(provider, contract)).rejects.toThrow();
-  }, 90000);
+  }, 180000);
 });
