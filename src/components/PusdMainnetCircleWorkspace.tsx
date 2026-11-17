@@ -4,6 +4,7 @@ import { PUSD_ASSET, formatAssetAmount, parseAssetAmount } from "../core/assets"
 import { classicAddressToPkh } from "../core/classic-bch";
 import { calculatePusdCircleEconomics } from "../core/pusd-circle-economics";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "../core/project-treasury";
+import { MAX_CIRCLE_MEMBERS, MIN_CIRCLE_MEMBERS } from "../core/member-ledger";
 import {
   planPusdMainnetCircleGenesis,
   planPusdMainnetDeposit,
@@ -124,7 +125,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
 
   const economics = useMemo(() => {
     try {
-      if (memberAddresses.length < 2 || memberAddresses.length > 5) return null;
+      if (memberAddresses.length < MIN_CIRCLE_MEMBERS || memberAddresses.length > MAX_CIRCLE_MEMBERS) return null;
       return calculatePusdCircleEconomics(memberAddresses.length, parseAssetAmount("PUSD", contribution));
     } catch {
       return null;
@@ -365,7 +366,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
         </label>
         <label>Member Mainnet token-aware addresses · one per line
           <textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder={"bitcoincash:…\nbitcoincash:…"} required />
-          <small>Use each member's Bitcoin Cash Mainnet receive address that supports CashTokens.</small>
+          <small>Enter 2–5 unique, token-aware Bitcoin Cash Mainnet addresses in payout order.</small>
         </label>
         <label>Maximum BCH miner fee per action (satoshis)
           <input value={maxFee} onChange={(event) => setMaxFee(event.target.value)} inputMode="numeric" required />

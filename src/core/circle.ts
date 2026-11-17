@@ -1,4 +1,4 @@
-import { CIRCLE_ASSETS, MIN_CIRCLE_MEMBERS, type CircleAsset } from "./member-ledger";
+import { CIRCLE_ASSETS, MAX_CIRCLE_MEMBERS, MIN_CIRCLE_MEMBERS, type CircleAsset } from "./member-ledger";
 import { parseAssetAmount } from "./assets";
 
 export type ContributionFrequency = "daily" | "weekly" | "monthly";
@@ -47,8 +47,8 @@ export function validateCircleDraft(input: CircleDraftInput): CircleDraftValidat
   if (input.members.length < MIN_CIRCLE_MEMBERS) {
     errors.push("A circle needs at least 2 members.");
   }
-  if (input.members.length > 50) {
-    errors.push("A circle can have at most 50 members in this setup.");
+  if (input.members.length > MAX_CIRCLE_MEMBERS) {
+    errors.push("A circle can have at most 5 members.");
   }
 
   const names = input.members.map((member) => member.name.trim().toLocaleLowerCase());

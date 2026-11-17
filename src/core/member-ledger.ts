@@ -140,4 +140,5 @@ export function applyMemberPayout(
 }
 
 export const MIN_CIRCLE_MEMBERS = 2;
+export const MAX_CIRCLE_MEMBERS = 5;
 export const CIRCLE_ASSETS: readonly CircleAsset[] = ["BCH", "PUSD"];

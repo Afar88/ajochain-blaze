@@ -349,7 +349,7 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
               {network !== "chipnet" ? "Switch to Chipnet" : !walletConnected ? "Connect wallet first" : "Create fee circle"}
             </button>
           </form>
-          <small className="field-hint">New circles require at least 0.002 BCH per member for the current round. Each non-final recipient carries one next contribution forward from their payout. No full-cycle pre-funding is required. The treasury is immutable after creation.</small>
+          <small className="field-hint">New circles require 2–5 unique member addresses in payout order and at least 0.002 BCH per member for the current round. Each non-final recipient carries one next contribution forward from their payout. No full-cycle pre-funding is required. The treasury is immutable after creation.</small>
         </div>
         <div className="circle-panel">
           <h3>Saved fee circles</h3>

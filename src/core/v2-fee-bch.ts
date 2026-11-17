@@ -17,6 +17,7 @@ import legacyEscrowArtifactJson from '../../contracts/AjoCircleV2FeeEscrow.legac
 import legacyAutoReserveArtifactJson from '../../contracts/AjoCircleV3AutoReserve.legacy.json' with { type: 'json' };
 import { classicAddressToPkh, getClassicProvider, type ClassicNetwork } from "./classic-bch";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "./project-treasury";
+import { MAX_CIRCLE_MEMBERS, MIN_CIRCLE_MEMBERS } from "./member-ledger";
 
 const addressToPkh = (address: string, network: ClassicNetwork) => classicAddressToPkh(address, network);
 const treasuryAddressToPkh = (address: string, network: ClassicNetwork) => classicAddressToPkh(address, network);
@@ -115,7 +116,7 @@ function validate(p: V2FeeCircleDraft | V2FeeCircleParams): void {
   } else if (p.network !== 'chipnet' || p.covenant === 'fee-v3-auto-reserve-mainnet') {
     throw new Error('The Mainnet V3 covenant cannot be used on Chipnet, and legacy fee covenants remain Chipnet-only.');
   }
-  if (p.members.length < 2 || p.members.length > 5) throw new Error('A V2 fee circle needs 2–5 members');
+  if (p.members.length < MIN_CIRCLE_MEMBERS || p.members.length > MAX_CIRCLE_MEMBERS) throw new Error('A V2 fee circle needs 2–5 members');
   const members = p.members.map(a => hex(treasuryAddressToPkh(a, p.network)));
   if (new Set(members).size !== members.length) throw new Error('Each member must have a unique BCH address');
   assertNewBchContribution(p.contribution);
@@ -146,7 +147,7 @@ export function validateV2FeeCircleDraft(draft: V2FeeCircleDraft): void {
  * signature. All inputs therefore belong in the WizardConnect signing request.
  */
 export function v2FeeCancelWalletInputIndexes(memberCount: number): number[] {
-  if (!Number.isInteger(memberCount) || memberCount < 2 || memberCount > 5) {
+  if (!Number.isInteger(memberCount) || memberCount < MIN_CIRCLE_MEMBERS || memberCount > MAX_CIRCLE_MEMBERS) {
     throw new Error("A V2 fee circle needs 2–5 members.");
   }
   return Array.from({ length: memberCount + 2 }, (_, index) => index);
@@ -209,7 +210,7 @@ export function assertV2FeeStateCommitmentSemantics(
   memberCount: number,
   commitment: string,
 ): void {
-  if (!Number.isInteger(memberCount) || memberCount < 2 || memberCount > 5 ||
+  if (!Number.isInteger(memberCount) || memberCount < MIN_CIRCLE_MEMBERS || memberCount > MAX_CIRCLE_MEMBERS ||
       !isValidV2FeeStateCommitment(commitment)) {
     throw new Error('Invalid V2 fee state commitment.');
   }
