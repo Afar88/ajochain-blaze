@@ -32,7 +32,7 @@ This targeted subset is intentionally small enough to run on every BLAZE CI buil
 
 ## Full upstream VMB audit (manual)
 
-The pinned Libauth source commit `d28da7f595cbd747c1e1125477db655f740f3dbc` contains 164 BCH 2026 VMB fixture files (about 268 MB) across standard, nonstandard and invalid cases. The separate `.github/workflows/bch-2026-full-vmb.yml` workflow can be started manually; it checks out the complete pinned fixture tree and runs this verifier with `--full`. The regular per-push CI remains on the smaller targeted subset to keep normal builds quick. A successful full VMB run is still Libauth fixture evidence, not an independent BCHN consensus certification.
+The pinned Libauth source commit `d28da7f595cbd747c1e1125477db655f740f3dbc` contains 164 BCH 2026 VMB fixture files (about 268 MB) across standard, nonstandard and invalid cases. The separate `.github/workflows/bch-2026-full-vmb.yml` workflow can be started manually; it checks out the complete pinned fixture tree and runs this verifier with `--full`. The regular per-push CI remains on the smaller targeted subset to keep normal builds quick, and also smoke-tests the `--full` discovery path against that same sparse fixture checkout. The manual workflow uses a complete checkout, so only that manual run evaluates all 164 files. A successful full VMB run is still Libauth fixture evidence, not an independent BCHN consensus certification.
 
 ## Remaining requirements
 

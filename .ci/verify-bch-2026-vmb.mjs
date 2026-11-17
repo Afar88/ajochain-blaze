@@ -120,7 +120,7 @@ for (const [mode, names] of Object.entries(activeFixtureSets)) {
 }
 
 console.log(
-  `BCH 2026 ${fullCorpus ? "full upstream" : "targeted"} VMB suite: ${totalVectors} vectors across ${totalFiles} fixture files.`,
+  `BCH 2026 ${fullCorpus ? "discovered" : "targeted"} VMB suite: ${totalVectors} vectors across ${totalFiles} fixture files.`,
 );
 console.log(
   "Coverage: bitwise operations, functions, bounded loops, Pay-to-Script, and flow control.",

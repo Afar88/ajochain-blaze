@@ -82,3 +82,5 @@ jobs:
         run: npm install --prefix .ci --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @bitauth/libauth@3.1.0-next.8
       - name: Verify BCH 2026 upstream vectors
         run: node .ci/verify-bch-2026-vmb.mjs .ci/libauth/src/lib/vmb-tests/generated
+      - name: Smoke-test full-corpus discovery on the sparse fixture set
+        run: node .ci/verify-bch-2026-vmb.mjs .ci/libauth/src/lib/vmb-tests/generated --full
