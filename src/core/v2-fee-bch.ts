@@ -57,6 +57,42 @@ export interface V2FeeCircleParams {
   treasury: string;
 }
 export type V2FeeCircleDraft = Omit<V2FeeCircleParams, 'stateCategory'>;
+/** Decode the same saved-circle payload used by the Chipnet workspace. */
+export function decodeV2FeeCircle(encoded: string): V2FeeCircleParams {
+  if (typeof encoded !== "string" || encoded.length < 8 || encoded.length > 20_000) {
+    throw new Error("Invalid saved V2 fee-circle entry.");
+  }
+  const normalized = encoded.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(normalized + "=".repeat((4 - normalized.length % 4) % 4));
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  const value = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
+  if (value.version !== 2 || typeof value.covenant !== "string" ||
+      !["fee-v1", "fee-v2-escrow", "fee-v3-auto-reserve", "fee-v1-guarded", "fee-v2-escrow-guarded", "fee-v3-auto-reserve-guarded"].includes(value.covenant) ||
+      typeof value.name !== "string" ||
+      (value.network !== "chipnet" && value.network !== "mainnet") ||
+      !Array.isArray(value.members) || !value.members.every((member) => typeof member === "string") ||
+      typeof value.contribution !== "string" || !/^\\d+$/.test(value.contribution) ||
+      typeof value.maxFee !== "string" || !/^\\d+$/.test(value.maxFee) ||
+      typeof value.stateCategory !== "string" || typeof value.initiator !== "string" ||
+      typeof value.treasury !== "string") {
+    throw new Error("This is not a valid AjoChain V2 fee-circle record.");
+  }
+  const params: V2FeeCircleParams = {
+    version: 2,
+    covenant: value.covenant as V2FeeCircleParams["covenant"],
+    name: value.name,
+    network: value.network as ClassicNetwork,
+    members: value.members as string[],
+    contribution: BigInt(value.contribution),
+    maxFee: BigInt(value.maxFee),
+    stateCategory: value.stateCategory,
+    initiator: value.initiator,
+    treasury: value.treasury,
+  };
+  validate(params);
+  return params;
+}
+
 
 const hex = (v: Uint8Array) => Array.from(v, b => b.toString(16).padStart(2, '0')).join('');
 type V2FeeCovenant = V2FeeCircleParams['covenant'];
@@ -610,6 +646,7 @@ export async function readV2FeeCircle(params: V2FeeCircleParams) {
     ? BigInt(params.members.length - round) * params.contribution
     : params.contribution;
   return {
+    provider,
     contract,
     utxos,
     round,
