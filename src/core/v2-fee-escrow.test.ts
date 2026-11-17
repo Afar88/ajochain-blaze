@@ -10,6 +10,7 @@ import {
 } from 'cashscript';
 import { hash160, secp256k1, hexToBin } from '@bitauth/libauth';
 import escrowArtifactJson from '../../contracts/AjoCircleV2FeeEscrow.json' with { type: 'json' };
+import legacyEscrowArtifactJson from '../../contracts/AjoCircleV2FeeEscrow.legacy.json' with { type: 'json' };
 import { pkhToAddress } from './bch-address';
 import {
   summarizeV2FeeMemberAccounting,
@@ -17,6 +18,7 @@ import {
 } from './v2-fee-bch';
 
 const artifact = escrowArtifactJson as unknown as Artifact;
+const legacyArtifact = legacyEscrowArtifactJson as unknown as Artifact;
 const CATEGORY = 'ef'.repeat(32);
 const CONTRIBUTION = 200_000n;
 const MAX_FEE = 10_000n;
@@ -31,6 +33,15 @@ function key(n: number) {
 const members = [key(11), key(12)];
 const initiator = key(18);
 const treasury = key(19);
+
+function makeLegacyContract(provider: MockNetworkProvider) {
+  return new Contract(legacyArtifact, [
+    members[0].pkh, members[1].pkh,
+    new Uint8Array(20), new Uint8Array(20), new Uint8Array(20),
+    2n, CONTRIBUTION, MAX_FEE, hexToBin(CATEGORY).reverse(),
+    initiator.pkh, treasury.pkh,
+  ], { provider, contractType: 'p2sh32' });
+}
 
 function makeContract(provider: MockNetworkProvider) {
   return new Contract(artifact, [
@@ -187,7 +198,7 @@ describe('AjoChain full-cycle escrow state-marker enforcement', () => {
 describe('AjoChain full-cycle escrow covenant', () => {
   it('blocks the first payout until every member has escrowed every scheduled round', async () => {
     const provider = new MockNetworkProvider();
-    const contract = makeContract(provider);
+    const contract = makeLegacyContract(provider);
     addGenesis(provider, contract);
     await deposit(provider, contract, 0, CONTRIBUTION);
     await deposit(provider, contract, 1, CONTRIBUTION);

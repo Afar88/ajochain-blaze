@@ -44,7 +44,7 @@ function decodeCircle(encoded: string): V2FeeCircleParams {
   const binary = atob(normalized + "=".repeat((4 - normalized.length % 4) % 4));
   const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
   const value = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
-  if (value.version !== 2 || value.covenant !== "fee-v1" && value.covenant !== "fee-v2-escrow" && value.covenant !== "fee-v3-auto-reserve" || value.network !== "chipnet" ||
+  if (value.version !== 2 || !["fee-v1", "fee-v2-escrow", "fee-v3-auto-reserve", "fee-v1-guarded", "fee-v2-escrow-guarded", "fee-v3-auto-reserve-guarded"].includes(value.covenant) || value.network !== "chipnet" ||
       typeof value.name !== "string" || !Array.isArray(value.members) ||
       !value.members.every((member) => typeof member === "string") ||
       typeof value.contribution !== "string" || typeof value.maxFee !== "string" ||
@@ -169,7 +169,7 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
       const members = membersText.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean);
       const draft: V2FeeCircleDraft = {
         version: 2,
-        covenant: "fee-v3-auto-reserve",
+        covenant: "fee-v3-auto-reserve-guarded",
         name: name.trim(),
         network: "chipnet",
         members,
@@ -389,8 +389,8 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
             <div><b>Member accountability ledger</b><span>On-chain receipt credits, remaining commitment and payout record</span></div>
             <span className={snapshot.ready || snapshot.completed ? "fee-accounting-status safe" : "fee-accounting-status blocked"}>{snapshot.completed ? "Circle closed" : snapshot.ready ? "Payout unlocked" : "Payout locked"}</span>
           </div>
-          {active.covenant === "fee-v1" && <p className="classic-error">Legacy rolling-credit circle: it only checks one contribution at a time. A member who stops after receiving a payout can block later rounds. New circles use V3 automatic future-contribution reserves.</p>}
-          {active.covenant === "fee-v2-escrow" && <p className="field-hint">This existing V2 circle uses its original full-cycle pre-funding covenant. New circles use V3 automatic future-contribution reserves; this existing circle is not silently migrated.</p>}
+          {(active.covenant === "fee-v1" || active.covenant === "fee-v1-guarded") && <p className="classic-error">Legacy rolling-credit circle: it only checks one contribution at a time. A member who stops after receiving a payout can block later rounds. New circles use V3 automatic future-contribution reserves.</p>}
+          {(active.covenant === "fee-v2-escrow" || active.covenant === "fee-v2-escrow-guarded") && <p className="field-hint">This existing V2 circle uses its original full-cycle pre-funding covenant. New circles use V3 automatic future-contribution reserves; this existing circle is not silently migrated.</p>}
           <div className="fee-accounting-table">
             <div className="fee-accounting-row fee-accounting-header"><span>Member</span><span>Paid directly</span><span>Locked now / required</span><span>Payout received</span><span>Still due</span><span>Status</span></div>
             {snapshot.memberAccounting.map((account) => (

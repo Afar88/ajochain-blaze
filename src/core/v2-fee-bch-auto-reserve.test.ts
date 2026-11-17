@@ -10,10 +10,12 @@ import {
 } from "cashscript";
 import { hash160, secp256k1, hexToBin } from "@bitauth/libauth";
 import autoReserveJson from "../../contracts/AjoCircleV3AutoReserve.json" with { type: "json" };
+import legacyAutoReserveJson from "../../contracts/AjoCircleV3AutoReserve.legacy.json" with { type: "json" };
 import { pkhToAddress } from "./bch-address";
 import { assertV2FeeDepositRoundOpen, assertV2FeeStateCommitmentSemantics, isValidV2FeeStateCommitment, v2FeeCreditFromCommitment, v2FeeStateCommitment, summarizeV2FeeMemberAccounting } from "./v2-fee-bch";
 
 const artifact = autoReserveJson as unknown as Artifact;
+const legacyArtifact = legacyAutoReserveJson as unknown as Artifact;
 const CATEGORY = "ab".repeat(32);
 const CONTRIBUTION = 200_000n;
 const MAX_FEE = 10_000n;
@@ -29,6 +31,15 @@ function key(n: number) {
 const members = [key(11), key(12)];
 const initiator = key(18);
 const treasury = key(19);
+
+function makeLegacyContract(provider: MockNetworkProvider) {
+  return new Contract(legacyArtifact, [
+    members[0].pkh, members[1].pkh,
+    new Uint8Array(20), new Uint8Array(20), new Uint8Array(20),
+    2n, CONTRIBUTION, MAX_FEE, hexToBin(CATEGORY).reverse(),
+    initiator.pkh, treasury.pkh,
+  ], { provider, contractType: "p2sh32" });
+}
 
 function makeContract(provider: MockNetworkProvider) {
   return new Contract(artifact, [
@@ -280,7 +291,7 @@ describe("AjoChain V3 initiator cancellation covenant", () => {
 describe("AjoChain V3 automatic future-contribution reserve covenant", () => {
   it("retains one next installment from the recipient's payout and funds their receipt", async () => {
     const provider = new MockNetworkProvider();
-    const contract = makeContract(provider);
+    const contract = makeLegacyContract(provider);
     addGenesis(provider, contract);
     await depositCurrentRound(provider, contract, 0);
     await depositCurrentRound(provider, contract, 1);
