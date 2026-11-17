@@ -16,6 +16,7 @@ import {
   BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT,
   assertBchMainnetChainIdentity,
   broadcastPusdTransactionOnce,
+  mainnetApiErrorStatus,
   lockingBytecodeToScriptHash,
   normalizeElectrumUnspent,
   MAINNET_BROADCAST_ENABLED,
@@ -297,4 +298,15 @@ test("PUSD broadcaster rejects a transaction ID that does not match the signed b
     /does not match the exact signed transaction bytes/,
   );
   assert.equal(called, false);
+});
+
+
+test("ambiguous PUSD relay outcomes are exposed as retry-blocked service errors", () => {
+  assert.equal(
+    mainnetApiErrorStatus("PUSD broadcast result is UNKNOWN for " + "ab".repeat(32) + ". It was not retried."),
+    503,
+  );
+  assert.equal(mainnetApiErrorStatus("Rate limit exceeded; retry in one minute."), 429);
+  assert.equal(mainnetApiErrorStatus("Request body exceeds the permitted size."), 413);
+  assert.equal(mainnetApiErrorStatus("Invalid PUSD amount."), 400);
 });
