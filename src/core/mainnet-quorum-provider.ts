@@ -205,6 +205,95 @@ function assertPreviousOutputMatches(
   }
 }
 
+
+export interface MainnetScriptHistoryRecord {
+  txid: string;
+  height: number;
+  status: "confirmed" | "pending" | "unknown";
+  confirmations: number | null;
+  blockHash: string | null;
+  blockTimestamp: number | null;
+  providerConfidence: number;
+  scriptIndexes: number[];
+  reason?: string;
+}
+
+export interface MainnetScriptHistorySnapshot {
+  network: "mainnet";
+  providerConfidence: number;
+  tipHeight: number;
+  tipHash: string;
+  truncated: boolean;
+  records: MainnetScriptHistoryRecord[];
+}
+
+function scriptHashForLockingBytecode(lockingBytecode: Uint8Array | string): string {
+  const bytes = typeof lockingBytecode === "string" ? hexToBin(lockingBytecode) : lockingBytecode;
+  if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
+    throw new Error("Circle history requires non-empty locking bytecode.");
+  }
+  return binToHex(Uint8Array.from(sha256(bytes)).reverse()).toLowerCase();
+}
+
+function normalizeScriptHistory(value: unknown): Array<{ txid: string; height: number }> {
+  if (!Array.isArray(value) || value.length > 5_000) {
+    throw new Error("Electrum returned an invalid or oversized script transaction history.");
+  }
+  const seen = new Set<string>();
+  return value.map((item) => {
+    if (!item || typeof item !== "object") {
+      throw new Error("Electrum returned a malformed script history entry.");
+    }
+    const entry = item as Record<string, unknown>;
+    if (typeof entry.tx_hash !== "string" || !/^[0-9a-f]{64}$/i.test(entry.tx_hash) ||
+        !Number.isSafeInteger(entry.height) || Number(entry.height) < -1) {
+      throw new Error("Electrum returned a malformed script history transaction.");
+    }
+    const txid = entry.tx_hash.toLowerCase();
+    if (seen.has(txid)) throw new Error("Electrum returned a duplicate transaction in script history.");
+    seen.add(txid);
+    return { txid, height: Number(entry.height) };
+  }).sort((a, b) => a.txid.localeCompare(b.txid));
+}
+
+function normalizeHistoryProof(value: unknown): { block_height: number; merkle: string[]; pos: number } {
+  if (!value || typeof value !== "object") throw new Error("Missing transaction merkle proof.");
+  const proof = value as Record<string, unknown>;
+  if (!Number.isSafeInteger(proof.block_height) || Number(proof.block_height) < 1 ||
+      !Number.isSafeInteger(proof.pos) || Number(proof.pos) < 0 ||
+      !Array.isArray(proof.merkle) || proof.merkle.length > 32 ||
+      proof.merkle.some((item) => typeof item !== "string" || !/^[0-9a-f]{64}$/i.test(item))) {
+    throw new Error("Electrum returned a malformed transaction merkle proof.");
+  }
+  return {
+    block_height: Number(proof.block_height),
+    merkle: (proof.merkle as string[]).map((item) => item.toLowerCase()),
+    pos: Number(proof.pos),
+  };
+}
+
+function verifyScriptHistoryMerkleProof(
+  txid: string,
+  proof: { block_height: number; merkle: string[]; pos: number },
+  headerHex: string,
+): boolean {
+  if (!/^(?:[0-9a-f]{2}){80}$/i.test(headerHex)) return false;
+  let node = hexToBin(txid).reverse();
+  let position = proof.pos;
+  for (const siblingHex of proof.merkle) {
+    const sibling = hexToBin(siblingHex).reverse();
+    const pair = (position & 1) === 1
+      ? new Uint8Array([...sibling, ...node])
+      : new Uint8Array([...node, ...sibling]);
+    node = sha256(sha256(pair));
+    position = Math.floor(position / 2);
+  }
+  if (position !== 0) return false;
+  const root = binToHex(node.reverse()).toLowerCase();
+  const headerRoot = binToHex(hexToBin(headerHex).slice(36, 68).reverse()).toLowerCase();
+  return root === headerRoot;
+}
+
 /**
  * CashScript NetworkProvider backed by a strict, read-only Electrum quorum.
  * Every read first checks BCH Mainnet identity/tip, every UTXO snapshot must
@@ -310,6 +399,135 @@ export class MainnetQuorumNetworkProvider implements NetworkProvider {
       throw new Error("Raw transaction hash does not match the requested transaction ID.");
     }
     return normalized[0];
+  }
+
+
+  /**
+   * Read the recent history of one or more contract scripts from every
+   * configured Electrum provider. A transaction is called confirmed only
+   * after raw bytes, merkle proof and containing header agree across providers.
+   */
+  async getScriptHistory(
+    lockingBytecodes: readonly (Uint8Array | string)[],
+    limit = 30,
+  ): Promise<MainnetScriptHistorySnapshot> {
+    if (!Array.isArray(lockingBytecodes) || lockingBytecodes.length === 0 || lockingBytecodes.length > 8) {
+      throw new Error("Supply between one and eight circle/escrow scripts for history lookup.");
+    }
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+      throw new Error("Circle activity limit must be between 1 and 100 transactions.");
+    }
+    const tip = await this.verifyTip();
+    const scriptHashes = lockingBytecodes.map(scriptHashForLockingBytecode);
+    if (new Set(scriptHashes).size !== scriptHashes.length) {
+      throw new Error("Duplicate circle scripts were supplied for history lookup.");
+    }
+
+    const providerSnapshots = await Promise.all(this.providers.map(async (provider) =>
+      Promise.all(scriptHashes.map(async (scriptHash) =>
+        normalizeScriptHistory(await provider.performRequest("blockchain.scripthash.get_history", scriptHash)),
+      )),
+    ));
+    const entriesByTxid = new Map<string, { txid: string; height: number; scriptIndexes: number[] }>();
+    for (let scriptIndex = 0; scriptIndex < scriptHashes.length; scriptIndex++) {
+      const baseline = JSON.stringify(providerSnapshots[0][scriptIndex]);
+      if (providerSnapshots.slice(1).some((snapshot) =>
+        JSON.stringify(snapshot[scriptIndex]) !== baseline
+      )) {
+        throw new Error("Independent Mainnet Electrum providers disagree on a circle script's transaction history.");
+      }
+      for (const item of providerSnapshots[0][scriptIndex]) {
+        const existing = entriesByTxid.get(item.txid);
+        if (existing && existing.height !== item.height) {
+          throw new Error("Electrum providers or circle scripts disagree on a transaction's history height.");
+        }
+        if (existing) existing.scriptIndexes.push(scriptIndex);
+        else entriesByTxid.set(item.txid, { ...item, scriptIndexes: [scriptIndex] });
+      }
+    }
+    const allEntries = [...entriesByTxid.values()].sort((a, b) => {
+      if (a.height <= 0 && b.height > 0) return -1;
+      if (b.height <= 0 && a.height > 0) return 1;
+      if (a.height !== b.height) return b.height - a.height;
+      return a.txid.localeCompare(b.txid);
+    });
+    const selected = allEntries.slice(0, limit);
+    let nextIndex = 0;
+    const records = new Array<MainnetScriptHistoryRecord>(selected.length);
+    const worker = async () => {
+      while (true) {
+        const index = nextIndex++;
+        if (index >= selected.length) return;
+        const entry = selected[index];
+        const base = {
+          txid: entry.txid,
+          height: entry.height,
+          scriptIndexes: entry.scriptIndexes,
+          providerConfidence: this.providers.length,
+        };
+        try {
+          const rawTransactions = await Promise.all(this.providers.map((provider) =>
+            provider.getRawTransaction(entry.txid),
+          ));
+          const normalizedRaw = rawTransactions.map((raw) => raw.toLowerCase());
+          if (normalizedRaw.some((raw) => raw !== normalizedRaw[0]) ||
+              hashTransaction(hexToBin(normalizedRaw[0])).toLowerCase() !== entry.txid ||
+              typeof decodeTransactionBCH(hexToBin(normalizedRaw[0])) === "string") {
+            throw new Error("Providers did not agree on valid raw transaction bytes.");
+          }
+          if (entry.height <= 0) {
+            records[index] = {
+              ...base, status: "pending", confirmations: 0,
+              blockHash: null, blockTimestamp: null,
+            };
+            continue;
+          }
+
+          const proofs = await Promise.all(this.providers.map(async (provider) =>
+            normalizeHistoryProof(await provider.performRequest("blockchain.transaction.get_merkle", entry.txid)),
+          ));
+          const firstProof = JSON.stringify(proofs[0]);
+          if (proofs.some((proof) => JSON.stringify(proof) !== firstProof) ||
+              proofs[0].block_height !== entry.height || entry.height > tip.height) {
+            throw new Error("Providers disagree on the transaction's confirmed height or merkle branch.");
+          }
+          const headers = await Promise.all(this.providers.map((provider) =>
+            provider.performRequest("blockchain.block.header", entry.height) as Promise<string>,
+          ));
+          if (headers.some((header) => typeof header !== "string" ||
+              header.toLowerCase() !== headers[0].toLowerCase()) ||
+              !verifyScriptHistoryMerkleProof(entry.txid, proofs[0], headers[0])) {
+            throw new Error("The transaction merkle proof does not match the agreed Mainnet block header.");
+          }
+          const headerBytes = hexToBin(headers[0]);
+          const timestamp = new DataView(
+            headerBytes.buffer, headerBytes.byteOffset + 68, 4,
+          ).getUint32(0, true) * 1000;
+          records[index] = {
+            ...base,
+            status: "confirmed",
+            confirmations: tip.height - entry.height + 1,
+            blockHash: hashMainnetHeader(headers[0]),
+            blockTimestamp: timestamp,
+          };
+        } catch (error) {
+          records[index] = {
+            ...base, status: "unknown", confirmations: null,
+            blockHash: null, blockTimestamp: null,
+            reason: error instanceof Error ? error.message : "Transaction history could not be verified.",
+          };
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, selected.length) }, () => worker()));
+    return {
+      network: "mainnet",
+      providerConfidence: this.providers.length,
+      tipHeight: tip.height,
+      tipHash: tip.hash,
+      truncated: allEntries.length > selected.length,
+      records,
+    };
   }
 
   async sendRawTransaction(_txHex: string): Promise<string> {
