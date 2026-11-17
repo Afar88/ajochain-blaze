@@ -32,7 +32,7 @@ This targeted subset is intentionally small enough to run on every BLAZE CI buil
 
 ## Full upstream VMB audit result (2026-11-17)
 
-<badge color="success">Both generic VM corpus checks passed</badge>
+**Audit result: both generic VM corpus checks passed.**
 
 The full audit ran on the dedicated `audit/bch-2026-full` branch. BCHN `v29.2.0` and the pinned Libauth source commit `d28da7f595cbd747c1e1125477db655f740f3dbc` contain the same 164 BCH 2026 VMB fixture files; all 164 corresponding Git blob hashes match.
 
