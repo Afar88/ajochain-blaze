@@ -137,6 +137,34 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
     return () => { current = false; };
   }, [selected]);
 
+  useEffect(() => {
+    if (!active || !walletConnected || wallet.state !== "connected") return;
+    const currentAddress = wallet.address("chipnet");
+    if (currentAddress) {
+      try {
+        const currentKey = bytesToHex(classicAddressToPkh(currentAddress, "chipnet"));
+        if (active.members.some((member) =>
+          bytesToHex(classicAddressToPkh(member, "chipnet")) === currentKey,
+        )) return;
+      } catch { /* scan the registered member addresses below */ }
+    }
+
+    // Selene may be displaying a receive address at an index other than the
+    // currently selected one. Search the connected wallet's public receive
+    // branch and select the registered member address automatically.
+    for (const memberAddress of active.members) {
+      try {
+        const matchedIndex = wallet.matchReceiveAddress(memberAddress, "chipnet", 50);
+        if (matchedIndex !== null) {
+          setNotice("Matched this Selene wallet to its registered circle member address (receive index " + matchedIndex + ").");
+          return;
+        }
+      } catch {
+        return;
+      }
+    }
+  }, [selected, walletConnected, wallet.state]);
+
   const memberIndex = useMemo(() => {
     if (!active || !walletConnected || wallet.state !== "connected") return -1;
     const address = wallet.address("chipnet");
@@ -439,7 +467,7 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
         <div className="classic-actions">
           <button type="button" className="secondary-button" disabled={busy} onClick={() => void refresh()}><RefreshCw size={14} /> Refresh</button>
           <button type="button" className="secondary-button" disabled={busy || memberIndex < 0 || network !== "chipnet" || Boolean(snapshot?.completed)} onClick={() => void deposit()}>
-            {memberIndex < 0 ? "Connect a circle member wallet" : "Add my credit"}
+            {memberIndex < 0 ? "Connect a registered member wallet" : "Pay my share"}
           </button>
           <button type="button" className="primary-button" disabled={busy || !snapshot?.ready || snapshot?.completed || network !== "chipnet"} onClick={() => void payout()}>Pay out next round</button>
           <button type="button" className="secondary-button" disabled={busy || !initiator || Boolean(snapshot?.hasPaid)} onClick={() => void cancel()}>Cancel before first payout</button>
