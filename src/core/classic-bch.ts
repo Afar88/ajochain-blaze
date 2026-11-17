@@ -16,9 +16,9 @@ import { MAX_CIRCLE_MEMBERS, MIN_CIRCLE_MEMBERS } from "./member-ledger";
 import { selectCashTokensGenesisUtxo } from "./cash-token-genesis";
 import {
   CHIPNET_ELECTRUM_ENDPOINTS,
-  CHIPNET_ELECTRUM_PROTOCOL_VERSION,
-  CHIPNET_ELECTRUM_SOCKET_OPTIONS,
-  CHIPNET_ELECTRUM_TIMEOUT_MS,
+  ELECTRUM_PROTOCOL_VERSION,
+  ELECTRUM_SOCKET_OPTIONS,
+  ELECTRUM_TIMEOUT_MS,
 } from "./chipnet-electrum-config";
 
 export type ClassicNetwork = "mainnet" | "chipnet";
@@ -67,12 +67,12 @@ function makeProvider(network: ClassicNetwork, host: string, port: number) {
   // and token-aware listunspent). In browsers, keep the socket alive while the
   // wallet opens in another tab and the AjoChain page is temporarily hidden.
   const socket = new ElectrumWebSocket(host, {
-    ...CHIPNET_ELECTRUM_SOCKET_OPTIONS,
+    ...ELECTRUM_SOCKET_OPTIONS,
     port,
   } as never);
   const client = new ElectrumClient(
     "AjoChain Blaze",
-    CHIPNET_ELECTRUM_PROTOCOL_VERSION,
+    ELECTRUM_PROTOCOL_VERSION,
     socket,
   );
   return new ElectrumNetworkProvider(network, { electrum: client } as never);
@@ -110,8 +110,8 @@ export function getClassicProvider(network: ClassicNetwork): Promise<NetworkProv
           provider.getBlockHeight(),
           new Promise<never>((_, reject) =>
             setTimeout(
-              () => reject(new Error(host + ":" + port + " did not complete an Electrum 1.5.0 handshake within " + CHIPNET_ELECTRUM_TIMEOUT_MS + " ms")),
-              CHIPNET_ELECTRUM_TIMEOUT_MS,
+              () => reject(new Error(host + ":" + port + " did not complete an Electrum 1.5.0 handshake within " + ELECTRUM_TIMEOUT_MS + " ms")),
+              ELECTRUM_TIMEOUT_MS,
             ),
           ),
         ]);
