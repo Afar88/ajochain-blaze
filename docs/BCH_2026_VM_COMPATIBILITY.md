@@ -12,7 +12,7 @@ Official specifications:
 
 ## BLAZE implementation on `main`
 
-The exact Libauth dependency is pinned to `3.1.0-next.8`, because that upstream prerelease contains the BCH 2026 VM API used here. It remains a prerelease; the pin must not be silently broadened to `^3.x`.
+The exact Libauth dependency is pinned to `3.1.0-next.8`, because that upstream prerelease contains the BCH 2026 VM API used here. It remains a prerelease; the pin must not be silently broadened to `^3.x`. As checked on **2026-11-17**, the upstream [Libauth release list](https://github.com/bitauth/libauth/releases) still identifies `v3.1.0-next.8` as the latest published release and marks it as a prerelease; the latest stable release shown is `v3.0.0`. Keep the prerelease version exact and require provenance review before any production dependency change.
 
 The active VM is `createVirtualMachineBch2026` in all transaction-verification paths on `main`:
 
@@ -24,14 +24,20 @@ Regression coverage:
 - `src/core/bch-2026-vm.test.ts` confirms a bounded-loop transaction succeeds under the BCH 2026 VM and fails under the 2023 VM; it also checks the wallet verifier path.
 - `src/core/pusd-signed-transaction.test.ts` exercises a PUSD spend whose wallet-controlled previous output uses bounded-loop bytecode.
 
-## Targeted upstream VMB coverage in BLAZE CI\n\nThe CI workflow checks a selected set of upstream Libauth BCH 2026 VMB fixtures, pinned to source commit `d28da7f595cbd747c1e1125477db655f740f3dbc` (the source for the exact `3.1.0-next.8` verifier line). It covers standard, nonstandard and invalid outcomes for bitwise operations, functions, bounded loops, Pay-to-Script and flow control. The workflow runs both standard and nonstandard BCH 2026 VM policies and checks each vector against its upstream expected outcome.\n\nThis targeted subset is intentionally small enough to run on every BLAZE CI build. It is not the complete Libauth/BCHN VMB corpus and does not replace BCHN integration tests or external review.\n\n## Full upstream VMB audit (manual)
+## Targeted upstream VMB coverage in BLAZE CI
+
+The CI workflow checks a selected set of upstream Libauth BCH 2026 VMB fixtures, pinned to source commit `d28da7f595cbd747c1e1125477db655f740f3dbc` (the source for the exact `3.1.0-next.8` verifier line). It covers standard, nonstandard and invalid outcomes for bitwise operations, functions, bounded loops, Pay-to-Script and flow control. The workflow runs both standard and nonstandard BCH 2026 VM policies and checks each vector against its upstream expected outcome.
+
+This targeted subset is intentionally small enough to run on every BLAZE CI build. It is not the complete Libauth/BCHN VMB corpus and does not replace BCHN integration tests or external review.
+
+## Full upstream VMB audit (manual)
 
 The pinned Libauth source commit `d28da7f595cbd747c1e1125477db655f740f3dbc` contains 164 BCH 2026 VMB fixture files (about 268 MB) across standard, nonstandard and invalid cases. The separate `.github/workflows/bch-2026-full-vmb.yml` workflow can be started manually; it checks out the complete pinned fixture tree and runs this verifier with `--full`. The regular per-push CI remains on the smaller targeted subset to keep normal builds quick. A successful full VMB run is still Libauth fixture evidence, not an independent BCHN consensus certification.
 
 ## Remaining requirements
 
 This compatibility change is necessary but not a Mainnet-readiness certification:
-- Expand the targeted upstream VMB CI job to the complete BCH 2026 VMB corpus and run the upstream BCHN integration checks against the exact package used in production; retain the passing reports.
+- Run the manual full-corpus VMB audit and retain its report. Separately run BCHN integration checks against a pinned, current BCHN release and the exact compiled covenant artifacts intended for Mainnet; retain those reports.
 - Review the upstream prerelease status and dependency integrity before production pinning.
 - Independently validate the actual compiled AjoChain covenant artifacts under the same VM.
 - Complete the missing fresh-state, fee/carrier, idempotent relay, confirmation and reorg protections.
