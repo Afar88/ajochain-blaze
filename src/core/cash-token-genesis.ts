@@ -1,11 +1,12 @@
 import type { SpendableUtxo } from "cashscript";
 
 export const CASH_TOKEN_GENESIS_SETUP_OUTPUT_SATOSHIS = 1_000n;
-export const CASH_TOKEN_GENESIS_SETUP_MIN_CHANGE_SATOSHIS = 546n;
+export const CASH_TOKEN_GENESIS_SETUP_MIN_CHANGE_SATOSHIS = 1_500n;
 
 /**
  * Returns safe wallet change for the setup transaction, or undefined when
- * the input value cannot fund the output, fee, and minimum dust-safe change.
+ * the input value cannot fund the output, fee, and a reserve for the follow-up
+ * category-creation transaction.
  */
 export function calculateGenesisSetupChange(
   totalInputSatoshis: bigint,
