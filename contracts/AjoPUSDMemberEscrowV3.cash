@@ -71,6 +71,7 @@ contract AjoPUSDMemberEscrowV3(
             require(outPrefix == 0x52 && outMember.length == 1);
             require(int(outMember) == memberIndex && outCredit.length == 8);
             int newCredit = int(outCredit);
+            require(oldCredit >= contribution);
             int reserve = 0;
             if (memberIndex == round && round + 1 < memberCount) { reserve = contribution; }
             require(newCredit == oldCredit - contribution + reserve);
