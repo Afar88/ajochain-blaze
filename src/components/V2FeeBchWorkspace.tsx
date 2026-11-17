@@ -137,6 +137,34 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
     return () => { current = false; };
   }, [selected]);
 
+  useEffect(() => {
+    if (!active || !walletConnected || wallet.state !== "connected") return;
+    const currentAddress = wallet.address("chipnet");
+    if (currentAddress) {
+      try {
+        const currentKey = bytesToHex(classicAddressToPkh(currentAddress, "chipnet"));
+        if (active.members.some((member) =>
+          bytesToHex(classicAddressToPkh(member, "chipnet")) === currentKey,
+        )) return;
+      } catch { /* scan the registered member addresses below */ }
+    }
+
+    // Selene may be displaying a receive address at an index other than the
+    // currently selected one. Search the connected wallet's public receive
+    // branch and select the registered member address automatically.
+    for (const memberAddress of active.members) {
+      try {
+        const matchedIndex = wallet.matchReceiveAddress(memberAddress, "chipnet", 50);
+        if (matchedIndex !== null) {
+          setNotice("Matched this Selene wallet to its registered circle member address (receive index " + matchedIndex + ").");
+          return;
+        }
+      } catch {
+        return;
+      }
+    }
+  }, [selected, walletConnected, wallet.state]);
+
   const memberIndex = useMemo(() => {
     if (!active || !walletConnected || wallet.state !== "connected") return -1;
     const address = wallet.address("chipnet");
@@ -225,7 +253,8 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
         "Additional escrow needed to unlock every remaining payout: " + formatBch(plan.shortfall) + "\\n" +
         "Only this member's registered wallet can fund this slot.",
       )) return;
-      const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Add my V2 AjoChain member credit");
+      setNotice("Sending your member contribution approval request to Selene…");
+      const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Pay my AjoChain member share");
       const provider = await getClassicProvider("chipnet");
       const txid = await provider.sendRawTransaction(signed.signedTransaction);
       setNotice("Member credit deposit broadcast. Transaction: " + txid);
@@ -283,7 +312,8 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
     try {
       const plan = await planV2FeeCancel(active, address);
       if (!window.confirm("Cancel before the first payout and refund each member's exact recorded credit?\nThis cannot be reversed.")) return;
-      const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Cancel AjoChain V2 fee circle and refund members");
+      setNotice("Sending the circle cancellation approval request to Selene…");
+      const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Cancel AjoChain circle and refund every member");
       const provider = await getClassicProvider("chipnet");
       const txid = await provider.sendRawTransaction(signed.signedTransaction);
       setNotice("Pre-payout cancellation broadcast. Transaction: " + txid);
@@ -339,43 +369,58 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
       </div>
 
       <div className="circle-workspace-grid">
-        <div className="circle-panel">
-          <h3>Create a new fee circle</h3>
+        <div className="circle-panel circle-create-panel">
+          <div className="circle-panel-heading">
+            <span className="section-kicker">NEW GROUP</span>
+            <h3>Create a circle</h3>
+            <p>Set the contribution and register your group members. Your connected Selene wallet is added first automatically.</p>
+          </div>
           <form onSubmit={create}>
             <label>Circle name<input value={name} onChange={(event) => setName(event.target.value)} maxLength={60} required /></label>
             <label>Contribution per member (BCH)<input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" required /></label>
             <label>Maximum miner fee (satoshis)<input value={maxFee} onChange={(event) => setMaxFee(event.target.value)} inputMode="numeric" required /></label>
             <label>Fixed Chipnet treasury address<input value={treasury} onChange={(event) => setTreasury(event.target.value)} required /></label>
-            <p className="field-hint"><b>Member 1 · Circle creator</b><br />{walletConnected && wallet.state === "connected" && wallet.address("chipnet")
-              ? <code>{wallet.address("chipnet")}</code>
-              : "Connect your Selene wallet and its address will be registered automatically."}<br />Your connected wallet is always added first. Do not enter your own address below.</p>
+            <div className="creator-member-preview">
+              <b>Member 1 · You, the creator</b>
+              {walletConnected && wallet.state === "connected" && wallet.address("chipnet")
+                ? <code>{wallet.address("chipnet")}</code>
+                : "Connect your Selene wallet and it will be registered automatically."}
+            </div>
             <label>Other members' Chipnet BCH addresses · one per line<textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder="bchtest:…\nbchtest:…" required /></label>
             <button className="primary-button" type="submit" disabled={busy || network !== "chipnet" || !walletConnected}>
-              {network !== "chipnet" ? "Switch to Chipnet" : !walletConnected ? "Connect wallet first" : "Create fee circle"}
+              {busy ? "Creating circle…" : network !== "chipnet" ? "Switch to Chipnet" : !walletConnected ? "Connect wallet first" : "Create fee circle"}
             </button>
           </form>
-          <small className="field-hint">New circles automatically register the connected creator as Member 1. Add 1–4 other unique Chipnet addresses in payout order (2–5 members total). Each member funds the current round; each non-final recipient carries one next contribution forward. No full-cycle pre-funding is required. The treasury is immutable after creation.</small>
-        </div>
-        <div className="circle-panel">
-          <h3>Saved fee circles</h3>
-          {saved.length ? <div className="classic-saved-list">
-            {saved.map((entry) => {
-              let params: V2FeeCircleParams | null = null;
-              try { params = decodeCircle(entry.encoded); } catch { /* ignore damaged item */ }
-              if (!params) return null;
-              return <button key={entry.encoded} type="button" className={selected === entry.encoded ? "classic-saved-item selected" : "classic-saved-item"} onClick={() => setSelected(entry.encoded)}>
-                <b>{params.name}</b>
-                <span>Chipnet · {params.members.length} members · {formatBch(params.contribution)} each</span>
-                <small>Saved {new Date(entry.savedAt).toLocaleDateString()}</small>
-              </button>;
-            })}
-          </div> : <p className="classic-empty">No fee circles saved in this browser yet.</p>}
-          <form className="classic-restore-form" onSubmit={restore}>
-            <label>Restore a V2 fee-circle invite<input value={restoreInput} onChange={(event) => setRestoreInput(event.target.value)} placeholder="Paste invite URL" /></label>
-            <button type="submit" className="secondary-button">Restore invite</button>
-          </form>
+          <small className="field-hint">Add 1–4 other unique Chipnet addresses in payout order (2–5 members total). Each member funds the current round; a non-final recipient carries one next contribution forward.</small>
         </div>
       </div>
+
+      <section className="circle-list-section" aria-labelledby="saved-fee-circles-title">
+        <div className="circle-list-heading">
+          <div>
+            <span className="section-kicker">YOUR GROUPS</span>
+            <h3 id="saved-fee-circles-title">Created circles</h3>
+            <p>Select a circle to view member payments, balances and available actions. Circles are saved on this device; invite links let other members restore the same circle.</p>
+          </div>
+          <span className="circle-count">{saved.length} saved</span>
+        </div>
+        {saved.length ? <div className="classic-saved-list">
+          {saved.map((entry) => {
+            let params: V2FeeCircleParams | null = null;
+            try { params = decodeCircle(entry.encoded); } catch { /* ignore damaged item */ }
+            if (!params) return null;
+            return <button key={entry.encoded} type="button" className={selected === entry.encoded ? "classic-saved-item selected" : "classic-saved-item"} onClick={() => { setSelected(entry.encoded); setError(""); setNotice(""); }}>
+              <b>{params.name}</b>
+              <span>Chipnet · {params.members.length} members · {formatBch(params.contribution)} each</span>
+              <small>Saved {new Date(entry.savedAt).toLocaleDateString()}</small>
+            </button>;
+          })}
+        </div> : <p className="classic-empty">No circles created or restored on this device yet.</p>}
+        <form className="classic-restore-form" onSubmit={restore}>
+          <label>Join or restore a circle with its invite link<input value={restoreInput} onChange={(event) => setRestoreInput(event.target.value)} placeholder="Paste circle invite URL" /></label>
+          <button type="submit" className="secondary-button">Restore circle</button>
+        </form>
+      </section>
 
       {active && <div className="classic-active-circle">
         <div className="section-heading">
@@ -400,12 +445,12 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
             <div className="fee-accounting-row fee-accounting-header"><span>Member</span><span>Paid directly</span><span>Locked now / required</span><span>Payout received</span><span>Still due</span><span>Status</span></div>
             {snapshot.memberAccounting.map((account) => (
               <div className="fee-accounting-row" key={account.address}>
-                <span><b>Member {account.index + 1}{memberIndex === account.index ? " · You" : ""}</b><small>{account.address}</small></span>
-                <span>{account.totalPaidIn === null ? "Legacy history" : formatBch(account.totalPaidIn)}</span>
-                <span>{formatBch(account.currentCredit)}<small>of {formatBch(account.requiredForNextPayout)}</small></span>
-                <span>{account.payoutReceived === null ? "Not tracked" : account.payoutReceived ? formatBch(account.payoutAmountReceived) : "Not yet"}</span>
-                <span>{formatBch(account.shortfallForNextPayout)}</span>
-                <span><b className={account.fullySecured ? "fee-accounting-member-safe" : "fee-accounting-member-blocked"}>{account.status}</b></span>
+                <span data-label="Member"><b>Member {account.index + 1}{memberIndex === account.index ? " · You" : ""}</b><small>{account.address}</small></span>
+                <span data-label="Paid directly">{account.totalPaidIn === null ? "Legacy history" : formatBch(account.totalPaidIn)}</span>
+                <span data-label="Locked / required">{formatBch(account.currentCredit)}<small>of {formatBch(account.requiredForNextPayout)}</small></span>
+                <span data-label="Payout received">{account.payoutReceived === null ? "Not tracked" : account.payoutReceived ? formatBch(account.payoutAmountReceived) : "Not yet"}</span>
+                <span data-label="Still due">{formatBch(account.shortfallForNextPayout)}</span>
+                <span data-label="Status"><b className={account.fullySecured ? "fee-accounting-member-safe" : "fee-accounting-member-blocked"}>{account.status}</b></span>
               </div>
             ))}
           </div>
@@ -414,17 +459,19 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
             : <p className="classic-recipient">Next payout recipient: <b>Member {snapshot.round + 1}</b> · {snapshot.recipient}</p>}
           <p className="field-hint">{snapshot.hasPaid ? "The first payout has happened. Cancellation is permanently locked; remaining escrow cannot be withdrawn." : "No payout has happened yet. Only the initiator may cancel and refund recorded member credit."}</p>
         </> : <p className="classic-empty">Reading the state NFT and all member receipts from Chipnet. Refresh if the transaction is still confirming.</p>}
-        <p className="field-hint">{memberIndex >= 0
-          ? "Your connected Selene wallet is registered as Member " + (memberIndex + 1) + ". You can add credit to your own receipt below."
-          : walletConnected
-            ? "This connected wallet is not registered in this circle. Connect Selene using one of the member addresses listed above, or restore the correct invite."
-            : "Connect Selene using the BCH address registered for your member slot to unlock your personal contribution option."}</p>
+        <div className="member-payment-status">
+          {memberIndex >= 0
+            ? <p><b>Your wallet is registered as Member {memberIndex + 1}.</b> You can pay your own share below.</p>
+            : walletConnected
+              ? <><p><b>This wallet is not registered in this circle.</b> Connect the Selene account that owns one of the member addresses, or create a new circle with the correct member list.</p><code>{wallet.address("chipnet") ?? "Address unavailable"}</code></>
+              : <p>Connect Selene with the BCH address registered for your member slot to pay your share.</p>}
+        </div>
         <label className="classic-deposit-field">Your BCH contribution deposit<input value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} inputMode="decimal" /></label>
         {memberIndex >= 0 && snapshot?.memberAccounting[memberIndex] && <p className="field-hint">Your receipt holds {formatBch(snapshot.memberAccounting[memberIndex].currentCredit)}. Amount needed for your next contribution reserve or current round: <b>{formatBch(snapshot.memberAccounting[memberIndex].shortfallForNextPayout)}</b>. <button type="button" className="fee-exact-amount-button" onClick={() => setDepositAmount(bchInputAmount(snapshot.memberAccounting[memberIndex].shortfallForNextPayout))}>Use exact amount due</button></p>}
         <div className="classic-actions">
           <button type="button" className="secondary-button" disabled={busy} onClick={() => void refresh()}><RefreshCw size={14} /> Refresh</button>
           <button type="button" className="secondary-button" disabled={busy || memberIndex < 0 || network !== "chipnet" || Boolean(snapshot?.completed)} onClick={() => void deposit()}>
-            {memberIndex < 0 ? "Connect a circle member wallet" : "Add my credit"}
+            {memberIndex < 0 ? "Connect a registered member wallet" : "Pay my share"}
           </button>
           <button type="button" className="primary-button" disabled={busy || !snapshot?.ready || snapshot?.completed || network !== "chipnet"} onClick={() => void payout()}>Pay out next round</button>
           <button type="button" className="secondary-button" disabled={busy || !initiator || Boolean(snapshot?.hasPaid)} onClick={() => void cancel()}>Cancel before first payout</button>

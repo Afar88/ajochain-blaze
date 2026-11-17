@@ -1,6 +1,9 @@
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
-import { patchWizardConnectVisibilityHandling } from "./build/wizardconnect-visibility-patch";
+import {
+  hasWizardConnectVisibilityTarget,
+  patchWizardConnectVisibilityHandling,
+} from "./build/wizardconnect-visibility-patch";
 
 function wizardConnectVisibilityRecovery(): Plugin {
   let patched = false;
@@ -11,7 +14,7 @@ function wizardConnectVisibilityRecovery(): Plugin {
     renderChunk: {
       order: "post",
       handler(code) {
-        if (!code.includes("maxReconnectAttempts:e.maxReconnectAttempts});return{client:a,uri:o,qrUri:c,credentials:i,events:n,cleanup:b}}")) {
+        if (!hasWizardConnectVisibilityTarget(code)) {
           return null;
         }
         if (patched) {
