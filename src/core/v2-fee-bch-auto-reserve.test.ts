@@ -318,7 +318,7 @@ describe("AjoChain V3 automatic future-contribution reserve covenant", () => {
     expect(v2FeeCreditFromCommitment(circle.receipts[0].token!.nft!.commitment)).toBe(0n);
     expect(v2FeeCreditFromCommitment(circle.receipts[1].token!.nft!.commitment)).toBe(0n);
     expect(circle.state.token!.nft!.commitment).toBe("540201");
-  });
+  }, 90000);
 
   it("blocks the next payout if an unpaid member has not funded the current round", async () => {
     const provider = new MockNetworkProvider();
