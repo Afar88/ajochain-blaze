@@ -254,6 +254,19 @@ describe("AjoChain PUSD V3 Mainnet covenant (mock-chain invariants)", () => {
       utxo.token.amount === 50n)).toBe(true);
   });
 
+  it("rejects a member deposit that would strand more than one round contribution in escrow", async () => {
+    const provider = new MockNetworkProvider();
+    const { contract, escrows } = makeContracts(provider);
+    addGenesis(provider, contract, escrows);
+
+    await expect(deposit(provider, contract, escrows, 0, 2n * CONTRIBUTION))
+      .rejects.toThrow();
+
+    const { receipts, escrowUtxos } = await current(contract, escrows);
+    expect(receipts[0].token!.nft!.commitment).toBe(creditCommitment(0, 0n));
+    expect(escrowUtxos[0].token?.category).toBeUndefined();
+  }, 60_000);
+
   it("pays a separate 1% PUSD fee and reserves one next contribution for the non-final recipient", async () => {
     const provider = new MockNetworkProvider();
     const { contract, escrows } = makeContracts(provider);
