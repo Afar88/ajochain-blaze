@@ -1,5 +1,6 @@
 import {
   Contract,
+  getDustThreshold,
   TransactionBuilder,
   placeholderP2PKHUnlocker,
   type Artifact,
@@ -178,7 +179,7 @@ function selectBchInputs(
   excludedOutpoint?: string,
 ) {
   const coins = utxos
-    .filter((utxo) => !utxo.token && utxo.vout !== 0 && utxo.satoshis > 0n &&
+    .filter((utxo) => !utxo.token && utxo.satoshis > 0n &&
       (utxo.txid + ":" + utxo.vout) !== excludedOutpoint)
     .sort((a, b) => a.satoshis === b.satoshis ? 0 : a.satoshis > b.satoshis ? -1 : 1);
   const selected: SpendableUtxo[] = [];
@@ -192,6 +193,16 @@ function selectBchInputs(
     throw new Error("The connected wallet does not have enough spendable BCH for the circle carrier outputs and miner-fee reserve.");
   }
   return { selected, total };
+}
+
+function pusdCarrierSatoshis(lockingBytecode: Uint8Array, amount: bigint): bigint {
+  const threshold = getDustThreshold({
+    valueSatoshis: 0n,
+    lockingBytecode,
+    token: { category: hexToBin(PUSD_ASSET.categoryId), amount },
+  });
+  if (threshold < 1n) throw new Error("Could not calculate a positive BCH carrier for this PUSD output.");
+  return threshold;
 }
 
 function selectSingleBchCoin(
@@ -442,7 +453,8 @@ export async function planPusdMainnetDeposit(
   const provider = await getClassicProvider("mainnet");
   const bchUtxos = (await provider.getUtxos(walletAddress)).filter((utxo) => !utxo.token);
   const tokenChange = tokenInput.token!.amount - amount;
-  const tokenChangeCarrier = tokenChange > 0n ? TOKEN_OUTPUT_CARRIER : 0n;
+  const memberLockingBytecode = hexToBin(toHex(classicAddressToPkh(walletAddress, "mainnet")) === "" ? "" : "76a914" + toHex(classicAddressToPkh(walletAddress, "mainnet")) + "88ac");
+  const tokenChangeCarrier = tokenChange > 0n ? pusdCarrierSatoshis(memberLockingBytecode, tokenChange) : 0n;
   const reserve = selectSingleBchCoin(bchUtxos, params.maxFee + CHANGE_DUST + tokenChangeCarrier);
   if (!reserve) throw new Error("No BCH-only input is available to sponsor the PUSD deposit miner fee.");
   const funding = tokenInput as unknown as SpendableUtxo;
@@ -475,7 +487,7 @@ export async function planPusdMainnetDeposit(
     if (tokenChange > 0n) {
       builder.addOutput({
         to: walletAddress,
-        amount: TOKEN_OUTPUT_CARRIER,
+        amount: tokenChangeCarrier,
         token: { category: PUSD_ASSET.categoryId, amount: tokenChange },
       });
     }
@@ -558,11 +570,11 @@ export async function planPusdMainnetPayout(
       }
     }
     builder.addOutput({
-      to: params.treasury, amount: TOKEN_OUTPUT_CARRIER,
+      to: params.treasury, amount: treasuryCarrier,
       token: { category: PUSD_ASSET.categoryId, amount: economics.projectFee },
     });
     builder.addOutput({
-      to: params.members[snapshot.round], amount: TOKEN_OUTPUT_CARRIER,
+      to: params.members[snapshot.round], amount: recipientCarrier,
       token: { category: PUSD_ASSET.categoryId, amount: payoutAmount },
     });
     builder.addOutput({ to: initiatorAddress, amount: feeChange });
@@ -571,7 +583,7 @@ export async function planPusdMainnetPayout(
 
   const estimateBuilder = makeBuilder(CHANGE_DUST);
   const { fee, size } = await estimateFee(estimateBuilder, params.maxFee);
-  const feeChange = feeInput.satoshis - 2n * TOKEN_OUTPUT_CARRIER - fee;
+  const feeChange = feeInput.satoshis - treasuryCarrier - recipientCarrier - fee;
   if (feeChange < CHANGE_DUST) throw new Error("BCH fee reserve cannot cover both PUSD token carrier outputs and the quoted payout fee.");
   const wc = makeBuilder(feeChange).generateWcTransactionObject({
     broadcast: false,
