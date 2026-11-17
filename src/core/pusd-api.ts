@@ -31,6 +31,8 @@ export interface PusdFeeQuote {
 
 export interface PusdBroadcastResult {
   txid: string;
+  relayStatus: "accepted" | "already-known";
+  confirmationStatus: "not-checked";
   feeSatoshis: bigint;
   inputPusdAmount: bigint;
   recipientPusdAmount: bigint;
@@ -38,6 +40,22 @@ export interface PusdBroadcastResult {
   network: "mainnet";
   tipHeight: number;
   broadcast: true;
+}
+
+export interface MainnetTransactionStatus {
+  network: "mainnet";
+  txid: string;
+  status: "confirmed" | "pending" | "unknown";
+  confirmations: number | null;
+  tipHeight: number | null;
+  tipHash: string | null;
+  providerConfidence: number;
+  blockHeight?: number;
+  blockHash?: string;
+  verification?: string;
+  verificationLimit?: string;
+  reason?: string;
+  retryPolicy: string;
 }
 
 interface RawPusdUtxo {
@@ -220,6 +238,27 @@ export async function fetchPusdWalletBalance(address: string): Promise<PusdWalle
     unsupportedTokenUtxos: snapshot.unsupportedTokenUtxos?.length ?? 0,
     rawPreviousTransactions: snapshot.rawPreviousTransactions,
   };
+}
+
+/**
+ * Query the current quorum view of a BCH Mainnet transaction. A later query
+ * may downgrade a previously confirmed result after a chain reorganisation.
+ */
+export async function fetchMainnetTransactionStatus(txid: string): Promise<MainnetTransactionStatus> {
+  const normalized = txid.trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(normalized)) {
+    throw new Error("Transaction ID must be exactly 64 hexadecimal characters.");
+  }
+  const result = await requestJson<MainnetTransactionStatus>(
+    "/api/transaction/status?" + new URLSearchParams({ txid: normalized }).toString(),
+  );
+  if (!result || result.network !== "mainnet" || result.txid?.toLowerCase() !== normalized ||
+      !["confirmed", "pending", "unknown"].includes(result.status) ||
+      !Number.isSafeInteger(result.providerConfidence) || result.providerConfidence < 0 ||
+      (result.confirmations !== null && (!Number.isSafeInteger(result.confirmations) || result.confirmations < 0))) {
+    throw new Error("Mainnet transaction-status response failed validation.");
+  }
+  return result;
 }
 
 /** Get a fee quote that has been checked against the configured Electrum quorum. */
