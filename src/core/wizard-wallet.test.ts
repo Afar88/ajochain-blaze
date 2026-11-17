@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  wizardRelayStatusMessage,
   assertP2pkhWalletInputCoverage,
   assertRequiredContractWalletSighash,
   assertRequiredWalletSighash,
@@ -99,5 +100,22 @@ describe("WizardConnect covenant-input sighash inspection", () => {
     const malformed = Uint8Array.from([0x30, 0x06, 0x02, 0x00, 0x01, 0x02, 0x01, 0x01, 0x61]);
     expect(() => assertRequiredContractWalletSighash(covenantUnlockingScript(malformed)))
       .toThrow(/missing its transaction signature argument/);
+  });
+});
+
+
+describe("WizardConnect relay recovery messaging", () => {
+  it("shows temporary subscription closures as recoverable reconnects", () => {
+    expect(wizardRelayStatusMessage("reconnecting", "Subscription closed"))
+      .toContain("AjoChain is retrying automatically");
+  });
+
+  it("shows mobile/background relay interruptions without discarding the session", () => {
+    expect(wizardRelayStatusMessage("disconnected"))
+      .toContain("return after Selene");
+  });
+
+  it("clears the interruption message after the relay reconnects", () => {
+    expect(wizardRelayStatusMessage("connected")).toBeNull();
   });
 });
