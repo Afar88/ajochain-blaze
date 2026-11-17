@@ -9,7 +9,6 @@ import { formatAssetAmount, parseAssetAmount, PUSD_ASSET } from "./core/assets";
 import type { PusdTransferPlan } from "./core/pusd-transaction-builder";
 import type { AuthenticatedPusdUtxo } from "./core/pusd-utxo";
 import { PUSD_MAINNET_SPENDING_ENABLED } from "./core/pusd-mainnet-guard";
-import { restoreClassicCircleFromInvite, saveClassicCircle } from "./core/circle-account";
 const ClassicBchWorkspace = lazy(() => import("./components/ClassicBchWorkspace"));
 const V2FeeBchWorkspace = lazy(() => import("./components/V2FeeBchWorkspace"));
 const PusdMainnetCircleWorkspace = lazy(() => import("./components/PusdMainnetCircleWorkspace"));
@@ -85,25 +84,39 @@ export default function App() {
   const menuLabel = pageLabels[page];
 
   useEffect(() => {
+    let active = true;
+    let lastInviteHash = "";
     const restoreInviteFromHash = () => {
-      if (!window.location.hash.startsWith("#/classic/")) return;
-      try {
-        // Shared Classic invite URLs are directly restorable on a fresh device.
-        // Save the decoded invite locally before attempting any network reads.
-        const params = restoreClassicCircleFromInvite(window.location.href);
-        saveClassicCircle(window.localStorage, params);
-        setClassicInviteRevision((revision) => revision + 1);
-        setNetwork(params.network);
-        setCircleWorkspace("bch-classic");
-        setPage("circles");
-        setMenuOpen(false);
-      } catch {
-        // Do not silently switch workspaces for a malformed or unsupported link.
-      }
+      const hash = window.location.hash;
+      if (!hash.startsWith("#/classic/") || hash === lastInviteHash) return;
+      lastInviteHash = hash;
+      // Keep the Classic contract and CashScript dependencies lazy for normal app visits.
+      void import("./core/circle-account").then(({ restoreClassicCircleFromInvite, saveClassicCircle }) => {
+        if (!active) return;
+        try {
+          // Shared Classic invite URLs are directly restorable on a fresh device.
+          // Save the decoded invite locally before attempting any network reads.
+          const params = restoreClassicCircleFromInvite(window.location.href);
+          saveClassicCircle(window.localStorage, params);
+          setClassicInviteRevision((revision) => revision + 1);
+          setNetwork(params.network);
+          setCircleWorkspace("bch-classic");
+          setPage("circles");
+          setMenuOpen(false);
+        } catch {
+          // Do not silently switch workspaces for a malformed or unsupported link.
+        }
+      }).catch(() => {
+        // Keep the app usable if the optional Classic invite module cannot load.
+        lastInviteHash = "";
+      });
     };
     restoreInviteFromHash();
     window.addEventListener("hashchange", restoreInviteFromHash);
-    return () => window.removeEventListener("hashchange", restoreInviteFromHash);
+    return () => {
+      active = false;
+      window.removeEventListener("hashchange", restoreInviteFromHash);
+    };
   }, []);
 
   useEffect(() => {
