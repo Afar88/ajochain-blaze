@@ -32,3 +32,42 @@ jobs:
         run: npm install --prefix .ci --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @bitauth/libauth@3.1.0-next.8
       - name: Verify all generated BCH 2026 VMB vectors
         run: node .ci/verify-bch-2026-vmb.mjs .ci/libauth/src/lib/vmb-tests/generated --full
+
+  bchn-native:
+    name: BCHN v29.2.0 native BCH 2026 VM tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    steps:
+      - name: Checkout pinned Bitcoin Cash Node release
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: bitcoin-cash-node/bitcoin-cash-node
+          ref: v29.2.0
+          path: .ci/bchn
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Install BCHN test build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential cmake ninja-build python3 \
+            libboost-chrono-dev libboost-filesystem-dev libboost-test-dev libboost-thread-dev \
+            libevent-dev libssl-dev libgmp-dev zlib1g-dev
+      - name: Configure BCHN with test binary only
+        run: |
+          cmake -S .ci/bchn -B .ci/bchn/build -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_BITCOIN_DAEMON=OFF \
+            -DBUILD_BITCOIN_WALLET=OFF \
+            -DBUILD_BITCOIN_QT=OFF \
+            -DBUILD_BITCOIN_ZMQ=OFF \
+            -DBUILD_BITCOIN_CLI=OFF \
+            -DBUILD_BITCOIN_TX=OFF \
+            -DBUILD_BITCOIN_SEEDER=OFF \
+            -DENABLE_UPNP=OFF \
+            -DENABLE_NATPMP=OFF \
+            -DENABLE_TEST=ON
+      - name: Build BCHN native test binary
+        run: cmake --build .ci/bchn/build --target test_bitcoin --parallel 2
+      - name: Execute BCHN 2026 consensus VMB test pack
+        run: .ci/bchn/build/src/test/test_bitcoin --run_test=libauth_tests/upgrade12_2026 --report_level=detailed
