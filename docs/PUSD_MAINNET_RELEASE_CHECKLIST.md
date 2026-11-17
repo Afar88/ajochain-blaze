@@ -10,6 +10,9 @@ This document is the release checklist referenced by `src/core/pusd-mainnet-guar
 
 - [ ] Confirm the ParyonUSD issuer and category ID through current issuer-controlled sources.
 - [ ] Verify decimals, supply/amount policy, NFT policy, allowed address types, and any issuer freeze/blacklist or recovery controls.
+
+The issuer-maintained [ParyonUSD contracts source](https://github.com/ParyonUSD/contracts/blob/master/contracts/stabilitypool/poolContractFunctions/WithdrawFromPool.cash) describes rounding in units of 0.01 ParyonUSD; its [AddLiquidity contract artifact/source](https://github.com/ParyonUSD/contracts/search?q=minimumToStake&type=code) encodes a 100.00 ParyonUSD minimum as `100_00`. This is strong evidence for a two-decimal base-unit convention, but the release gate remains open until the source/artifact is matched to the deployed contracts and the issuer-controlled token metadata/policy is checked against the exact category ID.
+
 - [ ] Record the exact token metadata snapshot and review date in the release evidence.
 
 ## UTXO discovery and authentication
