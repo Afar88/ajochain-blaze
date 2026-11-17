@@ -13,16 +13,19 @@ jobs:
     timeout-minutes: 180
     steps:
       - name: Checkout BLAZE
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - name: Checkout pinned complete Libauth VMB fixtures
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           repository: bitauth/libauth
           ref: d28da7f595cbd747c1e1125477db655f740f3dbc
           path: .ci/libauth
           fetch-depth: 1
+          persist-credentials: false
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: 22
       - name: Install the exact Libauth verifier
