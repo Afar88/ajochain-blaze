@@ -237,7 +237,7 @@ contract AjoCirclePUSDV3Mainnet(
      * attached to their receipt and escrow UTXO. No project fee is charged.
      */
     function cancel(pubkey initiatorPk, sig initiatorSig) {
-        require(this.activeInputIndex == 0);
+        require(this.activeInputIndex >= 0 && this.activeInputIndex <= memberCount);
         require(hash160(initiatorPk) == initiator);
         require(checkSig(initiatorSig, initiatorPk));
         require(memberCount >= 2 && memberCount <= 5);
