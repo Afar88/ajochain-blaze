@@ -22,9 +22,9 @@ export function calculateGenesisSetupChange(
 }
 
 /**
- * CashTokens category genesis requires spending a non-token output at vout 0.
- * The protocol does not impose a 3,000-satoshi minimum on that outpoint:
- * other eligible wallet inputs can provide the remaining transaction value.
+ * CashTokens category genesis requires spending a spendable non-token output
+ * at vout 0. Other eligible wallet inputs can provide the remaining transaction
+ * value; transaction fees and dust-safe change are calculated separately.
  */
 export function selectCashTokensGenesisUtxo(
   utxos: readonly SpendableUtxo[],
