@@ -516,3 +516,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .pusd-mainnet-saved .section-heading>small{font-size:9px;color:#9aa49c}
 .pusd-mainnet-asset-meta{display:grid;grid-template-columns:1fr auto;gap:8px 14px;border-top:1px solid #edf0eb;padding-top:13px;font-size:9px;color:#8a978d}
 @media(max-width:600px){.pusd-mainnet-safety{align-items:flex-start}.pusd-mainnet-breakdown>div{display:grid;gap:4px}.pusd-mainnet-breakdown strong{text-align:left}.pusd-mainnet-asset-meta{grid-template-columns:1fr}.pusd-mainnet-asset-meta code{margin-bottom:5px}}
+
+
+.pusd-mainnet-actions{display:flex;gap:9px;flex-wrap:wrap}
+.pusd-mainnet-actions>button{flex:1 1 190px}
+.pusd-mainnet-breakdown code{font-size:9px;overflow-wrap:anywhere;white-space:normal;text-align:right}
+@media(max-width:600px){.pusd-mainnet-actions{display:grid}.pusd-mainnet-breakdown code{text-align:left}}
