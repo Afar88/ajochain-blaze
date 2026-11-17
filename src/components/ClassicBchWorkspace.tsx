@@ -111,8 +111,10 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
           const parsed = JSON.parse(rawPending) as { status?: unknown; txid?: unknown; createdAt?: unknown };
           if (parsed.status === "broadcast" && typeof parsed.txid === "string" && /^[0-9a-f]{64}$/i.test(parsed.txid)) {
             pendingSetup = { status: "broadcast", txid: parsed.txid, createdAt: Number(parsed.createdAt) || undefined };
-          } else if (parsed.status === "unknown") {
-            throw new Error("AjoChain could not confirm whether the previous setup transaction reached Chipnet. Check Selene and the Chipnet wallet history before retrying; duplicate setup transactions are blocked.");
+          } else if (parsed.status === "unknown" || parsed.status === "signing") {
+            // First check whether a valid vout-0 coin is now present. If it is,
+            // the existing planner can safely use it without another setup spend.
+            pendingSetup = { status: parsed.status };
           } else {
             throw new Error("A previous CashTokens setup attempt is still recorded for this wallet. Check Selene and the Chipnet transaction history before trying again; AjoChain will not create a duplicate setup transaction.");
           }
@@ -128,7 +130,13 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
       } catch (cause) {
         if (!(cause instanceof CashTokensGenesisUtxoMissingError) || network !== "chipnet") throw cause;
 
-        if (pendingSetup?.txid) {
+        if (pendingSetup?.status === "unknown" || pendingSetup?.status === "signing") {
+          throw new Error(
+            pendingSetup.status === "unknown"
+              ? "AjoChain could not confirm whether the previous setup transaction reached Chipnet. Check Selene and the Chipnet wallet history before retrying; duplicate setup transactions are blocked."
+              : "A previous CashTokens setup attempt was interrupted before its broadcast result was saved. Check Selene and the Chipnet wallet history before retrying; AjoChain will not create a duplicate setup transaction.",
+          );
+        } else if (pendingSetup?.txid) {
           const provider = await getClassicProvider("chipnet");
           const currentUtxos = await provider.getUtxos(walletAddress);
           const pendingOutput = currentUtxos.find((utxo) =>
