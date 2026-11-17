@@ -1,7 +1,7 @@
 import type { SpendableUtxo } from "cashscript";
 
 export const CASH_TOKEN_GENESIS_SETUP_OUTPUT_SATOSHIS = 1_000n;
-export const CASH_TOKEN_GENESIS_SETUP_MIN_CHANGE_SATOSHIS = 5_546n;
+export const CASH_TOKEN_GENESIS_SETUP_MIN_CHANGE_SATOSHIS = 546n;
 
 /**
  * Returns safe wallet change for the setup transaction, or undefined when
