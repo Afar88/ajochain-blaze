@@ -32,5 +32,8 @@
     "vitest": "^5.1.0",
     "@types/qrcode": "^1.5.6",
     "cashc": "^0.14.0"
+  },
+  "overrides": {
+    "csstype": "3.2.3"
   }
 }
