@@ -65,6 +65,9 @@ contract AjoCirclePUSDV3Mainnet(
         require(stateRound.length == 1 && hasPaid.length == 1);
         require(int(stateRound) >= 0 && int(stateRound) < memberCount);
         require(int(hasPaid) == 0 || int(hasPaid) == 1);
+        // Genesis is the only unpaid state; every advanced round proves a payout.
+        require((int(stateRound) == 0 && int(hasPaid) == 0) ||
+            (int(stateRound) > 0 && int(hasPaid) == 1));
 
         bytes receiptPrefix, bytes receiptData = tx.inputs[1].nftCommitment.split(1);
         bytes receiptMember, bytes receiptCredit = receiptData.split(1);
