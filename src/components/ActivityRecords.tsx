@@ -28,7 +28,8 @@ type CircleResult = {
   details?: string;
   memberRecords?: MemberRecord[];
   history?: CircleActivitySnapshot;
-    error?: string;
+  historyError?: string;
+  error?: string;
 };
 
 function errorText(cause: unknown) {
@@ -121,12 +122,25 @@ function loadCircleRefs(): CircleRef[] {
   return [...unique.values()].slice(0, 30);
 }
 
+
+async function readHistorySafely(
+  provider: Parameters<typeof readCircleTransactionHistory>[0],
+  network: Parameters<typeof readCircleTransactionHistory>[1],
+  lockingBytecodes: Parameters<typeof readCircleTransactionHistory>[2],
+): Promise<{ history?: CircleActivitySnapshot; historyError?: string }> {
+  try {
+    return { history: await readCircleTransactionHistory(provider, network, lockingBytecodes, 20) };
+  } catch (cause) {
+    return { historyError: errorText(cause) };
+  }
+}
+
 async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
   try {
     if (ref.kind === "classic") {
       const snapshot = await readClassicCircle(ref.params);
-      const history = await readCircleTransactionHistory(
-        snapshot.provider, ref.network, [snapshot.contract.lockingBytecode], 20,
+      const historyResult = await readHistorySafely(
+        snapshot.provider, ref.network, [snapshot.contract.lockingBytecode],
       );
       const status = snapshot.status;
       return {
@@ -137,13 +151,13 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
           : (status.round + 1) + " / " + ref.params.members.length,
         recipient: status.recipient,
         details: "Classic V1 uses an aggregate pot. The chain cannot identify which member funded an individual contribution.",
-        history,
+        ...historyResult,
       };
     }
     if (ref.kind === "fee") {
       const snapshot = await readV2FeeCircle(ref.params);
-      const history = await readCircleTransactionHistory(
-        snapshot.provider, ref.network, [snapshot.contract.lockingBytecode], 20,
+      const historyResult = await readHistorySafely(
+        snapshot.provider, ref.network, [snapshot.contract.lockingBytecode],
       );
       return {
         ref, status: "ready",
@@ -158,15 +172,14 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
           due: member.shortfallForNextPayout,
           status: member.status,
         })),
-        history,
+        ...historyResult,
       };
     }
     const snapshot = await readPusdMainnetCircle(ref.params);
-    const history = await readCircleTransactionHistory(
+    const historyResult = await readHistorySafely(
       snapshot.provider,
       "mainnet",
       [snapshot.contract.lockingBytecode, ...snapshot.escrows.map((escrow) => escrow.lockingBytecode)],
-      20,
     );
     return {
       ref, status: "ready",
@@ -181,7 +194,7 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
         due: credit >= ref.params.contribution ? 0n : ref.params.contribution - credit,
         status: credit >= ref.params.contribution ? "Contribution funded" : "Contribution due",
       })),
-      history,
+      ...historyResult,
     };
   } catch (cause) {
     return {
@@ -318,7 +331,9 @@ export default function ActivityRecords() {
                       <b>Recent on-chain activity</b>
                       <small>{result.history?.truncated ? "Showing the latest records only" : "Complete provider response for this script set"}</small>
                     </div>
-                    {result.history?.records.length ? (
+                    {result.historyError ? (
+                      <p className="classic-error">{result.historyError} Current chain receipt records above remain independently verified.</p>
+                    ) : result.history?.records.length ? (
                       result.history.records.map((record) => (
                         <div className="activity-transaction-row" key={record.txid}>
                           <span className="activity-transaction-icon"><ShieldCheck size={15} /></span>
