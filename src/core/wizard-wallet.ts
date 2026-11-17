@@ -325,6 +325,21 @@ class WizardWallet {
     this.connectionWatchdog = null;
   }
 
+  private startConnectionWatchdog(
+    mgr: DappConnectionManager,
+    generation: number,
+    existing: boolean,
+  ) {
+    this.clearConnectionWatchdog();
+    this.connectionWatchdog = setTimeout(() => {
+      if (!this.isCurrent(mgr, generation) || this.state !== "connecting") return;
+      this.error = existing
+        ? "Selene has not completed the saved-session handshake. Retry the saved session or start a fresh pairing."
+        : "Still waiting for Selene. Keep AjoChain open, or start a fresh pairing.";
+      this.emit();
+    }, 20_000);
+  }
+
   private isCurrent(mgr: DappConnectionManager, generation: number) {
     return this.mgr === mgr && this.generation === generation;
   }
@@ -406,8 +421,12 @@ class WizardWallet {
           this.emit();
         } else if (status.status === "connected") {
           // The relay is back; wait for wallet_ready before marking the wallet
-          // connected again. The manager will emit walletready after the handshake.
+          // connected again. Give the resumed handshake its own timeout.
           this.error = null;
+          if (this.state !== "connected") {
+            this.state = "connecting";
+            this.startConnectionWatchdog(mgr, generation, Boolean(existing));
+          }
           this.emit();
         }
       }, { existingCredentials: existing });
@@ -418,13 +437,7 @@ class WizardWallet {
       this.relay = relay;
       if (!existing) { this.uri = relay.uri; this.qrUri = relay.qrUri; }
       mgr.attachRelay(relay);
-      this.connectionWatchdog = setTimeout(() => {
-        if (!this.isCurrent(mgr, generation) || this.state !== 'connecting') return;
-        this.error = existing
-          ? 'Your saved Selene session has not responded. Retry the saved session or start a fresh pairing.'
-          : 'Still waiting for Selene. Keep AjoChain open, or start a fresh pairing.';
-        this.emit();
-      }, 20000);
+      this.startConnectionWatchdog(mgr, generation, Boolean(existing));
     } catch (e) {
       if (this.isCurrent(mgr, generation)) {
         this.clearConnectionWatchdog();
