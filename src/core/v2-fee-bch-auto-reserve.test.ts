@@ -186,8 +186,14 @@ describe("V2/V3 state transition semantics", () => {
     }
   });
 
-  it("preserves the legacy fee-v1 wrapping-state rules", () => {
-    expect(() => assertV2FeeStateCommitmentSemantics("fee-v1", 2, "540001")).not.toThrow();
+  it("preserves valid fee-v1 wrapped paid states but rejects impossible unpaid rounds", () => {
+    for (const commitment of ["540000", "540001", "540101"]) {
+      expect(() => assertV2FeeStateCommitmentSemantics("fee-v1", 2, commitment)).not.toThrow();
+    }
+    for (const commitment of ["540100", "540201"]) {
+      expect(() => assertV2FeeStateCommitmentSemantics("fee-v1", 2, commitment))
+        .toThrow(/legacy.*state|payout marker/i);
+    }
   });
 });
 

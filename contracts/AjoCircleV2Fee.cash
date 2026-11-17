@@ -63,6 +63,8 @@ contract AjoCircleV2Fee(
         require(stateRound.length == 1 && hasPaid.length == 1);
         require(int(stateRound) >= 0 && int(stateRound) < memberCount);
         require(int(hasPaid) == 0 || int(hasPaid) == 1);
+        // A never-paid legacy circle can only still be at its genesis round.
+        require(int(hasPaid) == 1 || int(stateRound) == 0);
         require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
         require(tx.outputs[0].tokenCategory == stateCategory + 0x02);
         require(tx.outputs[0].tokenAmount == 0);
@@ -133,6 +135,8 @@ contract AjoCircleV2Fee(
         require(int(hasPaid) == 0 || int(hasPaid) == 1);
         int round = int(stateRound);
         require(round >= 0 && round < memberCount);
+        // A never-paid legacy circle can only still be at its genesis round.
+        require(int(hasPaid) == 1 || round == 0);
         require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
         require(tx.outputs[0].tokenCategory == stateCategory + 0x02);
         require(tx.outputs[0].tokenAmount == 0);
@@ -189,7 +193,7 @@ contract AjoCircleV2Fee(
         bytes stateRound, bytes hasPaid = stateData.split(1);
         require(statePrefix == 0x54);
         require(stateRound.length == 1 && hasPaid.length == 1);
-        require(int(stateRound) >= 0 && int(stateRound) < memberCount);
+        require(int(stateRound) == 0);
         require(hasPaid == 0x00);
 
         int totalCredits = 0;

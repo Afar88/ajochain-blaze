@@ -43,15 +43,20 @@ function creditCommitment(index: number, amount: bigint) {
     amount.toString(16).padStart(16, '0').match(/../g)!.reverse().join('');
 }
 
-function addGenesis(provider: MockNetworkProvider, contract: Contract) {
+function addGenesis(
+  provider: MockNetworkProvider,
+  contract: Contract,
+  stateCommitment = '540000',
+  initialCredit = 0n,
+) {
   provider.addUtxo(contract.address, randomUtxo({
-    satoshis: DUST,
-    token: { category: CATEGORY, amount: 0n, nft: { capability: 'minting', commitment: '540000' } },
+    satoshis: DUST + BigInt(members.length) * initialCredit,
+    token: { category: CATEGORY, amount: 0n, nft: { capability: 'minting', commitment: stateCommitment } },
   }));
   for (let i = 0; i < members.length; i++) {
     provider.addUtxo(contract.address, randomUtxo({
       satoshis: DUST,
-      token: { category: CATEGORY, amount: 0n, nft: { capability: 'none', commitment: creditCommitment(i, 0n) } },
+      token: { category: CATEGORY, amount: 0n, nft: { capability: 'none', commitment: creditCommitment(i, initialCredit) } },
     }));
   }
 }
@@ -144,6 +149,29 @@ async function cancel(provider: MockNetworkProvider, contract: Contract, signer 
   builder.addOutput({ to: fundingAddress, amount: 15_000n });
   await builder.send();
 }
+
+describe('AjoCircleV2Fee legacy state-marker enforcement', () => {
+  it('rejects deposits from a nonzero round with an unpaid marker', async () => {
+    const provider = new MockNetworkProvider();
+    const contract = makeContract(provider);
+    addGenesis(provider, contract, '540100');
+    await expect(deposit(provider, contract, 0)).rejects.toThrow();
+  });
+
+  it('rejects payout from a nonzero round with an unpaid marker', async () => {
+    const provider = new MockNetworkProvider();
+    const contract = makeContract(provider);
+    addGenesis(provider, contract, '540100', CONTRIBUTION);
+    await expect(payout(provider, contract)).rejects.toThrow();
+  });
+
+  it('rejects cancellation unless the legacy circle is still at genesis', async () => {
+    const provider = new MockNetworkProvider();
+    const contract = makeContract(provider);
+    addGenesis(provider, contract, '540100', CONTRIBUTION);
+    await expect(cancel(provider, contract)).rejects.toThrow();
+  });
+});
 
 describe('AjoCircleV2Fee versioned covenant', () => {
   it('enforces the 1% treasury output and permanent paid state on payout', async () => {

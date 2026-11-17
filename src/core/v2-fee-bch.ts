@@ -98,13 +98,20 @@ export function assertV2FeeStateCommitmentSemantics(
   memberCount: number,
   commitment: string,
 ): void {
-  if (covenant === 'fee-v1') return;
   if (!Number.isInteger(memberCount) || memberCount < 2 || memberCount > 5 ||
       !isValidV2FeeStateCommitment(commitment)) {
     throw new Error('Invalid V2 fee state commitment.');
   }
   const round = Number.parseInt(commitment.slice(2, 4), 16);
   const hasPaid = commitment.slice(4) === '01';
+  if (covenant === 'fee-v1') {
+    // Legacy fee-v1 wraps its round counter; round zero may still be paid
+    // after a complete rotation. Unpaid state is valid only at genesis.
+    if (round >= memberCount || (!hasPaid && round !== 0)) {
+      throw new Error('Legacy V2 fee state round and payout marker are inconsistent.');
+    }
+    return;
+  }
   if (round > memberCount || (round === 0 && hasPaid) || (round > 0 && !hasPaid)) {
     throw new Error('V2 fee state round and irreversible payout marker are inconsistent.');
   }
