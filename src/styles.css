@@ -937,3 +937,180 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .page-body .page-intro p,
   .page-body .section-heading p { font-size: 12px; }
 }
+
+
+/* Chain-backed activity and receipt records */
+.activity-records-page { gap: 18px; }
+.activity-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 10px;
+}
+.activity-summary-grid .overview-status-card { min-width: 0; }
+.activity-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.activity-toolbar > div { display: grid; gap: 4px; }
+.activity-toolbar b { color: var(--ink); font-size: 14px; }
+.activity-toolbar small { color: var(--muted); font-size: 11px; }
+.activity-circle-list { display: grid; gap: 14px; }
+.activity-circle-card { padding: 16px; display: grid; gap: 14px; }
+.activity-circle-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.activity-circle-heading h2 { margin: 5px 0 3px; font-size: 18px; color: var(--ink); }
+.activity-circle-heading small { color: var(--muted); font-size: 11px; }
+.activity-state-pill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+.activity-state-pill.ready,
+.activity-state-pill.confirmed {
+  border-color: #b7cfbb;
+  background: #edf5ed;
+  color: #245535;
+}
+.activity-state-pill.loading,
+.activity-state-pill.pending {
+  border-color: #d9cfaa;
+  background: #f7f3e7;
+  color: #735b20;
+}
+.activity-state-pill.unavailable,
+.activity-state-pill.unknown {
+  border-color: #d9b8af;
+  background: #f8efec;
+  color: #874537;
+}
+.activity-state-grid {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 8px;
+}
+.activity-state-grid > div {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--paper);
+  min-width: 0;
+}
+.activity-state-grid span { color: var(--muted); font-size: 10px; }
+.activity-state-grid b { color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
+.activity-source-note,
+.activity-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.activity-member-records,
+.activity-history {
+  display: grid;
+  gap: 8px;
+}
+.activity-subheading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.activity-subheading b { color: var(--ink); font-size: 12px; }
+.activity-subheading small { color: var(--muted); font-size: 10px; text-align: right; }
+.activity-member-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.activity-member-row > span { min-width: 0; display: grid; gap: 4px; }
+.activity-member-row > span:last-child { text-align: right; }
+.activity-member-row b { color: var(--ink); font-size: 11px; overflow-wrap: anywhere; }
+.activity-member-row small { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.activity-transaction-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.activity-transaction-icon {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--lime);
+  color: var(--green);
+}
+.activity-transaction-main { min-width: 0; flex: 1 1 auto; display: grid; gap: 3px; }
+.activity-transaction-main b { color: var(--ink); font-size: 11px; }
+.activity-transaction-main code { color: var(--green); font-size: 10px; overflow-wrap: anywhere; }
+.activity-transaction-main small { color: var(--muted); font-size: 10px; line-height: 1.4; }
+.activity-unavailable {
+  padding: 12px;
+  border: 1px solid #d9b8af;
+  border-radius: 11px;
+  background: #faf3f0;
+}
+.activity-unavailable b { color: #874537; font-size: 12px; }
+.activity-unavailable p { color: #744b42; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.activity-unavailable small { color: #8a716a; font-size: 10px; }
+.activity-empty { padding: 18px; }
+.activity-empty h2 { color: var(--ink); font-size: 16px; }
+.activity-empty p { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.activity-truncation { color: var(--muted); font-size: 10px; }
+.activity-spin { animation: activity-rotate .9s linear infinite; }
+@keyframes activity-rotate { to { transform: rotate(360deg); } }
+:root[data-theme="dark"] .activity-state-pill.ready,
+:root[data-theme="dark"] .activity-state-pill.confirmed {
+  background: #1d3929; border-color: #42684c; color: #b9e0c0;
+}
+:root[data-theme="dark"] .activity-state-pill.loading,
+:root[data-theme="dark"] .activity-state-pill.pending {
+  background: #3b3320; border-color: #68572c; color: #ead79d;
+}
+:root[data-theme="dark"] .activity-state-pill.unavailable,
+:root[data-theme="dark"] .activity-state-pill.unknown {
+  background: #3d2925; border-color: #775047; color: #e9b4a7;
+}
+:root[data-theme="dark"] .activity-unavailable {
+  background: #30231f; border-color: #67483f;
+}
+:root[data-theme="dark"] .activity-unavailable b { color: #efb7a9; }
+:root[data-theme="dark"] .activity-unavailable p,
+:root[data-theme="dark"] .activity-unavailable small { color: #cba79e; }
+@media(max-width:620px) {
+  .activity-summary-grid { grid-template-columns: 1fr; }
+  .activity-circle-card { padding: 13px; }
+  .activity-circle-heading h2 { font-size: 16px; }
+  .activity-state-grid { grid-template-columns: 1fr 1fr; }
+  .activity-state-pill { font-size: 9px; padding: 4px 6px; white-space: normal; }
+  .activity-transaction-row { align-items: flex-start; flex-wrap: wrap; }
+  .activity-transaction-row > .activity-state-pill { margin-left: 40px; }
+  .activity-toolbar .secondary-button { padding: 8px 10px; }
+}
