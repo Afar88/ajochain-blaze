@@ -169,6 +169,43 @@ export function assertRequiredWalletSighash(script: Uint8Array): void {
   }
 }
 
+/**
+ * Validate the transaction signature embedded in a wallet-signed P2SH32
+ * covenant input. The final push is the redeem script; preceding pushes are
+ * ABI arguments. CashScript's cancel() ABI includes a DER signature argument.
+ */
+function isDerTransactionSignature(push: Uint8Array): boolean {
+  if (
+    push.length < 9 ||
+    push[0] !== 0x30 ||
+    push[1] !== push.length - 3 ||
+    push[2] !== 0x02
+  ) return false;
+
+  const rLength = push[3];
+  const sTagIndex = 4 + rLength;
+  if (sTagIndex + 1 >= push.length - 1 || push[sTagIndex] !== 0x02) return false;
+  const sLength = push[sTagIndex + 1];
+  return 6 + rLength + sLength === push.length - 1;
+}
+
+/**
+ * Require every DER signature argument in a wallet-signed P2SH32 covenant
+ * input to use WizardConnect's SIGHASH_ALL | FORKID | UTXOS flag (0x61).
+ */
+export function assertRequiredContractWalletSighash(script: Uint8Array): void {
+  const pushes = readPushOnlyUnlockingScript(script);
+  // CashScript P2SH32 unlocking scripts end with the redeem-script push.
+  const argumentsOnly = pushes.slice(0, -1);
+  const signatures = argumentsOnly.filter(isDerTransactionSignature);
+  if (signatures.length === 0) {
+    throw new Error("Wallet-signed covenant input is missing its transaction signature argument.");
+  }
+  if (signatures.some((signature) => signature[signature.length - 1] !== 0x61)) {
+    throw new Error("Wallet covenant signature must use SIGHASH_ALL | SIGHASH_FORKID | SIGHASH_UTXOS (0x61).");
+  }
+}
+
 /** Ensure every P2PKH prevout is explicitly included in the wallet signing request. */
 export function assertP2pkhWalletInputCoverage(
   sourceOutputs: readonly { lockingBytecode: Uint8Array }[],
@@ -233,6 +270,12 @@ export function verifySignedTransaction(
     // inputs can have custom unlocker arguments; their validity is checked by the BCH VM below.
     if (/^76a914[0-9a-f]{40}88ac$/.test(sourceScript)) {
       assertRequiredWalletSighash(decoded.inputs[index].unlockingBytecode);
+    } else if (/^aa20[0-9a-f]{64}87$/.test(sourceScript)) {
+      // V3 pre-payout cancellation signs its P2SH32 contract inputs as well
+      // as the initiator's ordinary P2PKH fee-funding input.
+      assertRequiredContractWalletSighash(decoded.inputs[index].unlockingBytecode);
+    } else {
+      throw new Error("Cannot verify the required 0x61 sighash for this wallet-signed input script; refusing to broadcast.");
     }
   }
 
