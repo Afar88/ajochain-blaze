@@ -47,8 +47,8 @@ describe("BCH Mainnet quorum provider", () => {
     const now = 1_800_000_000_000;
     const tipHeader = headerWithTimestamp(Math.floor(now / 1000) - 30, "01");
     expect(validateMainnetTipQuorum([
-      { height: 900_000, headerHex: tipHeader, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH },
-      { height: 900_000, headerHex: tipHeader, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH },
+      { height: 900_000, headerHex: tipHeader, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
+      { height: 900_000, headerHex: tipHeader, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
     ], now)).toEqual({ height: 900_000, hash: hashMainnetHeader(tipHeader) });
   });
 
@@ -57,8 +57,8 @@ describe("BCH Mainnet quorum provider", () => {
     const first = headerWithTimestamp(Math.floor(now / 1000) - 30, "01");
     const second = headerWithTimestamp(Math.floor(now / 1000) - 29, "02");
     expect(() => validateMainnetTipQuorum([
-      { height: 900_000, headerHex: first, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH },
-      { height: 900_001, headerHex: second, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH },
+      { height: 900_000, headerHex: first, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
+      { height: 900_001, headerHex: second, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
     ], now)).toThrow(/disagree/);
   });
 
@@ -98,12 +98,12 @@ describe("BCH Mainnet quorum provider", () => {
     const wrongGenesis = "00".repeat(80);
     expect(() => validateMainnetTipQuorum([
       { height: 900_000, headerHex: fresh, genesisHeaderHex: wrongGenesis, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
-      { height: 900_000, headerHex: fresh, genesisHeaderHex: wrongGenesis, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH },
+      { height: 900_000, headerHex: fresh, genesisHeaderHex: wrongGenesis, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
     ], now)).toThrow(/genesis chain/);
     const stale = headerWithTimestamp(Math.floor(now / 1000) - 31 * 60, "01");
     expect(() => validateMainnetTipQuorum([
-      { height: 900_000, headerHex: stale, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH },
-      { height: 900_000, headerHex: stale, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH },
+      { height: 900_000, headerHex: stale, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
+      { height: 900_000, headerHex: stale, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
     ], now)).toThrow(/stale/);
   });
 
