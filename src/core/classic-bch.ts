@@ -48,12 +48,14 @@ export interface ClassicCircleStatus {
 const artifact = artifactJson as unknown as Artifact;
 const servers: Record<ClassicNetwork, Array<[string, number]>> = {
   chipnet: [
-    // OPTN Labs publishes a dedicated, monitored Chipnet WSS endpoint.
+    // Fulcrum's published Chipnet WSS port (server.features advertises 64004).
+    ["chipnet.c3-soft.com", 64004],
+    ["blackie.c3-soft.com", 64004],
+    // OPTN Labs publishes a dedicated Chipnet WSS endpoint on standard TLS port 443.
     ["electrum-chipnet.optnlabs.com", 443],
-    // Community Chipnet WSS endpoints; retain as independent fallbacks.
+    // Retain community hosts as compatibility fallbacks.
     ["chipnet.imaginary.cash", 50004],
     ["chipnet.bch.ninja", 50004],
-    ["cbch.loping.net", 62104],
   ],
   mainnet: [
     ["bch.imaginary.cash", 50004],
