@@ -38,9 +38,9 @@ These are evidence requirements, not checkboxes that a user can toggle. Evidence
 
 ## Scope and safety limits
 
-- Current UI is a preview and local draft experience. It does not yet load authoritative on-chain circles or create contracts.
-- The current wallet adapter can request a signature and compare selected transaction fields, but it does not yet independently verify all prevouts, scripts, values, fee/change policy, contract invariants, or confirmation status.
-- No mainnet broadcast implementation is enabled.
+- Current BCH and PUSD Mainnet workspaces can validate drafts, prepare unsigned genesis previews, and read chain state for saved circle identities. Their lifecycle planners can prepare unsigned deposit, payout and pre-payout cancellation previews. They do not deploy, sign or broadcast transactions. A saved circle identity is a local reference, not proof that a contract exists.
+- The WizardConnect adapter can request signatures for supported experimental paths and inspect selected transaction intent. Mainnet circle preview buttons do not call it. A complete Mainnet signed-byte verifier for every prevout, script, value, fee/change rule, token output and covenant invariant is still outstanding.
+- Mainnet broadcast remains disabled by the BCH and PUSD fail-closed guards.
 - The BCH V2 contract is experimental and not independently audited. PUSD is not implemented by that covenant.
 - Never label the app mainnet-ready until the contract, wallet, chain reconciliation, signed-transaction inspection, and operational gates have evidence and independent review.
 
