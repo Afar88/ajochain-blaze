@@ -178,7 +178,7 @@ function selectBchInputs(
   excludedOutpoint?: string,
 ) {
   const coins = utxos
-    .filter((utxo) => !utxo.token && utxo.satoshis > 0n &&
+    .filter((utxo) => !utxo.token && utxo.vout !== 0 && utxo.satoshis > 0n &&
       (utxo.txid + ":" + utxo.vout) !== excludedOutpoint)
     .sort((a, b) => a.satoshis === b.satoshis ? 0 : a.satoshis > b.satoshis ? -1 : 1);
   const selected: SpendableUtxo[] = [];
