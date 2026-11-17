@@ -304,6 +304,26 @@ test("PUSD broadcaster rejects a transaction ID that does not match the signed b
 });
 
 
+test("transaction-status endpoint rejects malformed txids before opening Electrum sessions", async () => {
+  const server = createMainnetApiServer();
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const response = await fetch(
+      "http://127.0.0.1:" + address.port + "/api/transaction/status?txid=not-a-txid",
+    );
+    assert.equal(response.status, 400);
+    const payload = await response.json();
+    assert.match(payload.error, /exactly 64 hexadecimal characters/);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("ambiguous PUSD relay outcomes are exposed as retry-blocked service errors", () => {
   assert.equal(
     mainnetApiErrorStatus("PUSD broadcast result is UNKNOWN for " + "ab".repeat(32) + ". It was not retried."),
