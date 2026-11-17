@@ -437,6 +437,13 @@ export async function planPusdMainnetDeposit(
   const snapshot = await readPusdMainnetCircle(params);
   if (snapshot.completed) throw new Error("This PUSD circle has completed all scheduled payouts.");
   const oldCredit = snapshot.credits[memberIndex];
+  if (oldCredit > params.contribution || amount > params.contribution - oldCredit) {
+    const remaining = oldCredit < params.contribution ? params.contribution - oldCredit : 0n;
+    throw new Error(
+      "This member can add at most " + remaining.toString() +
+      " raw PUSD units this round. Excess PUSD must remain in the member wallet.",
+    );
+  }
   if (oldCredit > CASH_SCRIPT_INT_MAX - amount) throw new Error("PUSD member credit would exceed the covenant integer limit.");
 
   const balance = await fetchPusdWalletBalance(walletAddress);
@@ -446,7 +453,7 @@ export async function planPusdMainnetDeposit(
       ? (a.txid + ":" + a.vout).localeCompare(b.txid + ":" + b.vout)
       : a.token!.amount < b.token!.amount ? -1 : 1)[0];
   if (!tokenInput) {
-    throw new Error("This covenant deposit needs one authenticated PUSD UTXO whose entire token amount exactly matches the deposit. Split or consolidate PUSD into an exact amount first.");
+    throw new Error("No authenticated PUSD UTXO has enough fungible PUSD for this member deposit. Excess PUSD from a larger UTXO is returned to the member wallet.");
   }
   const provider = await getClassicProvider("mainnet");
   const bchUtxos = (await provider.getUtxos(walletAddress)).filter((utxo) => !utxo.token);
