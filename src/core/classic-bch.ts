@@ -130,6 +130,147 @@ export function getClassicProvider(network: ClassicNetwork): Promise<NetworkProv
   return providers[network]!;
 }
 
+
+export type ChipnetWebSocketProbeStatus =
+  | "connected"
+  | "rpc-error"
+  | "socket-open-no-response"
+  | "failed";
+
+export interface ChipnetWebSocketProbe {
+  host: string;
+  port: number;
+  status: ChipnetWebSocketProbeStatus;
+  detail: string;
+  elapsedMs: number;
+}
+
+/**
+ * Test the same Chipnet endpoints from the browser with native WSS, separately
+ * from ElectrumClient. This is read-only and sends only server.version.
+ */
+export async function probeChipnetWebSockets(): Promise<ChipnetWebSocketProbe[]> {
+  if (typeof WebSocket === "undefined") {
+    throw new Error("This browser does not provide the WebSocket API.");
+  }
+
+  let configured: string | null = null;
+  try {
+    configured = typeof localStorage !== "undefined"
+      ? localStorage.getItem("ajochain-electrum-chipnet")
+      : null;
+  } catch {
+    // A blocked storage API should not prevent testing the default endpoints.
+  }
+
+  const endpoints: Array<[string, number]> = configured
+    ? [[configured.split(":")[0], Number(configured.split(":")[1] || 50004)]]
+    : servers.chipnet;
+
+  const probe = ([host, port]: [string, number]): Promise<ChipnetWebSocketProbe> =>
+    new Promise((resolve) => {
+      const startedAt = Date.now();
+      let socket: WebSocket | null = null;
+      let opened = false;
+      let settled = false;
+      let timer: number | undefined;
+
+      const finish = (
+        status: ChipnetWebSocketProbeStatus,
+        detail: string,
+      ) => {
+        if (settled) return;
+        settled = true;
+        if (timer !== undefined) window.clearTimeout(timer);
+        try { socket?.close(); } catch { /* socket may already be closed */ }
+        resolve({ host, port, status, detail, elapsedMs: Date.now() - startedAt });
+      };
+
+      try {
+        socket = new WebSocket(`wss://${host}:${port}/`);
+      } catch (cause) {
+        finish("failed", cause instanceof Error ? cause.message : String(cause));
+        return;
+      }
+
+      timer = window.setTimeout(() => {
+        finish(
+          opened ? "socket-open-no-response" : "failed",
+          opened
+            ? "WSS opened, but no Electrum server.version reply arrived before timeout."
+            : "WSS connection timed out before the browser opened the socket.",
+        );
+      }, 6_500);
+
+      socket.addEventListener("open", () => {
+        opened = true;
+        try {
+          // Rostrum's WebSocket protocol uses newline-delimited JSON-RPC frames.
+          socket?.send(JSON.stringify({
+            id: 1,
+            method: "server.version",
+            params: ["AjoChain Blaze diagnostics", "1.4"],
+          }) + "\\n");
+        } catch (cause) {
+          finish(
+            "socket-open-no-response",
+            "WSS opened, but the diagnostic request could not be sent: " +
+              (cause instanceof Error ? cause.message : String(cause)),
+          );
+        }
+      });
+
+      socket.addEventListener("message", (event: MessageEvent) => {
+        if (typeof event.data !== "string") return;
+        for (const line of event.data.split(/\\r?\\n/).filter(Boolean)) {
+          let response: unknown;
+          try { response = JSON.parse(line); } catch { continue; }
+          if (!response || typeof response !== "object" ||
+              !("id" in response) || response.id !== 1) continue;
+          if ("error" in response && response.error) {
+            finish(
+              "rpc-error",
+              "WSS reached the server, but server.version returned: " +
+                JSON.stringify(response.error).slice(0, 240),
+            );
+            return;
+          }
+          if ("result" in response && Array.isArray(response.result)) {
+            const result = response.result as unknown[];
+            finish(
+              "connected",
+              "Electrum replied: " + String(result[0] ?? "server") +
+                " · protocol " + String(result[1] ?? "unknown"),
+            );
+            return;
+          }
+          finish("socket-open-no-response", "WSS opened, but server.version returned an unexpected response.");
+          return;
+        }
+      });
+
+      socket.addEventListener("error", () => {
+        finish(
+          opened ? "socket-open-no-response" : "failed",
+          opened
+            ? "WSS opened, but the Electrum response stream failed."
+            : "Browser WebSocket handshake failed or was blocked.",
+        );
+      });
+
+      socket.addEventListener("close", (event: CloseEvent) => {
+        if (!settled) {
+          finish(
+            opened ? "socket-open-no-response" : "failed",
+            "Socket closed before server.version completed (code " + event.code + ").",
+          );
+        }
+      });
+    });
+
+  return Promise.all(endpoints.map(probe));
+}
+
 function expectedPrefix(network: ClassicNetwork) {
   return network === "mainnet" ? "bitcoincash" : "bchtest";
 }
