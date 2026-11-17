@@ -8,7 +8,7 @@ This repository is the **independent BCH BLAZE build**. It is not a copy, mirror
 
 - Mainnet-first architecture for Bitcoin Cash.
 - WizardConnect wallet connection for compatible BCH wallets, including Selene.
-- BCH contributions are the current covenant prototype; PUSD CashToken metadata and exact amount handling are implemented as a local draft foundation, while token-aware covenant transfers remain blocked.
+- BCH contributions are the current Chipnet covenant prototype. PUSD uses the real Mainnet CashToken category and now has a separately versioned Mainnet V3 covenant prototype under development, with the shared 1% treasury output, member-owned reserve and pre-payout cancellation design.
 - Transparent circle schedules, member payment records, and per-member credit accounting.
 - Mobile-first, accessible fintech UX.
 - Clear transaction previews, fee visibility, and confirmation states.
@@ -61,7 +61,7 @@ The legacy app is isolated in the separate Vercel project **`ajochain-legacy`** 
 
 Backend separation is enforced too: BLAZE runs its own Vercel serverless API and has only its own `ELECTRUM_SERVERS` read-quorum configuration; it has no Neon/PostgreSQL connection. The legacy Vercel project alone has the legacy Neon/PostgreSQL integration. Never reuse its `DATABASE_URL`, `POSTGRES_*`, `PG*` or `NEON_*` variables for BLAZE. If BLAZE needs persistence later, provision a separate Neon project for BLAZE rather than pointing it at the legacy database. The legacy registry/recovery API remains design-only until implemented.
 
-See [legacy porting and deployment boundaries](docs/LEGACY_REPO_PORTING_AND_DEPLOYMENTS.md) for the project-to-repository map and compatibility decisions. See [Mainnet readiness audit (16 Nov 2026)](docs/MAINNET_READINESS_AUDIT_2026-11-16.md) for the current findings and BCH launch sequence. See [PUSD CashToken integration status](docs/PUSD_CASHTOKEN_INTEGRATION.md) for the verified ParyonUSD category, two-decimal base-unit rules, and the still-blocked token-aware covenant work. See [WizardConnect and Selene integration](docs/WIZARDCONNECT_SELENE_PORT.md) for the mobile reconnect behaviour and signing safeguards. See [member accounting and circle completion](docs/MEMBER_ACCOUNTING_AND_CIRCLE_COMPLETION.md) for member contribution and payout rules.
+See [legacy porting and deployment boundaries](docs/LEGACY_REPO_PORTING_AND_DEPLOYMENTS.md) for the project-to-repository map and compatibility decisions. See [Mainnet readiness audit (16 Nov 2026)](docs/MAINNET_READINESS_AUDIT_2026-11-16.md) for the current findings and BCH launch sequence. See [shared Mainnet project-fee treasury](docs/PROJECT_FEE_TREASURY.md) and [PUSD CashToken integration status](docs/PUSD_CASHTOKEN_INTEGRATION.md) for the verified ParyonUSD category, two-decimal base-unit rules, and the still-blocked token-aware covenant work. See [WizardConnect and Selene integration](docs/WIZARDCONNECT_SELENE_PORT.md) for the mobile reconnect behaviour and signing safeguards. See [member accounting and circle completion](docs/MEMBER_ACCOUNTING_AND_CIRCLE_COMPLETION.md) for member contribution and payout rules.
 
 ## Mainnet launch status
 
@@ -97,3 +97,6 @@ Until those gates pass, transaction signing, broadcasting and real-value circle 
 ## BCH, PUSD and member accounting
 
 See [BCH, PUSD and member accounting](docs/BCH_PUSD_MEMBER_ACCOUNTING.md) for the 1% fee covenant, member-owned round-credit rules, verified receipt ledger, PUSD read-only balance API and current Mainnet safety gates.
+
+
+The shared Mainnet project-fee destination for BCH and PUSD is `bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q`. Chipnet circles retain their separate Chipnet fee address. PUSD Mainnet V3 contract and fee/reserve/cancellation tests are under active development; PUSD circle drafts remain local-only and Mainnet transaction signing/broadcast remains disabled pending the full planner, verifier, independent security review and operational release evidence.
