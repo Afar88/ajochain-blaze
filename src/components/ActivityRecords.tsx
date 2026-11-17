@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, ShieldCheck } from "lucide-react";
-import { decodeClassicCircle } from "../core/classic-bch";
+import { decodeClassicCircle, readClassicCircle } from "../core/classic-bch";
 import { loadSavedClassicCircles } from "../core/circle-account";
 import { readCircleTransactionHistory, type CircleActivitySnapshot, type CircleTransactionRecord } from "../core/chain-activity";
-import { readClassicCircle } from "../core/classic-bch";
 import { decodeV2FeeCircle, readV2FeeCircle, validateV2FeeCircleDraft, type V2FeeCircleParams } from "../core/v2-fee-bch";
 import { readPusdMainnetCircle, validatePusdMainnetCircleParams, type PusdMainnetCircleParams } from "../core/pusd-mainnet-circle";
 import { formatAssetAmount } from "../core/assets";
+import { formatBch } from "../core/network";
 
 const V2_STORAGE_KEY = "ajochain-blaze:v2-fee-circles:v1";
 const BCH_MAINNET_ACTIVE_KEY = "ajochain-blaze:bch-mainnet-circle-active:v1";
@@ -28,8 +28,7 @@ type CircleResult = {
   details?: string;
   memberRecords?: MemberRecord[];
   history?: CircleActivitySnapshot;
-  historyError?: string;
-  error?: string;
+    error?: string;
 };
 
 function errorText(cause: unknown) {
@@ -278,7 +277,7 @@ export default function ActivityRecords() {
             <article className="asset-detail-card activity-circle-card" key={result.ref.id}>
               <div className="activity-circle-heading">
                 <div>
-                  <span className="section-kicker">{result.ref.asset ?? (result.ref.kind === "pusd" ? "PUSD" : "BCH")} · {result.ref.network.toUpperCase()}</span>
+                  <span className="section-kicker">{result.ref.kind === "pusd" ? "PUSD" : "BCH"} · {result.ref.network.toUpperCase()}</span>
                   <h2>{result.ref.name}</h2>
                   <small>{result.ref.kind === "classic" ? "Classic BCH circle" : result.ref.kind === "fee" ? "Member-receipt BCH circle" : "PUSD member-escrow circle"}</small>
                 </div>
@@ -309,7 +308,7 @@ export default function ActivityRecords() {
                       {result.memberRecords.map((member, index) => (
                         <div className="activity-member-row" key={member.address}>
                           <span><b>Member {index + 1}</b><small>{member.address}</small></span>
-                          <span><b>{result.ref.kind === "pusd" ? formatAssetAmount("PUSD", member.credit) + " PUSD" : (Number(member.credit) / 100_000_000).toFixed(8) + " BCH"}</b><small>{member.due > 0n ? "Still due: " + (result.ref.kind === "pusd" ? formatAssetAmount("PUSD", member.due) + " PUSD" : (Number(member.due) / 100_000_000).toFixed(8) + " BCH") : member.status}</small></span>
+                          <span><b>{result.ref.kind === "pusd" ? formatAssetAmount("PUSD", member.credit) + " PUSD" : formatBch(member.credit)}</b><small>{member.due > 0n ? "Still due: " + (result.ref.kind === "pusd" ? formatAssetAmount("PUSD", member.due) + " PUSD" : formatBch(member.due)) : member.status}</small></span>
                         </div>
                       ))}
                     </div>
@@ -319,9 +318,7 @@ export default function ActivityRecords() {
                       <b>Recent on-chain activity</b>
                       <small>{result.history?.truncated ? "Showing the latest records only" : "Complete provider response for this script set"}</small>
                     </div>
-                    {result.historyError ? (
-                      <p className="classic-error">{result.historyError}</p>
-                    ) : result.history?.records.length ? (
+                    {result.history?.records.length ? (
                       result.history.records.map((record) => (
                         <div className="activity-transaction-row" key={record.txid}>
                           <span className="activity-transaction-icon"><ShieldCheck size={15} /></span>
