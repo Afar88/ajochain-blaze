@@ -61,6 +61,10 @@ contract AjoPUSDMemberEscrowV3(
             require(int(outMember) == memberIndex && outCredit.length == 8);
             int newCredit = int(outCredit);
             require(newCredit > oldCredit);
+            // A member may hold only the current installment or one reserved
+            // installment from the previous payout. Excess tokens stay in the
+            // member wallet; they must never become stranded in the escrow.
+            require(newCredit <= contribution);
             require(newCredit <= oldCredit + tx.inputs[3].tokenAmount);
             require(tx.outputs[2].lockingBytecode == tx.inputs[2].lockingBytecode);
             require(tx.outputs[2].tokenCategory == pusdCategory);
