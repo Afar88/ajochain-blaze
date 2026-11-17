@@ -44,11 +44,23 @@ These are evidence requirements, not checkboxes that a user can toggle. Evidence
 - The BCH V2 contract is experimental and not independently audited. PUSD is not implemented by that covenant.
 - Never label the app mainnet-ready until the contract, wallet, chain reconciliation, signed-transaction inspection, and operational gates have evidence and independent review.
 
+## Read-only transaction confirmation endpoint
+
+The Mainnet API now exposes `GET /api/transaction/status?txid=<64-hex-txid>`.
+
+- Every configured Electrum provider must return identical raw transaction bytes whose computed txid matches the request.
+- A transaction is reported as `confirmed` only when every provider returns the same confirmation height, position and merkle branch, every provider returns the same block header for that height, and the merkle proof verifies against the header's serialized merkle root.
+- A transaction is reported as `pending` only when every provider knows the same raw transaction and both return an ordinary no-inclusion-proof response.
+- Provider disagreement, missing raw bytes, malformed proofs, or lookup failures return `unknown`. An unknown result is not proof of failure and must not trigger an automatic replacement or rebroadcast.
+- The endpoint recalculates status from current provider observations. A transaction previously reported as confirmed can later return pending or unknown after a reorganisation or provider disagreement.
+
+The proof is an Electrum quorum merkle-inclusion check, not local SPV/chainwork validation. The endpoint does not persist historical status, detect all conflicting/replacement spends, or guarantee durable confirmation monitoring. It improves the read-side lifecycle, but does not satisfy the full release gate for broadcaster idempotency, mempool conflict resolution, durable event history, or reorg recovery.
+
 ## Operational failure handling
 
 - **Wallet disconnect before signing:** discard the pending plan and require fresh session verification.
 - **Wallet disconnect after signing:** retain the raw signed transaction only for safe local inspection; do not broadcast automatically.
-- **Unknown broadcast result:** the PUSD API submits the exact signed bytes to one relay endpoint only. If its response is ambiguous, it queries the transaction ID across the configured providers and accepts an exact raw-transaction match as `already-known`. If no provider can prove the exact transaction is known, the API returns an explicit `UNKNOWN` result and does not relay to another endpoint. The user/operator must reconcile that transaction ID and mempool state before any manual retry. A relay-accepted or already-known result is **not** a confirmation; confirmation tracking remains a separate release requirement.
+- **Unknown broadcast result:** the PUSD API submits the exact signed bytes to one relay endpoint only. If its response is ambiguous, it queries the transaction ID across the configured providers and accepts an exact raw-transaction match as `already-known`. If no provider can prove the exact transaction is known, the API returns an explicit `UNKNOWN` result and does not relay to another endpoint. The read-only `/api/transaction/status` endpoint can then verify current provider-quorum raw bytes and, when available, a block-inclusion merkle proof. The user/operator must still reconcile unknown results and mempool conflicts before any manual retry. A relay-accepted or already-known result is **not** a confirmation.
 - **Chain reorganization:** mark affected activity as unconfirmed/reorged and rebuild the view from chain data.
 - **State mismatch or stale UTXO:** invalidate the plan and restart from circle-state reconciliation.
 - **Any verification exception:** fail closed, explain the failed check, and keep broadcast unavailable.
