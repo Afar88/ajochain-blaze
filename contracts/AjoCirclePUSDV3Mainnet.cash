@@ -121,8 +121,8 @@ contract AjoCirclePUSDV3Mainnet(
             require(tx.outputs[4].lockingBytecode == new LockingBytecodeP2PKH(member));
             require(tx.outputs[4].tokenCategory == 0x);
             require(tx.outputs[4].value >= 546);
-            require(tx.outputs[4].value <= tx.inputs[4].value - 1000);
-            require(tx.outputs[4].value >= tx.inputs[4].value - 1000 - maxFee);
+            require(tx.outputs[4].value <= tx.inputs[4].value - tx.outputs[3].value);
+            require(tx.outputs[4].value >= tx.inputs[4].value - tx.outputs[3].value - maxFee);
         } else {
             require(tx.outputs.length == 4);
             require(tx.outputs[3].lockingBytecode == new LockingBytecodeP2PKH(member));
@@ -232,19 +232,21 @@ contract AjoCirclePUSDV3Mainnet(
         require(tx.outputs[treasuryOutput].tokenCategory == pusdCategory);
         require(tx.outputs[treasuryOutput].tokenAmount == projectFee);
         require(tx.outputs[treasuryOutput].nftCommitment == 0x);
-        require(tx.outputs[treasuryOutput].value == 1000);
+        require(tx.outputs[treasuryOutput].value >= 1000);
 
         require(tx.outputs[payoutOutput].lockingBytecode == new LockingBytecodeP2PKH(recipient));
         require(tx.outputs[payoutOutput].tokenCategory == pusdCategory);
         require(tx.outputs[payoutOutput].tokenAmount == recipientPayout);
         require(tx.outputs[payoutOutput].nftCommitment == 0x);
-        require(tx.outputs[payoutOutput].value == 1000);
+        require(tx.outputs[payoutOutput].value >= 1000);
 
         require(tx.outputs[feeChangeOutput].lockingBytecode == new LockingBytecodeP2PKH(initiator));
         require(tx.outputs[feeChangeOutput].tokenCategory == 0x);
         require(tx.outputs[feeChangeOutput].value >= 546);
-        require(tx.outputs[feeChangeOutput].value <= tx.inputs[feeInput].value - 2000);
-        require(tx.outputs[feeChangeOutput].value >= tx.inputs[feeInput].value - 2000 - maxFee);
+        require(tx.outputs[feeChangeOutput].value <= tx.inputs[feeInput].value -
+            tx.outputs[treasuryOutput].value - tx.outputs[payoutOutput].value);
+        require(tx.outputs[feeChangeOutput].value >= tx.inputs[feeInput].value -
+            tx.outputs[treasuryOutput].value - tx.outputs[payoutOutput].value - maxFee);
     }
 
     /**
