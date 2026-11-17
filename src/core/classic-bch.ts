@@ -68,7 +68,9 @@ function makeProvider(network: ClassicNetwork, host: string, port: number) {
   // and token-aware listunspent). In browsers, keep the socket alive while the
   // wallet opens in another tab and the AjoChain page is temporarily hidden.
   const socket = new ElectrumWebSocket(host, {
-    ...ELECTRUM_SOCKET_OPTIONS,
+    // Keep the visibility override scoped to Chipnet browser testing. Mainnet
+    // retains the socket library's default visibility/reconnect behavior.
+    ...(network === "chipnet" ? ELECTRUM_SOCKET_OPTIONS : { encrypted: true }),
     port,
   } as never);
   const client = new ElectrumClient(
