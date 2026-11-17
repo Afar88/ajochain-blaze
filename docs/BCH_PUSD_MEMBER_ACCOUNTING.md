@@ -52,13 +52,17 @@ This ledger module is **not itself a blockchain verifier**. Only a trusted trans
 
 The selected V3 auto-reserve covenant's on-chain receipt NFTs are the enforcement source for its BCH credit and payout eligibility. The separate V2 full-escrow and fee-v1 contracts retain their own historical rules. The event ledger is an auditable accounting/indexing layer. Classic V1 remains an aggregate pool and cannot attribute pooled deposits to individual members.
 
+## Shared Mainnet project-fee treasury
+
+New BCH and PUSD Mainnet covenant versions use the same immutable project-fee destination: `bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q`. For PUSD, the 1% fee is a separate fungible PUSD CashToken output to this address; for BCH, the fee output uses its matching P2PKH locking script. Miner fees and token carrier satoshis are accounted for separately. Existing Chipnet BCH prototypes keep their separate `bchtest:` treasury.
+
 ## PUSD status
 
 The canonical ParyonUSD category is pinned to the published Mainnet category and the balance reader authenticates PUSD UTXOs using raw previous transactions and live unspent-state checks through an Electrum quorum. The same-origin API route is `/api/*`; by default the browser calls the API on the deployed AjoChain origin.
 
 To provide PUSD read-only balance service in Vercel, configure `ELECTRUM_SERVERS` with at least two independent secure `wss://` Electrum endpoints on different hostnames. `ALLOWED_ORIGINS` may be configured for separately hosted frontends. Do not enable `ENABLE_MAINNET_BROADCAST`.
 
-PUSD circle escrow source and tests are ported as a separate prototype, but PUSD circle creation, member deposits, payout and cancellation are **not enabled**. There is no authenticated PUSD Chipnet category or approved PUSD fee treasury destination, and no complete wallet planner/raw-genesis inspection for the PUSD sidecar escrow flow. Do not use the Mainnet PUSD category as a Chipnet category. PUSD wallet verification is not permission to spend.
+A separate Mainnet-targeted PUSD V3 covenant source, member escrow sidecar, fee/reserve/cancellation tests, and a Mainnet-only draft workspace have now been added on the feature branch. PUSD circle creation, member deposits, payout and cancellation are still **not enabled** until the planner, exact signed transaction verifier, wallet tests and independent audit are complete. There is no authenticated PUSD Chipnet category or approved PUSD fee treasury destination, and no complete wallet planner/raw-genesis inspection for the PUSD sidecar escrow flow. Do not use the Mainnet PUSD category as a Chipnet category. PUSD wallet verification is not permission to spend.
 
 ## Mainnet safety
 
