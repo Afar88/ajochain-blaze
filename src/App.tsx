@@ -10,6 +10,7 @@ import type { AuthenticatedPusdUtxo } from "./core/pusd-utxo";
 import { PUSD_MAINNET_SPENDING_ENABLED } from "./core/pusd-mainnet-guard";
 const ClassicBchWorkspace = lazy(() => import("./components/ClassicBchWorkspace"));
 const V2FeeBchWorkspace = lazy(() => import("./components/V2FeeBchWorkspace"));
+const PusdMainnetCircleWorkspace = lazy(() => import("./components/PusdMainnetCircleWorkspace"));
 
 type Page = "overview" | "circles" | "assets" | "activity";
 type WalletClient = typeof import("./core/wizard-wallet").wallet;
@@ -360,9 +361,10 @@ export default function App() {
             <div className="page-intro">
               <span className="section-kicker">YOUR SAVINGS GROUPS</span>
               <h1>Circle tools</h1>
-              <p>Create, restore and manage circles. Choose the member-credit fee covenant for the new BCH test flow.</p>
+              <p>Create and manage circles. PUSD uses its own Mainnet CashToken covenant; BCH prototypes remain separate.</p>
             </div>
             <Suspense fallback={<div className="workspace-loading"><span className="loading-orb" />Loading circle tools…</div>}>
+              <PusdMainnetCircleWorkspace network={network} walletConnected={connected} />
               <ClassicBchWorkspace network={network} walletConnected={connected} />
               <V2FeeBchWorkspace network={network} walletConnected={connected} />
             </Suspense>
@@ -441,7 +443,7 @@ export default function App() {
               </div>
               <div className="asset-detail-row"><span>Token category</span><code>{PUSD_ASSET.categoryId}</code></div>
               <div className="asset-detail-row"><span>Display precision</span><b>2 decimals</b></div>
-              <div className="asset-detail-row"><span>PUSD circle escrow / payout</span><b className="locked-state">Prototype only · locked</b></div>
+              <div className="asset-detail-row"><span>PUSD circle covenant</span><b className="locked-state">Mainnet V3 build · signing locked</b></div>
             </article>
           </section>
         )}
