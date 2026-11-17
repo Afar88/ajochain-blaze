@@ -48,6 +48,9 @@ export interface ClassicCircleStatus {
 const artifact = artifactJson as unknown as Artifact;
 const servers: Record<ClassicNetwork, Array<[string, number]>> = {
   chipnet: [
+    // OPTN Labs publishes a dedicated, monitored Chipnet WSS endpoint.
+    ["electrum-chipnet.optnlabs.com", 443],
+    // Community Chipnet WSS endpoints; retain as independent fallbacks.
     ["chipnet.imaginary.cash", 50004],
     ["chipnet.bch.ninja", 50004],
     ["cbch.loping.net", 62104],
@@ -104,12 +107,20 @@ export function getClassicProvider(network: ClassicNetwork): Promise<NetworkProv
         ]);
         return provider;
       });
-      providers.chipnet = Promise.any(attempts).catch((error) => {
+      providers.chipnet = Promise.any(attempts).catch((error: unknown) => {
         delete providers.chipnet;
+        const failures = error && typeof error === "object" &&
+          "errors" in error && Array.isArray((error as { errors?: unknown }).errors)
+          ? (error as { errors: unknown[] }).errors
+          : [error];
+        const details = failures.map((failure, index) => {
+          const message = failure instanceof Error ? failure.message : String(failure);
+          return endpoints[index]?.[0] + ": " + message;
+        }).join("; ");
         throw new Error(
-          "No chipnet Electrum server responded (" +
-          endpoints.map(([host]) => host).join(", ") + "). " +
-          (error instanceof Error ? error.message : String(error)),
+          "No Chipnet Electrum endpoint responded (" +
+          endpoints.map(([host, port]) => host + ":" + port).join(", ") + "). " +
+          (details || "All connection attempts failed; check the network or try again."),
         );
       });
     }
