@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   wizardRelayStatusMessage,
+  buildWizardSignRequest,
   assertP2pkhWalletInputCoverage,
   assertRequiredContractWalletSighash,
   assertRequiredWalletSighash,
@@ -117,5 +118,53 @@ describe("WizardConnect relay recovery messaging", () => {
 
   it("clears the interruption message after the relay reconnects", () => {
     expect(wizardRelayStatusMessage("connected")).toBeNull();
+  });
+});
+
+
+describe("WizardConnect sign-request serialization", () => {
+  it("encodes transaction bytes as raw hex and removes native BigInts before relay JSON", () => {
+    const transaction = {
+      version: 2,
+      locktime: 0,
+      inputs: [{
+        outpointTransactionHash: new Uint8Array(32).fill(7),
+        outpointIndex: 1,
+        unlockingBytecode: new Uint8Array(),
+        sequenceNumber: 0xffffffff,
+      }],
+      outputs: [{
+        valueSatoshis: 1_000n,
+        lockingBytecode: Uint8Array.from([0x51]),
+      }],
+    };
+    const sourceOutputs = [{
+      valueSatoshis: 2_000n,
+      lockingBytecode: Uint8Array.from([0x76, 0xa9, 0x14, ...new Uint8Array(20), 0x88, 0xac]),
+    }];
+
+    const request = buildWizardSignRequest(
+      { transaction, sourceOutputs },
+      [0],
+      3,
+      "Create Ajo circle",
+      123,
+    );
+
+    expect(typeof request.transaction.transaction).toBe("string");
+    expect(request.transaction.transaction).toMatch(/^[0-9a-f]+$/i);
+    expect(request.transaction.sourceOutputs).toHaveLength(1);
+    expect(typeof request.transaction.sourceOutputs[0].valueSatoshis).toBe("string");
+    expect(() => JSON.stringify(request)).not.toThrow();
+  });
+
+  it("rejects incomplete transactions before a wallet prompt is attempted", () => {
+    expect(() => buildWizardSignRequest(
+      { transaction: { inputs: [], outputs: [] }, sourceOutputs: [] },
+      [0],
+      0,
+      "Create Ajo circle",
+      123,
+    )).toThrow(/Invalid wallet signing input index/);
   });
 });
