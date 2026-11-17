@@ -47,7 +47,7 @@ contract AjoPUSDMemberEscrowV3(
         }
 
         if (escrowIndex == 2) {
-            require(tx.inputs.length == 5 && tx.outputs.length == 4);
+            require(tx.inputs.length == 5 && (tx.outputs.length == 4 || tx.outputs.length == 5));
             require(tx.inputs[3].tokenCategory == pusdCategory);
             require(tx.inputs[3].nftCommitment == 0x);
             require(tx.inputs[3].tokenAmount > 0);
@@ -57,12 +57,24 @@ contract AjoPUSDMemberEscrowV3(
             require(outPrefix == 0x52 && outMember.length == 1);
             require(int(outMember) == memberIndex && outCredit.length == 8);
             int newCredit = int(outCredit);
-            require(newCredit == oldCredit + tx.inputs[3].tokenAmount);
+            require(newCredit > oldCredit);
+            require(newCredit <= oldCredit + tx.inputs[3].tokenAmount);
             require(tx.outputs[2].lockingBytecode == tx.inputs[2].lockingBytecode);
             require(tx.outputs[2].tokenCategory == pusdCategory);
             require(tx.outputs[2].tokenAmount == newCredit);
             require(tx.outputs[2].nftCommitment == 0x);
             require(tx.outputs[2].value == tx.inputs[2].value + tx.inputs[3].value);
+            if (tx.inputs[3].tokenAmount > newCredit - oldCredit) {
+                require(tx.outputs.length == 5);
+                require(tx.outputs[3].lockingBytecode == new LockingBytecodeP2PKH(member));
+                require(tx.outputs[3].tokenCategory == pusdCategory);
+                require(tx.outputs[3].tokenAmount == tx.inputs[3].tokenAmount - (newCredit - oldCredit));
+                require(tx.outputs[3].nftCommitment == 0x);
+                require(tx.outputs[3].value >= 1000);
+            } else {
+                require(tx.outputs.length == 4);
+                require(tx.inputs[3].tokenAmount == newCredit - oldCredit);
+            }
         } else {
             require(tx.inputs.length == 2 * memberCount + 2);
             require(tx.outputs.length == 2 * memberCount + 4);
