@@ -2,6 +2,15 @@ import { useMemo, useState, type FormEvent } from "react";
 import { ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
 import { formatAssetAmount, parseAssetAmount } from "../core/assets";
 import { createBchMainnetCircleDraft, prepareBchMainnetCircleGenesisPreview } from "../core/bch-mainnet-circle";
+import { classicAddressToPkh } from "../core/classic-bch";
+import {
+  planV2FeeDeposit,
+  planV2FeePayout,
+  planV2FeeCancel,
+  readV2FeeCircle,
+  validateV2FeeCircleDraft,
+  type V2FeeCircleParams,
+} from "../core/v2-fee-bch";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "../core/project-treasury";
 import { wallet } from "../core/wizard-wallet";
 import type { NetworkId } from "../core/network-config";
@@ -10,6 +19,44 @@ type Props = { network: NetworkId; walletConnected: boolean };
 
 type Draft = { name: string; contribution: string; members: string[]; maxFee: string; savedAt: number };
 const STORAGE_KEY = "ajochain-blaze:bch-mainnet-circle-drafts:v1";
+const ACTIVE_CIRCLE_KEY = "ajochain-blaze:bch-mainnet-circle-active:v1";
+type StoredCircle = Omit<V2FeeCircleParams, "contribution" | "maxFee"> & {
+  contribution: string;
+  maxFee: string;
+};
+
+function readActiveCircle(): V2FeeCircleParams | null {
+  try {
+    const raw: unknown = JSON.parse(window.localStorage.getItem(ACTIVE_CIRCLE_KEY) || "null");
+    if (!raw || typeof raw !== "object") return null;
+    const item = raw as Record<string, unknown>;
+    if (typeof item.contribution !== "string" || typeof item.maxFee !== "string") return null;
+    const circle = {
+      ...item,
+      contribution: BigInt(item.contribution),
+      maxFee: BigInt(item.maxFee),
+    } as unknown as V2FeeCircleParams;
+    validateV2FeeCircleDraft(circle);
+    return circle;
+  } catch {
+    return null;
+  }
+}
+
+function persistActiveCircle(circle: V2FeeCircleParams) {
+  const stored: StoredCircle = {
+    ...circle,
+    contribution: circle.contribution.toString(),
+    maxFee: circle.maxFee.toString(),
+  };
+  window.localStorage.setItem(ACTIVE_CIRCLE_KEY, JSON.stringify(stored));
+}
+
+function sameMainnetAddress(left: string, right: string) {
+  return Array.from(classicAddressToPkh(left, "mainnet")).join(",") ===
+    Array.from(classicAddressToPkh(right, "mainnet")).join(",");
+}
+
 
 function readDrafts(): Draft[] {
   try {
@@ -40,6 +87,14 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
   const [membersText, setMembersText] = useState("");
   const [maxFee, setMaxFee] = useState("10000");
   const [drafts, setDrafts] = useState<Draft[]>(readDrafts);
+  const [activeCircle, setActiveCircle] = useState<V2FeeCircleParams | null>(readActiveCircle);
+  const [circleSnapshot, setCircleSnapshot] = useState<Awaited<ReturnType<typeof readV2FeeCircle>> | null>(null);
+  const [depositAmount, setDepositAmount] = useState("0.002");
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
+  const [actionPreview, setActionPreview] = useState<{
+    title: string; summary: string; feeEstimate: string; size: string; walletInputCount: number;
+  } | null>(null);
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -124,6 +179,111 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
     setNotice("Local draft loaded. Confirm the member addresses and prepare a fresh Mainnet preview.");
   };
 
+  const readActiveOnChainState = async () => {
+    if (!activeCircle) return;
+    setLifecycleBusy(true);
+    setError("");
+    setNotice("");
+    setActionPreview(null);
+    try {
+      const snapshot = await readV2FeeCircle(activeCircle);
+      setCircleSnapshot(snapshot);
+      setNotice("BCH Mainnet circle state verified from the read quorum. This is a read-only status check.");
+    } catch (cause) {
+      setCircleSnapshot(null);
+      setError(errorMessage(cause));
+    } finally {
+      setLifecycleBusy(false);
+    }
+  };
+
+  const prepareDepositPreview = async () => {
+    if (!activeCircle) return;
+    const address = wallet.address("mainnet");
+    if (!walletConnected || wallet.state !== "connected" || !address) {
+      setError("Connect the Mainnet member wallet through WizardConnect first.");
+      return;
+    }
+    setLifecycleBusy(true);
+    setError("");
+    setNotice("");
+    setActionPreview(null);
+    try {
+      const memberIndex = activeCircle.members.findIndex((member) => sameMainnetAddress(member, address));
+      if (memberIndex < 0) throw new Error("The connected wallet is not a registered member of this BCH circle.");
+      const amount = parseAssetAmount("BCH", depositAmount);
+      const plan = await planV2FeeDeposit(activeCircle, memberIndex, amount, address);
+      setActionPreview({
+        title: "Unsigned BCH member-deposit preview",
+        summary: plan.wc ? "Member contribution plan prepared. It remains unsigned and will not be broadcast." : "No transaction plan was returned.",
+        feeEstimate: (plan.feeEstimate ?? 0n).toString(),
+        size: "Pending wallet serialization",
+        walletInputCount: plan.walletInputs.length,
+      });
+      setNotice("Deposit transaction plan prepared for member " + (memberIndex + 1) + ". No signature or broadcast was requested.");
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setLifecycleBusy(false);
+    }
+  };
+
+  const preparePayoutPreview = async () => {
+    if (!activeCircle) return;
+    const address = wallet.address("mainnet");
+    if (!walletConnected || wallet.state !== "connected" || !address) {
+      setError("Connect a Mainnet fee-paying wallet through WizardConnect first.");
+      return;
+    }
+    setLifecycleBusy(true);
+    setError("");
+    setNotice("");
+    setActionPreview(null);
+    try {
+      const plan = await planV2FeePayout(activeCircle, address);
+      setActionPreview({
+        title: "Unsigned BCH payout preview",
+        summary: "Payout plan prepared with the immutable 1% fee and member reserve rules. It remains unsigned and is not broadcast.",
+        feeEstimate: plan.minerFee.toString(),
+        size: "Pending wallet serialization",
+        walletInputCount: plan.walletInputs.length,
+      });
+      setNotice("Payout plan prepared. No signature or broadcast was requested.");
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setLifecycleBusy(false);
+    }
+  };
+
+  const prepareCancelPreview = async () => {
+    if (!activeCircle) return;
+    const address = wallet.address("mainnet");
+    if (!walletConnected || wallet.state !== "connected" || !address) {
+      setError("Connect the registered Mainnet circle initiator through WizardConnect first.");
+      return;
+    }
+    setLifecycleBusy(true);
+    setError("");
+    setNotice("");
+    setActionPreview(null);
+    try {
+      const plan = await planV2FeeCancel(activeCircle, address);
+      setActionPreview({
+        title: "Unsigned pre-payout cancellation preview",
+        summary: "Initiator cancellation/refund plan prepared. It remains unsigned and is not broadcast.",
+        feeEstimate: plan.minerFee.toString(),
+        size: "Pending wallet serialization",
+        walletInputCount: plan.walletInputs.length,
+      });
+      setNotice("Cancellation plan prepared. No signature or broadcast was requested.");
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setLifecycleBusy(false);
+    }
+  };
+
   const prepare = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
@@ -158,6 +318,9 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
         maxFee: BigInt(maxFee.trim()),
         initiator,
       }, initiator);
+      setActiveCircle(plan.params);
+      persistActiveCircle(plan.params);
+      setCircleSnapshot(null);
       setPreview({
         contractAddress: plan.contractAddress,
         stateCategory: plan.stateCategory,
@@ -246,6 +409,47 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
           <small>No contract has been deployed and no transaction has been signed or broadcast.</small>
         </div>
       )}
+      {activeCircle && (
+        <div className="pusd-mainnet-saved">
+          <div className="section-heading">
+            <div><span className="section-kicker">CIRCLE LIFECYCLE · MAINNET READ-ONLY</span><h3>{activeCircle.name}</h3></div>
+            <button type="button" className="secondary-button" disabled={lifecycleBusy} onClick={() => void readActiveOnChainState()}>
+              {lifecycleBusy ? "Reading…" : "Read on-chain status"}
+            </button>
+          </div>
+          <p className="classic-empty">Local circle identity saved for tracking. A saved genesis preview is not proof that the on-chain circle has been created.</p>
+          {circleSnapshot && (
+            <div className="pusd-mainnet-breakdown">
+              <b>Verified circle state</b>
+              <div><span>Round</span><strong>{circleSnapshot.completed ? "Completed" : (circleSnapshot.round + 1) + " of " + activeCircle.members.length}</strong></div>
+              <div><span>Next recipient</span><strong>{circleSnapshot.recipient ?? "None"}</strong></div>
+              <div><span>Payout readiness</span><strong>{circleSnapshot.ready ? "Ready" : "Waiting for member credits"}</strong></div>
+              {circleSnapshot.credits.map((credit, index) => (
+                <div key={activeCircle.members[index]}><span>Member {index + 1} credit</span><strong>{formatAssetAmount("BCH", credit)} BCH</strong></div>
+              ))}
+            </div>
+          )}
+          <label>Deposit amount (BCH)
+            <input value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} inputMode="decimal" />
+          </label>
+          <div className="pusd-mainnet-actions">
+            <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void prepareDepositPreview()}>Preview member deposit</button>
+            <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected || !circleSnapshot?.ready} onClick={() => void preparePayoutPreview()}>Preview payout</button>
+            <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected || !circleSnapshot || circleSnapshot.hasPaid || circleSnapshot.round !== 0} onClick={() => void prepareCancelPreview()}>Preview cancellation</button>
+          </div>
+          {actionPreview && (
+            <div className="pusd-mainnet-breakdown" role="status">
+              <b>{actionPreview.title}</b>
+              <p>{actionPreview.summary}</p>
+              <div><span>Estimated miner fee</span><strong>{actionPreview.feeEstimate} sats</strong></div>
+              <div><span>Transaction size</span><strong>{actionPreview.size}</strong></div>
+              <div><span>Wallet-owned inputs requiring signatures</span><strong>{actionPreview.walletInputCount}</strong></div>
+              <small>No transaction was signed or broadcast. Re-read the state before any future authorization.</small>
+            </div>
+          )}
+        </div>
+      )}
+
       {error && <p className="classic-error" role="alert">{error}</p>}
       {notice && <p className="classic-notice" role="status">{notice}</p>}
 
