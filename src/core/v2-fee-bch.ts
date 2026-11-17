@@ -88,6 +88,28 @@ export function isValidV2FeeStateCommitment(commitment: string): boolean {
   return typeof commitment === 'string' && /^54(?:0[0-5])(?:00|01)$/i.test(commitment);
 }
 
+/**
+ * Enforce the state transition invariant for escrow and auto-reserve circles:
+ * round zero is the unspent genesis state; every later round proves a payout.
+ * Legacy fee-v1 deliberately wraps its round counter and retains its old rules.
+ */
+export function assertV2FeeStateCommitmentSemantics(
+  covenant: V2FeeCircleParams['covenant'],
+  memberCount: number,
+  commitment: string,
+): void {
+  if (covenant === 'fee-v1') return;
+  if (!Number.isInteger(memberCount) || memberCount < 2 || memberCount > 5 ||
+      !isValidV2FeeStateCommitment(commitment)) {
+    throw new Error('Invalid V2 fee state commitment.');
+  }
+  const round = Number.parseInt(commitment.slice(2, 4), 16);
+  const hasPaid = commitment.slice(4) === '01';
+  if (round > memberCount || (round === 0 && hasPaid) || (round > 0 && !hasPaid)) {
+    throw new Error('V2 fee state round and irreversible payout marker are inconsistent.');
+  }
+}
+
 /** Reject deposits for terminal or impossible payout rounds before building a wallet transaction. */
 export function assertV2FeeDepositRoundOpen(
   covenant: V2FeeCircleParams['covenant'],
@@ -213,10 +235,16 @@ export function v2FeeCreditFromCommitment(commitment: string): bigint {
   return credit;
 }
 
-function findState(utxos: SpendableUtxo[], category: string) {
+function findState(
+  utxos: SpendableUtxo[],
+  category: string,
+  covenant: V2FeeCircleParams['covenant'],
+  memberCount: number,
+) {
   const matches = utxos.filter(u => u.token?.category === category && u.token.nft?.capability === 'minting' && isValidV2FeeStateCommitment(u.token.nft.commitment));
   if (matches.length !== 1) throw new Error(matches.length ? 'Multiple V2 fee state NFTs found; stop and investigate.' : 'V2 fee state NFT not found or has an invalid commitment.');
   if (matches[0].token!.amount !== 0n) throw new Error('V2 fee state NFT unexpectedly carries fungible tokens.');
+  assertV2FeeStateCommitmentSemantics(covenant, memberCount, matches[0].token!.nft!.commitment);
   return matches[0];
 }
 
@@ -229,10 +257,15 @@ function findReceipt(utxos: SpendableUtxo[], category: string, index: number) {
   return matches[0];
 }
 
-function assertUtxoSet(utxos: SpendableUtxo[], category: string, memberCount: number) {
+function assertUtxoSet(
+  utxos: SpendableUtxo[],
+  category: string,
+  memberCount: number,
+  covenant: V2FeeCircleParams['covenant'],
+) {
   const categoryUtxos = utxos.filter(u => u.token?.category === category);
   if (categoryUtxos.length !== memberCount + 1) throw new Error(`Invalid V2 fee token set: expected ${memberCount + 1} state/receipt NFTs, found ${categoryUtxos.length}. Stop and investigate.`);
-  const state = findState(utxos, category);
+  const state = findState(utxos, category, covenant, memberCount);
   const receipts = Array.from({ length: memberCount }, (_, index) => findReceipt(utxos, category, index));
   const known = new Set([state, ...receipts].map(u => `${u.txid}:${u.vout}`));
   if (categoryUtxos.some(u => !known.has(`${u.txid}:${u.vout}`))) throw new Error('Unexpected CashToken output found at the V2 fee circle address. Stop and investigate.');
@@ -282,8 +315,8 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
   const all = await contract.getUtxos();
-  assertUtxoSet(all, params.stateCategory, params.members.length);
-  const state = findState(all, params.stateCategory);
+  assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant);
+  const state = findState(all, params.stateCategory, params.covenant, params.members.length);
   const currentRound = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
   assertV2FeeDepositRoundOpen(params.covenant, currentRound, params.members.length);
   const allReceipts = params.members.map((_, i) => findReceipt(all, params.stateCategory, i));
@@ -333,8 +366,8 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
   const all = await contract.getUtxos();
-  assertUtxoSet(all, params.stateCategory, params.members.length);
-  const state = findState(all, params.stateCategory);
+  assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant);
+  const state = findState(all, params.stateCategory, params.covenant, params.members.length);
   const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
   const hasPaid = state.token!.nft!.commitment.slice(4) === "01";
   if (!Number.isInteger(round) || round < 0 || round >= params.members.length) {
@@ -442,8 +475,8 @@ export async function planV2FeeCancel(params: V2FeeCircleParams, walletAddress: 
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
   const all = await contract.getUtxos();
-  assertUtxoSet(all, params.stateCategory, params.members.length);
-  const state = findState(all, params.stateCategory);
+  assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant);
+  const state = findState(all, params.stateCategory, params.covenant, params.members.length);
   const stateCommitment = state.token!.nft!.commitment;
   const round = Number.parseInt(stateCommitment.slice(2, 4), 16);
   const hasPaid = stateCommitment.slice(4) === '01';
@@ -477,8 +510,8 @@ export async function readV2FeeCircle(params: V2FeeCircleParams) {
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
   const utxos = await contract.getUtxos();
-  assertUtxoSet(utxos, params.stateCategory, params.members.length);
-  const state = findState(utxos, params.stateCategory);
+  assertUtxoSet(utxos, params.stateCategory, params.members.length, params.covenant);
+  const state = findState(utxos, params.stateCategory, params.covenant, params.members.length);
   const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
   const hasPaid = state.token!.nft!.commitment.slice(4) === '01';
   const completed = params.covenant !== 'fee-v1' && round === params.members.length;

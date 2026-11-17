@@ -11,7 +11,7 @@ import {
 import { hash160, secp256k1, hexToBin } from "@bitauth/libauth";
 import autoReserveJson from "../../contracts/AjoCircleV3AutoReserve.json" with { type: "json" };
 import { pkhToAddress } from "./bch-address";
-import { assertV2FeeDepositRoundOpen, isValidV2FeeStateCommitment, v2FeeCreditFromCommitment, v2FeeStateCommitment, summarizeV2FeeMemberAccounting } from "./v2-fee-bch";
+import { assertV2FeeDepositRoundOpen, assertV2FeeStateCommitmentSemantics, isValidV2FeeStateCommitment, v2FeeCreditFromCommitment, v2FeeStateCommitment, summarizeV2FeeMemberAccounting } from "./v2-fee-bch";
 
 const artifact = autoReserveJson as unknown as Artifact;
 const CATEGORY = "ab".repeat(32);
@@ -162,6 +162,27 @@ describe("V2/V3 member deposit round guard", () => {
       .toThrow(/Invalid V2 fee deposit round/);
     expect(() => assertV2FeeDepositRoundOpen("fee-v1", 2, 2))
       .toThrow(/Invalid V2 fee deposit round/);
+  });
+});
+
+describe("V2/V3 state transition semantics", () => {
+  it("accepts genesis, paid rounds and terminal state for escrow and auto-reserve circles", () => {
+    for (const covenant of ["fee-v2-escrow", "fee-v3-auto-reserve"] as const) {
+      expect(() => assertV2FeeStateCommitmentSemantics(covenant, 2, "540000")).not.toThrow();
+      expect(() => assertV2FeeStateCommitmentSemantics(covenant, 2, "540101")).not.toThrow();
+      expect(() => assertV2FeeStateCommitmentSemantics(covenant, 2, "540201")).not.toThrow();
+    }
+  });
+
+  it("rejects impossible round and payout-marker combinations", () => {
+    for (const commitment of ["540001", "540100", "540300", "5402ff"]) {
+      expect(() => assertV2FeeStateCommitmentSemantics("fee-v3-auto-reserve", 2, commitment))
+        .toThrow(/state|commitment/i);
+    }
+  });
+
+  it("preserves the legacy fee-v1 wrapping-state rules", () => {
+    expect(() => assertV2FeeStateCommitmentSemantics("fee-v1", 2, "540001")).not.toThrow();
   });
 });
 
