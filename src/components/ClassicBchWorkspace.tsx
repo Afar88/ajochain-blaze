@@ -118,7 +118,7 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
           }
         }
       } catch (cause) {
-        if (cause instanceof Error && cause.message.startsWith("A previous CashTokens")) throw cause;
+        if (cause instanceof Error && (cause.message.startsWith("A previous CashTokens") || cause.message.startsWith("AjoChain could not confirm"))) throw cause;
         throw new Error("AjoChain could not safely read its pending setup record. No new transaction was prepared.");
       }
 
