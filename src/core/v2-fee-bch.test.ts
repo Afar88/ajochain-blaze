@@ -12,7 +12,7 @@ import { hash160, secp256k1, hexToBin } from '@bitauth/libauth';
 import artifactJson from '../../contracts/AjoCircleV2Fee.json' with { type: 'json' };
 import legacyArtifactJson from '../../contracts/AjoCircleV2Fee.legacy.json' with { type: 'json' };
 import { pkhToAddress } from './bch-address';
-import { v2FeeArtifactForCovenant } from './v2-fee-bch';
+import { buildV2FeeMemberOrder, v2FeeArtifactForCovenant } from './v2-fee-bch';
 
 const artifact = artifactJson as unknown as Artifact;
 const legacyArtifact = legacyArtifactJson as unknown as Artifact;
@@ -290,5 +290,47 @@ describe('AjoCircleV2Fee versioned covenant', () => {
     await deposit(provider, contract, 1);
 
     await expect(cancel(provider, contract, members[0])).rejects.toThrow();
+  });
+});
+
+
+describe('V2 fee-circle creator registration', () => {
+  const creatorAddress = pkhToAddress(initiator.pkh, 'chipnet');
+  const firstOtherAddress = pkhToAddress(members[0].pkh, 'chipnet');
+  const secondOtherAddress = pkhToAddress(members[1].pkh, 'chipnet');
+
+  it('always registers the connected creator first, before the other member slots', () => {
+    expect(buildV2FeeMemberOrder(
+      creatorAddress,
+      [firstOtherAddress, secondOtherAddress],
+      'chipnet',
+    )).toEqual([creatorAddress, firstOtherAddress, secondOtherAddress]);
+  });
+
+  it('rejects the creator address being entered again as an additional member', () => {
+    expect(() => buildV2FeeMemberOrder(
+      creatorAddress,
+      [creatorAddress, firstOtherAddress],
+      'chipnet',
+    )).toThrow(/already Member 1/);
+  });
+
+  it('requires at least one other member and rejects repeated additional addresses', () => {
+    expect(() => buildV2FeeMemberOrder(creatorAddress, [], 'chipnet'))
+      .toThrow(/at least one other member/);
+    expect(() => buildV2FeeMemberOrder(
+      creatorAddress,
+      [firstOtherAddress, firstOtherAddress],
+      'chipnet',
+    )).toThrow(/unique BCH address/);
+  });
+
+  it('rejects an additional member address from the wrong network', () => {
+    const mainnetAddress = pkhToAddress(members[0].pkh, 'mainnet');
+    expect(() => buildV2FeeMemberOrder(
+      creatorAddress,
+      [mainnetAddress],
+      'chipnet',
+    )).toThrow(/not on chipnet/);
   });
 });
