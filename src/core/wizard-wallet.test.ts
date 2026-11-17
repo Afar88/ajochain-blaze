@@ -4,6 +4,8 @@ import {
   assertRequiredContractWalletSighash,
   assertRequiredWalletSighash,
   readPushOnlyUnlockingScript,
+  describeWizardWalletDisconnect,
+  describeWizardRelayDisconnect,
 } from "./wizard-wallet";
 
 function push(value: Uint8Array): Uint8Array {
@@ -99,5 +101,31 @@ describe("WizardConnect covenant-input sighash inspection", () => {
     const malformed = Uint8Array.from([0x30, 0x06, 0x02, 0x00, 0x01, 0x02, 0x01, 0x01, 0x61]);
     expect(() => assertRequiredContractWalletSighash(covenantUnlockingScript(malformed)))
       .toThrow(/missing its transaction signature argument/);
+  });
+});
+
+
+describe("WizardConnect disconnect diagnostics", () => {
+  it("preserves a relay or wallet disconnect reason and message", () => {
+    expect(describeWizardWalletDisconnect("remote_disconnect", "The wallet closed the session."))
+      .toBe("Selene closed the WizardConnect session (remote_disconnect). The wallet closed the session.");
+  });
+
+  it("gives a recovery instruction when the manager provides no detail", () => {
+    expect(describeWizardWalletDisconnect(undefined))
+      .toContain("Choose Retry saved session or Fresh pairing to reconnect.");
+  });
+});
+
+
+describe("WizardConnect relay subscription diagnostics", () => {
+  it("identifies the transport-level subscription closure and automatic retry", () => {
+    expect(describeWizardRelayDisconnect(new Error("Subscription closed")))
+      .toBe("WizardConnect relay subscription closed: Subscription closed. Automatic reconnection is in progress.");
+  });
+
+  it("handles a missing relay error detail", () => {
+    expect(describeWizardRelayDisconnect(undefined))
+      .toContain("Automatic reconnection is in progress.");
   });
 });

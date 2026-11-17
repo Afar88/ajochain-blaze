@@ -11,6 +11,26 @@ export type WalletState = 'idle' | 'connecting' | 'connected' | 'reconnecting' |
 
 type Listener = () => void;
 
+/** Preserve the wallet manager's actual disconnect reason instead of hiding it. */
+export function describeWizardWalletDisconnect(reason: unknown, message?: unknown): string {
+  const reasonText = reason === null || reason === undefined ? "" : String(reason).trim();
+  const messageText = typeof message === "string" ? message.trim() : "";
+  const label = reasonText ? " (" + reasonText + ")" : "";
+  const detail = messageText ? " " + messageText : "";
+  return "Selene closed the WizardConnect session" + label + "." + detail +
+    (messageText ? "" : " Choose Retry saved session or Fresh pairing to reconnect.");
+}
+
+/** Explain the transport-level subscription closure while WizardConnect retries. */
+export function describeWizardRelayDisconnect(cause: unknown): string {
+  const detail = cause instanceof Error
+    ? cause.message.trim()
+    : cause === null || cause === undefined ? "" : String(cause).trim();
+  return "WizardConnect relay subscription closed" +
+    (detail ? ": " + detail : ".") +
+    ". Automatic reconnection is in progress.";
+}
+
 const PATHS_STORAGE_KEY = 'ajochain:wizardconnect-paths:v1';
 const RECEIVE_INDEX_STORAGE_KEY = 'ajochain:wizardconnect-receive-index:v1';
 const ADDRESS_STORAGE_KEY = 'ajochain:wizardconnect-addresses:v1';
@@ -307,6 +327,10 @@ class WizardWallet {
   private connectionWatchdog: ReturnType<typeof setTimeout> | null = null;
   // Foreground/focus/online can fire in quick succession on mobile browsers.
   private lastResumeAttemptAt = 0;
+  // A peer-level disconnect (remote disconnect or protocol mismatch) is not a
+  // transient socket drop. Do not silently recreate the same closed subscription
+  // on every focus event; wait for an explicit user retry or fresh pairing.
+  private manualReconnectRequired = false;
 
   onChange(fn: Listener) { this.listeners.push(fn); return () => { this.listeners = this.listeners.filter((listener) => listener !== fn); }; }
   private emit() { this.listeners.forEach((f) => f()); }
@@ -337,6 +361,7 @@ class WizardWallet {
     // Keep the previously matched public receive index when resuming a saved session.
     // A fresh pairing starts at index 0 and can be matched again by the user.
     this.receiveIndex = existing ? loadReceiveIndex() : 0;
+    if (!existing) this.manualReconnectRequired = false;
     this.state = 'connecting';
     const generation = ++this.generation;
     const icon = new URL('favicon.svg', location.href).toString();
@@ -361,7 +386,7 @@ class WizardWallet {
       this.state = 'reconnecting';
       this.emit();
     });
-    mgr.on('disconnect', () => {
+    mgr.on('disconnect', (reason, message) => {
       if (!this.isCurrent(mgr, generation)) return;
       this.clearConnectionWatchdog();
       const relay = this.relay;
@@ -373,9 +398,11 @@ class WizardWallet {
       this.walletName = null;
       this.receiveIndex = loadReceiveIndex();
       this.state = 'disconnected';
-      // A dropped mobile/background relay is not the user's request to forget
-      // this wallet. Preserve the encrypted WizardConnect session so it can
-      // be resumed when the browser returns to the foreground.
+      this.manualReconnectRequired = true;
+      this.error = describeWizardWalletDisconnect(reason, message);
+      // This manager event means the wallet explicitly disconnected or the
+      // protocol handshake failed. Preserve credentials for a user-requested
+      // retry, but do not repeatedly resubscribe in background focus handlers.
       this.cleanup(mgr, relay, false);
       this.emit();
     });
@@ -390,6 +417,24 @@ class WizardWallet {
       }
       this.relay = relay;
       if (!existing) { this.uri = relay.uri; this.qrUri = relay.qrUri; }
+
+      // Keep transport-level subscription failures visible without stopping
+      // WizardConnect's own reconnect loop. A successful relay subscription
+      // clears this diagnostic; walletready still owns the connected state.
+      relay.client.on("disconnect", (cause) => {
+        if (!this.isCurrent(mgr, generation) || this.state === "disconnecting") return;
+        this.error = describeWizardRelayDisconnect(cause);
+        if (this.state === "connected") this.state = "reconnecting";
+        this.emit();
+      });
+      relay.client.on("connection", () => {
+        if (!this.isCurrent(mgr, generation)) return;
+        if (this.error?.startsWith("WizardConnect relay subscription closed")) {
+          this.error = null;
+          this.emit();
+        }
+      });
+
       mgr.attachRelay(relay);
       this.connectionWatchdog = setTimeout(() => {
         if (!this.isCurrent(mgr, generation) || this.state !== 'connecting') return;
@@ -437,6 +482,7 @@ class WizardWallet {
 
   /** Resume a stored WizardConnect session after reload or mobile app switching. */
   tryResume(): boolean {
+    if (this.manualReconnectRequired) return false;
     if (this.state !== 'idle' && this.state !== 'disconnected') return false;
     const now = Date.now();
     if (now - this.lastResumeAttemptAt < 5000) return false;
@@ -488,6 +534,7 @@ class WizardWallet {
     this.qrUri = null;
     this.walletName = saved.walletName ?? this.walletName;
     this.error = null;
+    this.manualReconnectRequired = false;
     this.state = 'idle';
     this.lastResumeAttemptAt = 0;
     this.emit();
@@ -499,6 +546,7 @@ class WizardWallet {
     const mgr = this.mgr;
     const relay = this.relay;
     this.clearConnectionWatchdog();
+    this.manualReconnectRequired = false;
     // Invalidate all manager/relay callbacks before awaiting the remote disconnect.
     this.generation++;
     this.mgr = null;
