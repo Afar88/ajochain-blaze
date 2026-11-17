@@ -16,6 +16,12 @@ const PUSD_CATEGORY = "2469acc5afa4b10cb5b5c04afb89c3a3ffd61c5da9c01e26d00951cae
 // Hard release gate: runtime environment variables must never activate real-value broadcasts.
 export const MAINNET_BROADCAST_ENABLED = false;
 const MAINNET_GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f";
+export const BCH_MAINNET_FORK_CHECKPOINT_HEIGHT = 478_559;
+export const BCH_MAINNET_FORK_CHECKPOINT_HASH =
+  "000000000000000000651ef99cb9fcbe0dadde1d424bd9f15ff20136191a5eec";
+export const BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT = 556_767;
+export const BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH =
+  "0000000000000000004626ff6e3b936941d341c5932ece4357eeccac44e6d56c";
 const DEFAULT_TIMEOUT_MS = 12_000;
 const MAX_TIP_AGE_MS = 30 * 60 * 1000;
 const MAX_UTXOS_PER_ADDRESS = 1_000;
@@ -213,18 +219,54 @@ async function withElectrumSessions(callback) {
   }
 }
 
+/**
+ * Bitcoin and Bitcoin Cash share genesis. Verify both BCH-specific fork
+ * checkpoints before the API trusts a server for PUSD UTXO/unspent responses.
+ */
+export function assertBchMainnetChainIdentity({
+  height, genesisHash, forkCheckpointHash, postBsvForkCheckpointHash,
+}) {
+  if (!Number.isSafeInteger(height) || height < 1) {
+    throw new Error("Electrum returned an invalid Mainnet tip height.");
+  }
+  if (genesisHash !== MAINNET_GENESIS) {
+    throw new Error("Electrum endpoint is not on the Bitcoin Cash mainnet genesis chain.");
+  }
+  if (height < BCH_MAINNET_FORK_CHECKPOINT_HEIGHT) {
+    throw new Error("Electrum tip predates the BCH/BTC chain-identity checkpoint.");
+  }
+  if (forkCheckpointHash !== BCH_MAINNET_FORK_CHECKPOINT_HASH) {
+    throw new Error("Electrum endpoint is not on the Bitcoin Cash mainnet chain after the 2017 BCH/BTC split.");
+  }
+  if (height < BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT) {
+    throw new Error("Electrum tip predates the BCH/BSV chain-identity checkpoint.");
+  }
+  if (postBsvForkCheckpointHash !== BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH) {
+    throw new Error("Electrum endpoint is not on the Bitcoin Cash mainnet chain after the 2018 BCH/BSV split.");
+  }
+}
+
 async function getServerTip(session) {
-  const [header, genesisHeader] = await Promise.all([
+  const [
+    header,
+    genesisHeader,
+    forkCheckpointHeader,
+    postBsvForkCheckpointHeader,
+  ] = await Promise.all([
     session.call("blockchain.headers.subscribe", []),
     session.call("blockchain.block.header", [0]),
+    session.call("blockchain.block.header", [BCH_MAINNET_FORK_CHECKPOINT_HEIGHT]),
+    session.call("blockchain.block.header", [BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT]),
   ]);
   if (!header || !Number.isSafeInteger(header.height) || !isHex(header.hex) || header.hex.length !== 160) {
     throw new Error("Electrum returned an invalid current chain tip.");
   }
-  const genesisHash = hashBlockHeader(genesisHeader);
-  if (genesisHash !== MAINNET_GENESIS) {
-    throw new Error("Electrum endpoint is not on the Bitcoin Cash mainnet genesis chain.");
-  }
+  assertBchMainnetChainIdentity({
+    height: header.height,
+    genesisHash: hashBlockHeader(genesisHeader),
+    forkCheckpointHash: hashBlockHeader(forkCheckpointHeader),
+    postBsvForkCheckpointHash: hashBlockHeader(postBsvForkCheckpointHeader),
+  });
   const timestamp = Buffer.from(header.hex, "hex").readUInt32LE(68) * 1000;
   if (timestamp > Date.now() + 10 * 60 * 1000 || Date.now() - timestamp > MAX_TIP_AGE_MS) {
     throw new Error("Electrum chain tip is stale or has an implausible timestamp.");
