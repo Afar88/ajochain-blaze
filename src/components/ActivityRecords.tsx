@@ -143,15 +143,17 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
         snapshot.provider, ref.network, [snapshot.contract.lockingBytecode],
       );
       const status = snapshot.status;
+      const stateVerified = status.stateVerified || status.completed;
       return {
-        ref, status: "ready",
-        stateLabel: status.completed ? "Rotation complete" : status.stateVerified ? "Chain state verified" : "State needs review",
+        ref, status: stateVerified ? "ready" : "unavailable",
+        stateLabel: status.completed ? "Rotation complete" : stateVerified ? "Chain state verified" : "State needs review",
         roundLabel: status.round === null ? "Round unavailable" : status.completed
           ? status.round + " / " + ref.params.members.length
           : (status.round + 1) + " / " + ref.params.members.length,
         recipient: status.recipient,
         details: "Classic V1 uses an aggregate pot. The chain cannot identify which member funded an individual contribution.",
         ...historyResult,
+        ...(!stateVerified ? { error: status.issues.join(" ") || "Classic circle state could not be validated." } : {}),
       };
     }
     if (ref.kind === "fee") {
@@ -342,7 +344,9 @@ export default function ActivityRecords() {
                         <div className="activity-transaction-row" key={record.txid}>
                           <span className="activity-transaction-icon"><ShieldCheck size={15} /></span>
                           <span className="activity-transaction-main">
-                            <b>Circle contract transaction</b>
+                            <b>{result.ref.kind === "pusd" && record.scriptIndexes.some((index) => index > 0)
+                              ? "Member " + record.scriptIndexes.filter((index) => index > 0).map((index) => index).join(", ") + " escrow transaction"
+                              : "Circle contract transaction"}</b>
                             <code>{shortTxid(record.txid)}</code>
                             <small>{record.status === "confirmed" && record.blockTimestamp
                               ? new Date(record.blockTimestamp).toLocaleString() + " · block " + record.height
