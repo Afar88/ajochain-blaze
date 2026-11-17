@@ -97,6 +97,18 @@ describe("WizardConnect covenant-input sighash inspection", () => {
       .toThrow(/missing its transaction signature argument/);
   });
 
+  it("accepts Selene's 64-byte Schnorr signature with the required 0x61 sighash", () => {
+    const schnorr = Uint8Array.from([...new Uint8Array(64).fill(0x55), 0x61]);
+    expect(() => assertRequiredContractWalletSighash(covenantUnlockingScript(schnorr)))
+      .not.toThrow();
+  });
+
+  it("rejects a Schnorr covenant signature with a weaker sighash flag", () => {
+    const schnorr = Uint8Array.from([...new Uint8Array(64).fill(0x55), 0x41]);
+    expect(() => assertRequiredContractWalletSighash(covenantUnlockingScript(schnorr)))
+      .toThrow(/0x61/);
+  });
+
   it("rejects malformed DER-looking ABI pushes rather than treating them as signatures", () => {
     const malformed = Uint8Array.from([0x30, 0x06, 0x02, 0x00, 0x01, 0x02, 0x01, 0x01, 0x61]);
     expect(() => assertRequiredContractWalletSighash(covenantUnlockingScript(malformed)))
@@ -155,6 +167,50 @@ describe("WizardConnect sign-request serialization", () => {
     expect(request.transaction.transaction).toMatch(/^[0-9a-f]+$/i);
     expect(request.transaction.sourceOutputs).toHaveLength(1);
     expect(typeof request.transaction.sourceOutputs[0].valueSatoshis).toBe("string");
+    expect(() => JSON.stringify(request)).not.toThrow();
+  });
+
+  it("preserves CashScript covenant metadata so Selene can sign cancel inputs", () => {
+    const transaction = {
+      version: 2,
+      locktime: 0,
+      inputs: [{
+        outpointTransactionHash: new Uint8Array(32).fill(9),
+        outpointIndex: 0,
+        unlockingBytecode: Uint8Array.from([0x01, 0x00]),
+        sequenceNumber: 0xffffffff,
+      }],
+      outputs: [{ valueSatoshis: 1_000n, lockingBytecode: Uint8Array.from([0x51]) }],
+    };
+    const sourceOutputs = [{
+      valueSatoshis: 1_000n,
+      lockingBytecode: Uint8Array.from([0xaa, 0x20, ...new Uint8Array(32).fill(1), 0x87]),
+      unlockingBytecode: Uint8Array.from([0x01, 0x00]),
+      contract: {
+        abiFunction: {
+          name: "cancel",
+          inputs: [
+            { name: "initiatorPk", type: "pubkey" },
+            { name: "initiatorSig", type: "sig" },
+          ],
+        },
+        redeemScript: Uint8Array.from([0x51, 0x52]),
+        artifact: { contractName: "AjoCircleV3AutoReserve" },
+      },
+    }];
+
+    const request = buildWizardSignRequest(
+      { transaction, sourceOutputs },
+      [0],
+      2,
+      "Cancel circle and refund members",
+      456,
+    );
+    const serializedContract = request.transaction.sourceOutputs[0].contract;
+    expect(serializedContract.abiFunction.name).toBe("cancel");
+    expect(serializedContract.abiFunction.inputs[1].type).toBe("sig");
+    expect(serializedContract.redeemScript).toBe("5152");
+    expect(serializedContract.artifact.contractName).toBe("AjoCircleV3AutoReserve");
     expect(() => JSON.stringify(request)).not.toThrow();
   });
 
