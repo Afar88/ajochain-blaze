@@ -1,24 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
   CHIPNET_ELECTRUM_ENDPOINTS,
-  CHIPNET_ELECTRUM_PROTOCOL_VERSION,
-  CHIPNET_ELECTRUM_SOCKET_OPTIONS,
-  CHIPNET_ELECTRUM_TIMEOUT_MS,
+  ELECTRUM_PROTOCOL_VERSION,
+  ELECTRUM_SOCKET_OPTIONS,
+  ELECTRUM_TIMEOUT_MS,
 } from "./chipnet-electrum-config";
 
 describe("Chipnet Electrum browser transport", () => {
   it("uses Electrum 1.5.0 for CashScript token-aware chain reads", () => {
-    expect(CHIPNET_ELECTRUM_PROTOCOL_VERSION).toBe("1.5.0");
+    expect(ELECTRUM_PROTOCOL_VERSION).toBe("1.5.0");
   });
 
   it("uses the correctly named socket timeout and keeps browser-tab switching from closing the socket", () => {
-    expect(CHIPNET_ELECTRUM_SOCKET_OPTIONS).toEqual({
+    expect(ELECTRUM_SOCKET_OPTIONS).toEqual({
       encrypted: true,
-      timeoutInMilliSeconds: CHIPNET_ELECTRUM_TIMEOUT_MS,
+      timeoutInMilliSeconds: ELECTRUM_TIMEOUT_MS,
       enforceConsistentBrowserBehavior: false,
     });
-    expect(CHIPNET_ELECTRUM_SOCKET_OPTIONS).not.toHaveProperty("timeout");
-    expect(CHIPNET_ELECTRUM_TIMEOUT_MS).toBeGreaterThanOrEqual(8_000);
+    expect(ELECTRUM_SOCKET_OPTIONS).not.toHaveProperty("timeout");
+    expect(ELECTRUM_TIMEOUT_MS).toBeGreaterThanOrEqual(8_000);
   });
 
   it("uses the probed secure Chipnet endpoints and keeps the standard WSS port first", () => {
