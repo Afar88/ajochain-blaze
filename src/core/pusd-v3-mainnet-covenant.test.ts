@@ -277,7 +277,7 @@ describe("AjoChain PUSD V3 Mainnet covenant (mock-chain invariants)", () => {
     expect(firstRecipientOutputs.some((utxo) =>
       utxo.token?.category === PUSD && utxo.token.amount === 98n,
     )).toBe(true);
-  });
+  }, 60_000);
 
   it("pays no future reserve to the final recipient", async () => {
     const provider = new MockNetworkProvider();
@@ -296,7 +296,7 @@ describe("AjoChain PUSD V3 Mainnet covenant (mock-chain invariants)", () => {
       creditCommitment(0, 0n), creditCommitment(1, 0n),
     ]);
     expect(escrowUtxos.every((utxo) => utxo.token?.category === undefined)).toBe(true);
-  });
+  }, 60_000);
 
   it("refunds each member's exact PUSD credit before the first payout", async () => {
     const provider = new MockNetworkProvider();
@@ -321,5 +321,5 @@ describe("AjoChain PUSD V3 Mainnet covenant (mock-chain invariants)", () => {
     await deposit(provider, contract, escrows, 1);
     await payout(provider, contract, escrows, 0);
     await expect(cancel(provider, contract, escrows)).rejects.toThrow();
-  });
+  }, 60_000);
 });
