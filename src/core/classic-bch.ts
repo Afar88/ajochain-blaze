@@ -19,6 +19,7 @@ import {
   ELECTRUM_PROTOCOL_VERSION,
   ELECTRUM_SOCKET_OPTIONS,
   ELECTRUM_TIMEOUT_MS,
+  getChipnetElectrumEndpoints,
 } from "./chipnet-electrum-config";
 
 export type ClassicNetwork = "mainnet" | "chipnet";
@@ -126,9 +127,7 @@ export function getClassicProvider(network: ClassicNetwork): Promise<NetworkProv
       const configured = typeof localStorage !== "undefined"
         ? localStorage.getItem("ajochain-electrum-chipnet")
         : null;
-      const endpoints: Array<[string, number]> = configured
-        ? [[configured.split(":")[0], Number(configured.split(":")[1] || 50004)]]
-        : servers.chipnet;
+      const endpoints = getChipnetElectrumEndpoints(configured);
       const attempts = endpoints.map(([host, port]) => {
         const { provider, client } = makeProvider("chipnet", host, port);
         const attempt = withTimeout(
