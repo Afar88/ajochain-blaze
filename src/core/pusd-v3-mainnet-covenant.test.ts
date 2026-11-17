@@ -137,6 +137,7 @@ async function payout(provider: MockNetworkProvider, contract: Contract, escrows
   const { state, receipts, escrowUtxos } = await current(contract, escrows);
   const reserveAddress = pkhToAddress(initiator.pkh, "chipnet");
   const reserve = provider.addUtxo(reserveAddress, randomUtxo({ satoshis: 25_000n }));
+  const reserveCredit = recipientIndex < members.length - 1 ? CONTRIBUTION : 0n;
   const circleUnlock = contract.unlock.payout();
   const builder = new TransactionBuilder({ provider })
     .addInput(state, circleUnlock)
@@ -151,15 +152,16 @@ async function payout(provider: MockNetworkProvider, contract: Contract, escrows
     })
     .addOutput({
       to: contract.tokenAddress, amount: receipts[0].satoshis,
-      token: { category: STATE, amount: 0n, nft: { capability: "none", commitment: creditCommitment(0, recipientIndex === 0 ? CONTRIBUTION : 0n) } },
+      token: { category: STATE, amount: 0n, nft: { capability: "none", commitment: creditCommitment(0, recipientIndex === 0 ? reserveCredit : 0n) } },
     })
     .addOutput({
       to: contract.tokenAddress, amount: receipts[1].satoshis,
-      token: { category: STATE, amount: 0n, nft: { capability: "none", commitment: creditCommitment(1, recipientIndex === 1 ? CONTRIBUTION : 0n) } },
+      token: { category: STATE, amount: 0n, nft: { capability: "none", commitment: creditCommitment(1, recipientIndex === 1 ? reserveCredit : 0n) } },
     });
 
   for (let index = 0; index < members.length; index++) {
-    const nextCredit = index === recipientIndex ? CONTRIBUTION : 0n;
+    const oldCredit = escrowUtxos[index].token?.amount ?? 0n;
+    const nextCredit = oldCredit - CONTRIBUTION + (index === recipientIndex ? reserveCredit : 0n);
     if (nextCredit > 0n) {
       builder.addOutput({
         to: escrows[index].tokenAddress, amount: escrowUtxos[index].satoshis,
@@ -172,7 +174,6 @@ async function payout(provider: MockNetworkProvider, contract: Contract, escrows
 
   const grossPot = BigInt(members.length) * CONTRIBUTION;
   const projectFee = grossPot / 100n;
-  const reserveCredit = recipientIndex < members.length - 1 ? CONTRIBUTION : 0n;
   const recipientPayout = grossPot - projectFee - reserveCredit;
   builder
     .addOutput({
@@ -212,7 +213,7 @@ async function cancel(provider: MockNetworkProvider, contract: Contract, escrows
         token: { category: PUSD, amount: credit },
       });
     } else {
-      builder.addOutput({ to: members[index].signature.address ?? pkhToAddress(members[index].pkh, "chipnet"), amount: value });
+      builder.addOutput({ to: pkhToAddress(members[index].pkh, "chipnet"), amount: value });
     }
   }
   builder.addOutput({ to: feeAddress, amount: feeInput.satoshis });
