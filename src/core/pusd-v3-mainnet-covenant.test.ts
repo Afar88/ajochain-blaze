@@ -101,12 +101,13 @@ async function deposit(
   escrows: Contract[],
   index: number,
   amount = CONTRIBUTION,
+  fundingAmount = amount,
 ) {
   const { state, receipts, escrowUtxos } = await current(contract, escrows);
   const memberAddress = tokenAddress(members[index].pkh);
   const funding = provider.addUtxo(memberAddress, randomUtxo({
     satoshis: DUST,
-    token: { category: PUSD, amount },
+    token: { category: PUSD, amount: fundingAmount },
   }));
   const reserveAddress = memberAddress;
   const reserve = provider.addUtxo(reserveAddress, randomUtxo({ satoshis: 20_000n }));
@@ -128,8 +129,17 @@ async function deposit(
     .addOutput({
       to: escrows[index].tokenAddress, amount: escrowUtxos[index].satoshis + funding.satoshis,
       token: { category: PUSD, amount },
-    })
-    .addOutput({ to: reserveAddress, amount: 10_000n });
+    });
+  if (fundingAmount > amount) {
+    builder.addOutput({
+      to: tokenAddress(members[index].pkh), amount: DUST,
+      token: { category: PUSD, amount: fundingAmount - amount },
+    });
+  }
+  builder.addOutput({
+    to: reserveAddress,
+    amount: 20_000n - (fundingAmount > amount ? DUST : 0n) - 10_000n,
+  });
   await builder.send();
 }
 
@@ -226,6 +236,20 @@ describe("AjoChain PUSD V3 Mainnet covenant (mock-chain invariants)", () => {
     const { contract } = makeContracts(provider);
     expect(contract.address).toMatch(/^bchtest:/);
     expect(treasuryPkh).toHaveLength(20);
+  });
+
+  it("returns excess PUSD to the depositing member without crediting it to escrow", async () => {
+    const provider = new MockNetworkProvider();
+    const { contract, escrows } = makeContracts(provider);
+    addGenesis(provider, contract, escrows);
+    await deposit(provider, contract, escrows, 0, CONTRIBUTION, CONTRIBUTION + 50n);
+
+    const { receipts, escrowUtxos } = await current(contract, escrows);
+    expect(receipts[0].token!.nft!.commitment).toBe(creditCommitment(0, CONTRIBUTION));
+    expect(escrowUtxos[0].token!.amount).toBe(CONTRIBUTION);
+    const memberUtxos = await provider.getUtxos(tokenAddress(members[0].pkh));
+    expect(memberUtxos.some((utxo) => utxo.token?.category === PUSD &&
+      utxo.token.amount === 50n)).toBe(true);
   });
 
   it("pays a separate 1% PUSD fee and reserves one next contribution for the non-final recipient", async () => {
