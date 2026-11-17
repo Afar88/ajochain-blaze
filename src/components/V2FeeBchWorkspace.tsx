@@ -253,7 +253,8 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
         "Additional escrow needed to unlock every remaining payout: " + formatBch(plan.shortfall) + "\\n" +
         "Only this member's registered wallet can fund this slot.",
       )) return;
-      const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Add my V2 AjoChain member credit");
+      setNotice("Sending your member contribution approval request to Selene…");
+      const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Pay my AjoChain member share");
       const provider = await getClassicProvider("chipnet");
       const txid = await provider.sendRawTransaction(signed.signedTransaction);
       setNotice("Member credit deposit broadcast. Transaction: " + txid);
@@ -311,7 +312,8 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
     try {
       const plan = await planV2FeeCancel(active, address);
       if (!window.confirm("Cancel before the first payout and refund each member's exact recorded credit?\nThis cannot be reversed.")) return;
-      const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Cancel AjoChain V2 fee circle and refund members");
+      setNotice("Sending the circle cancellation approval request to Selene…");
+      const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Cancel AjoChain circle and refund every member");
       const provider = await getClassicProvider("chipnet");
       const txid = await provider.sendRawTransaction(signed.signedTransaction);
       setNotice("Pre-payout cancellation broadcast. Transaction: " + txid);
@@ -457,11 +459,13 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
             : <p className="classic-recipient">Next payout recipient: <b>Member {snapshot.round + 1}</b> · {snapshot.recipient}</p>}
           <p className="field-hint">{snapshot.hasPaid ? "The first payout has happened. Cancellation is permanently locked; remaining escrow cannot be withdrawn." : "No payout has happened yet. Only the initiator may cancel and refund recorded member credit."}</p>
         </> : <p className="classic-empty">Reading the state NFT and all member receipts from Chipnet. Refresh if the transaction is still confirming.</p>}
-        <p className="field-hint">{memberIndex >= 0
-          ? "Your connected Selene wallet is registered as Member " + (memberIndex + 1) + ". You can add credit to your own receipt below."
-          : walletConnected
-            ? "This connected wallet is not registered in this circle. Connect Selene using one of the member addresses listed above, or restore the correct invite."
-            : "Connect Selene using the BCH address registered for your member slot to unlock your personal contribution option."}</p>
+        <div className="member-payment-status">
+          {memberIndex >= 0
+            ? <p><b>Your wallet is registered as Member {memberIndex + 1}.</b> You can pay your own share below.</p>
+            : walletConnected
+              ? <><p><b>This wallet is not registered in this circle.</b> Connect the Selene account that owns one of the member addresses, or create a new circle with the correct member list.</p><code>{wallet.address("chipnet") ?? "Address unavailable"}</code></>
+              : <p>Connect Selene with the BCH address registered for your member slot to pay your share.</p>}
+        </div>
         <label className="classic-deposit-field">Your BCH contribution deposit<input value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} inputMode="decimal" /></label>
         {memberIndex >= 0 && snapshot?.memberAccounting[memberIndex] && <p className="field-hint">Your receipt holds {formatBch(snapshot.memberAccounting[memberIndex].currentCredit)}. Amount needed for your next contribution reserve or current round: <b>{formatBch(snapshot.memberAccounting[memberIndex].shortfallForNextPayout)}</b>. <button type="button" className="fee-exact-amount-button" onClick={() => setDepositAmount(bchInputAmount(snapshot.memberAccounting[memberIndex].shortfallForNextPayout))}>Use exact amount due</button></p>}
         <div className="classic-actions">
