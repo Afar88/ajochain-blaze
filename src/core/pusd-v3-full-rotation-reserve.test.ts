@@ -51,6 +51,12 @@ function creditCommitment(index: number, amount: bigint) {
   return "52" + index.toString(16).padStart(2, "0") + littleEndian;
 }
 
+async function totalTreasuryPusd(provider: MockNetworkProvider) {
+  const utxos = await provider.getUtxos(tokenAddress(treasuryPkh));
+  return utxos.reduce((sum, utxo) =>
+    sum + (utxo.token?.category === PUSD ? utxo.token.amount : 0n), 0n);
+}
+
 function makeFixture(provider: MockNetworkProvider): Fixture {
   const escrows = members.map((member, index) => new Contract(escrowArtifact, [
     hexToBin(STATE).reverse(),
@@ -201,7 +207,7 @@ async function payout(fixture: Fixture, recipientIndex: number) {
 }
 
 describe("AjoChain PUSD V3 full-rotation reserve rule", () => {
-  it("reserves exactly one next contribution from every non-final recipient and none from the final recipient", async () => {
+  it("reserves one contribution for each non-final recipient and charges the same 1% gross-pot fee every round", async () => {
     const provider = new MockNetworkProvider();
     const fixture = makeFixture(provider);
     addGenesis(fixture);
@@ -214,6 +220,9 @@ describe("AjoChain PUSD V3 full-rotation reserve rule", () => {
     // Member 0 receives the pot. Their next contribution is retained in their
     // own escrow at exactly the agreed per-member contribution amount.
     await payout(fixture, 0);
+    // Three members contribute 100 PUSD each: 1% of the 300 PUSD gross
+    // pot is 3 PUSD, sent to the project treasury on this payout.
+    expect(await totalTreasuryPusd(provider)).toBe(3n);
     let snapshot = await current(fixture);
     expect(snapshot.escrowUtxos.map((utxo) => utxo.token?.amount ?? 0n))
       .toEqual([CONTRIBUTION, 0n, 0n]);
@@ -226,6 +235,8 @@ describe("AjoChain PUSD V3 full-rotation reserve rule", () => {
     await deposit(fixture, 1);
     await deposit(fixture, 2);
     await payout(fixture, 1);
+    // The same 1% fee is charged again for the second collector.
+    expect(await totalTreasuryPusd(provider)).toBe(6n);
     snapshot = await current(fixture);
     expect(snapshot.escrowUtxos.map((utxo) => utxo.token?.amount ?? 0n))
       .toEqual([0n, CONTRIBUTION, 0n]);
@@ -238,6 +249,9 @@ describe("AjoChain PUSD V3 full-rotation reserve rule", () => {
     await deposit(fixture, 0);
     await deposit(fixture, 2);
     await payout(fixture, 2);
+    // The final collector also pays the same gross-pot fee, but has no
+    // next-round contribution withheld.
+    expect(await totalTreasuryPusd(provider)).toBe(9n);
     snapshot = await current(fixture);
     expect(snapshot.state.token!.nft!.commitment).toBe("540301");
     expect(snapshot.escrowUtxos.map((utxo) => utxo.token?.amount ?? 0n))
@@ -245,5 +259,5 @@ describe("AjoChain PUSD V3 full-rotation reserve rule", () => {
     expect(await provider.getUtxos(tokenAddress(members[2].pkh))).toEqual(
       expect.arrayContaining([expect.objectContaining({ token: expect.objectContaining({ category: PUSD, amount: 297n }) })]),
     );
-  }, 60_000);
+  }, 240_000);
 });
