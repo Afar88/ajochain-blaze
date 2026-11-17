@@ -407,6 +407,7 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
     walletInputs: [2],
     memberIndex,
     credited: amount,
+    feeEstimate: fee,
     newCredit: oldCredit + amount,
     shortfall: (!isFeeV1Covenant(params.covenant) ? maximumEscrow : params.contribution) > oldCredit
       ? (!isFeeV1Covenant(params.covenant) ? maximumEscrow : params.contribution) - oldCredit
