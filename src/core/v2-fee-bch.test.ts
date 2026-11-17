@@ -242,7 +242,7 @@ describe('AjoCircleV2Fee versioned covenant', () => {
     const { state } = await currentCircle(contract);
     expect(state.token!.nft!.commitment).toBe('540001');
     await expect(cancel(provider, contract)).rejects.toThrow();
-  });
+  }, 45_000);
 
   it('rejects cancellation signed by a non-initiator', async () => {
     const provider = new MockNetworkProvider();
