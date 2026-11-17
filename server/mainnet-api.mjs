@@ -457,7 +457,9 @@ function normalizeElectrumMerkleProof(value) {
 
 function isElectrumUnconfirmedError(error) {
   const message = error instanceof Error ? error.message : String(error);
-  return /no information available|not in block|transaction not found|not confirmed|unknown transaction|not found/i.test(message);
+  // Keep this allow-list narrow: "method not found", provider outages, and
+  // arbitrary RPC failures must never be misreported as an ordinary pending tx.
+  return /no information available about transaction|transaction (?:is )?not confirmed(?: in a block)?|no (?:confirmed )?merkle proof (?:available )?for (?:this )?transaction/i.test(message);
 }
 
 /**
@@ -544,7 +546,7 @@ export async function getVerifiedTransactionStatus(sessions, tip, txid) {
       tipHash: tip.hash,
       providerConfidence: sessions.length,
       verification: "identical-raw-transaction-known-by-electrum-quorum",
-      reason: "Both providers know the exact transaction, but neither supplied a block-inclusion proof. This is not confirmation.",
+      reason: "All configured providers know the exact transaction, but none supplied a block-inclusion proof. This is not confirmation.",
       retryPolicy: "Do not create or broadcast a replacement until inputs and mempool state have been reconciled.",
     };
   }
