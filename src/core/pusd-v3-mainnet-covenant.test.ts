@@ -226,7 +226,7 @@ async function cancel(provider: MockNetworkProvider, contract: Contract, escrows
       builder.addOutput({ to: pkhToAddress(members[index].pkh, "chipnet"), amount: value });
     }
   }
-  builder.addOutput({ to: feeAddress, amount: feeInput.satoshis });
+  builder.addOutput({ to: feeAddress, amount: 10_000n });
   await builder.send();
 }
 
