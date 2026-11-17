@@ -22,6 +22,9 @@ contract AjoPUSDMemberEscrowV3(
         require(tx.inputs[0].tokenAmount == 0);
 
         int receiptIndex = memberIndex + 1;
+        // Deposit transactions place the selected member receipt at input 1;
+        // full-circle payout/cancel transactions place all receipts at 1..N.
+        if (escrowIndex == 2) { receiptIndex = 1; }
         bytes statePrefix, bytes stateData = tx.inputs[0].nftCommitment.split(1);
         bytes stateRound, bytes hasPaid = stateData.split(1);
         require(statePrefix == 0x54 && stateRound.length == 1 && hasPaid.length == 1);
