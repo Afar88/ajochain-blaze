@@ -253,6 +253,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .global-wallet-error { display: flex; align-items: center; gap: 10px; width: min(100% - 32px,1080px); margin: 12px auto 0; padding: 11px 13px; border: 1px solid #f0ded1; border-radius: 11px; background: #fff8f4; color: #9a5b3e; font-size: 10px; }
 .global-wallet-error span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .global-wallet-error button { border: 0; background: transparent; color: #8e583c; font-size: 10px; font-weight: 750; cursor: pointer; }
+.global-wallet-error-actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; flex-wrap: wrap; }
+@media(max-width:620px){.global-wallet-error{align-items:flex-start;flex-wrap:wrap}.global-wallet-error-actions{width:100%;justify-content:flex-start}}
 .app-footer { width: min(100% - 32px,1080px); display: flex; justify-content: space-between; gap: 12px; margin: 22px auto 0; padding: 14px 1px; border-top: 1px solid #e6ece5; color: #9aa59c; font-size: 9px; }
 .app-footer > span:last-child { display: inline-flex; align-items: center; gap: 7px; }
 .app-footer .footer-dot { width: 7px; height: 7px; display: inline-block; border-radius: 50%; background: #d7a756; }

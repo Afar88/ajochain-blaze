@@ -415,6 +415,42 @@ class WizardWallet {
     }
   }
 
+  /**
+   * Explicitly retry a saved session after the user sees a stalled-session
+   * warning. Unlike automatic focus recovery, a manual retry may replace a
+   * currently reconnecting manager and bypasses the lifecycle-event throttle.
+   * The encrypted saved credentials are deliberately preserved.
+   */
+  retrySavedSession(): boolean {
+    if (this.state === 'connected' || this.state === 'disconnecting') return false;
+    let saved: ReturnType<typeof loadSession> | null = null;
+    try {
+      saved = loadSession();
+    } catch (cause) {
+      this.error = cause instanceof Error ? cause.message : 'Could not read the saved wallet session';
+      this.emit();
+      return false;
+    }
+    if (!saved?.walletPublicKey) return false;
+
+    const mgr = this.mgr;
+    const relay = this.relay;
+    this.generation++;
+    this.mgr = null;
+    this.relay = null;
+    this.clearConnectionWatchdog();
+    // Stop the stale relay/manager, but do not delete the encrypted session.
+    this.cleanup(mgr, relay, false);
+    this.uri = null;
+    this.qrUri = null;
+    this.walletName = saved.walletName ?? this.walletName;
+    this.error = null;
+    this.state = 'idle';
+    this.lastResumeAttemptAt = 0;
+    this.emit();
+    return this.tryResume();
+  }
+
   async disconnect() {
     if (this.state === 'disconnecting') return;
     const mgr = this.mgr;
