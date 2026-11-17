@@ -18,7 +18,7 @@ function coin(vout: number, satoshis: bigint, token = false, txid = "11".repeat(
 }
 
 describe("CashTokens genesis outpoint selection", () => {
-  it("accepts a small non-token vout-0 coin without an arbitrary 3,000-sat floor", () => {
+  it("accepts a small non-token vout-0 coin without a fixed minimum", () => {
     const smallGenesisCoin = coin(0, 1n);
     expect(selectCashTokensGenesisUtxo([
       coin(1, 2_000_000n),
