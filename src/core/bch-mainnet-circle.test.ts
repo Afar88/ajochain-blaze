@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { encodeCashAddress } from "@bitauth/libauth";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "./project-treasury";
-import {
-  createBchMainnetCircleDraft,
-} from "./bch-mainnet-circle";
+import { createBchMainnetCircleDraft } from "./bch-mainnet-circle";
+import { validateV2FeeCircleDraft } from "./v2-fee-bch";
 
 function address(seed: number): string {
   const result = encodeCashAddress({
@@ -47,10 +46,18 @@ describe("BCH Mainnet V3 circle adapter", () => {
       .toThrow(/conservative transaction estimate/);
   });
 
-  it("does not permit the Chipnet treasury to be substituted for Mainnet", () => {
-    // The public constructor always pins the shared address; callers cannot
-    // override this field when creating the supported Mainnet draft type.
-    expect(createBchMainnetCircleDraft(base).treasury)
-      .toBe("bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q");
+  it("rejects a modified Mainnet treasury after draft creation", () => {
+    const draft = createBchMainnetCircleDraft(base);
+    expect(draft.treasury).toBe(MAINNET_PROJECT_TREASURY_ADDRESS);
+    expect(() => validateV2FeeCircleDraft({
+      ...draft,
+      treasury: "bchtest:qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq3v8v7k",
+    })).toThrow(/shared BCH\/PUSD project-fee treasury/);
+  });
+
+  it("does not allow the Mainnet covenant variant to be re-labelled as Chipnet", () => {
+    const draft = createBchMainnetCircleDraft(base);
+    expect(() => validateV2FeeCircleDraft({ ...draft, network: "chipnet" }))
+      .toThrow(/Mainnet V3 covenant cannot be used on Chipnet/);
   });
 });
