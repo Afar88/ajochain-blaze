@@ -252,10 +252,33 @@ export async function fetchMainnetTransactionStatus(txid: string): Promise<Mainn
   const result = await requestJson<MainnetTransactionStatus>(
     "/api/transaction/status?" + new URLSearchParams({ txid: normalized }).toString(),
   );
-  if (!result || result.network !== "mainnet" || result.txid?.toLowerCase() !== normalized ||
-      !["confirmed", "pending", "unknown"].includes(result.status) ||
-      !Number.isSafeInteger(result.providerConfidence) || result.providerConfidence < 0 ||
-      (result.confirmations !== null && (!Number.isSafeInteger(result.confirmations) || result.confirmations < 0))) {
+  const validBase = Boolean(result) &&
+    result.network === "mainnet" &&
+    typeof result.txid === "string" &&
+    result.txid.toLowerCase() === normalized &&
+    ["confirmed", "pending", "unknown"].includes(result.status) &&
+    Number.isSafeInteger(result.providerConfidence) &&
+    result.providerConfidence >= 0 &&
+    typeof result.retryPolicy === "string" &&
+    (result.confirmations === null ||
+      (Number.isSafeInteger(result.confirmations) && result.confirmations >= 0));
+
+  const validConfirmed = result.status !== "confirmed" || (
+    result.providerConfidence >= 2 &&
+    result.confirmations !== null && result.confirmations >= 1 &&
+    Number.isSafeInteger(result.blockHeight) && result.blockHeight >= 1 &&
+    typeof result.blockHash === "string" && /^[0-9a-f]{64}$/i.test(result.blockHash) &&
+    Number.isSafeInteger(result.tipHeight) && result.tipHeight >= result.blockHeight &&
+    typeof result.tipHash === "string" && /^[0-9a-f]{64}$/i.test(result.tipHash)
+  );
+  const validPending = result.status !== "pending" || (
+    result.providerConfidence >= 2 && result.confirmations === 0 &&
+    Number.isSafeInteger(result.tipHeight) && result.tipHeight >= 1 &&
+    typeof result.tipHash === "string" && /^[0-9a-f]{64}$/i.test(result.tipHash)
+  );
+  const validUnknown = result.status !== "unknown" || result.confirmations === null;
+
+  if (!validBase || !validConfirmed || !validPending || !validUnknown) {
     throw new Error("Mainnet transaction-status response failed validation.");
   }
   return result;
