@@ -459,7 +459,7 @@ function isElectrumUnconfirmedError(error) {
   const message = error instanceof Error ? error.message : String(error);
   // Keep this allow-list narrow: "method not found", provider outages, and
   // arbitrary RPC failures must never be misreported as an ordinary pending tx.
-  return /no information available about transaction|transaction (?:is )?not confirmed(?: in a block)?|no (?:confirmed )?merkle proof (?:available )?for (?:this )?transaction/i.test(message);
+  return /no information available about transaction|transaction not found in block|transaction (?:is )?not confirmed(?: in a block)?|no (?:confirmed )?merkle proof (?:available )?for (?:this )?transaction/i.test(message);
 }
 
 /**
