@@ -17,7 +17,15 @@ type CircleRef =
   | { id: string; kind: "fee"; name: string; network: "chipnet" | "mainnet"; params: V2FeeCircleParams }
   | { id: string; kind: "pusd"; name: string; network: "mainnet"; params: PusdMainnetCircleParams };
 
-type MemberRecord = { address: string; credit: bigint; due: bigint; status: string };
+type MemberRecord = {
+  address: string;
+  credit: bigint;
+  due: bigint;
+  status: string;
+  totalPaidIn?: bigint | null;
+  payoutReceived?: boolean | null;
+  payoutAmountReceived?: bigint;
+};
 
 type CircleResult = {
   ref: CircleRef;
@@ -173,6 +181,9 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
           credit: member.currentCredit,
           due: member.shortfallForNextPayout,
           status: member.status,
+          totalPaidIn: member.totalPaidIn,
+          payoutReceived: member.payoutReceived,
+          payoutAmountReceived: member.payoutAmountReceived,
         })),
         ...historyResult,
       };
@@ -319,11 +330,21 @@ export default function ActivityRecords() {
                   {result.details && <p className="activity-source-note">{result.details}</p>}
                   {result.memberRecords && (
                     <div className="activity-member-records">
-                      <div className="activity-subheading"><b>Current member records</b><small>Live receipt/escrow values</small></div>
+                      <div className="activity-subheading"><b>Member receipts and accounting</b><small>Live values derived from on-chain receipts</small></div>
                       {result.memberRecords.map((member, index) => (
                         <div className="activity-member-row" key={member.address}>
                           <span><b>Member {index + 1}</b><small>{member.address}</small></span>
-                          <span><b>{result.ref.kind === "pusd" ? formatAssetAmount("PUSD", member.credit) + " PUSD" : formatBch(member.credit)}</b><small>{member.due > 0n ? "Still due: " + (result.ref.kind === "pusd" ? formatAssetAmount("PUSD", member.due) + " PUSD" : formatBch(member.due)) : member.status}</small></span>
+                          <span>
+                            <b>Current credit: {result.ref.kind === "pusd" ? formatAssetAmount("PUSD", member.credit) + " PUSD" : formatBch(member.credit)}</b>
+                            <small>{member.due > 0n ? "Still due: " + (result.ref.kind === "pusd" ? formatAssetAmount("PUSD", member.due) + " PUSD" : formatBch(member.due)) : member.status}</small>
+                            {member.totalPaidIn !== undefined && member.totalPaidIn !== null && (
+                              <small>Total paid in: {formatBch(member.totalPaidIn)}</small>
+                            )}
+                            {member.payoutReceived === true && member.payoutAmountReceived !== undefined && (
+                              <small>Payout received: {formatBch(member.payoutAmountReceived)}</small>
+                            )}
+                            {member.payoutReceived === false && <small>Scheduled payout: not received yet</small>}
+                          </span>
                         </div>
                       ))}
                     </div>
