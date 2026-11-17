@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assertP2pkhWalletInputCoverage,
+  assertRequiredContractWalletSighash,
   assertRequiredWalletSighash,
   readPushOnlyUnlockingScript,
 } from "./wizard-wallet";
