@@ -15,6 +15,7 @@ import {
   BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH,
   BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT,
   assertBchMainnetChainIdentity,
+  broadcastPusdTransactionOnce,
   lockingBytecodeToScriptHash,
   normalizeElectrumUnspent,
   MAINNET_BROADCAST_ENABLED,
@@ -194,4 +195,106 @@ test("raw previous transaction bytes must agree across the Electrum quorum", () 
   assert.throws(() => assertPreviousTransactionsAgree([{ hex: raw }, { hex: "02000000" + "00".repeat(10) }]), /disagree/);
   assert.throws(() => assertPreviousTransactionsAgree([{ hex: raw }]), /at least two/i);
   assert.throws(() => assertPreviousTransactionsAgree([{ hex: "not-hex" }, { hex: raw }]), /malformed/);
+});
+
+
+function sampleRawTransactionHex() {
+  return "01000000" +
+    "01" + "11".repeat(32) +
+    "00000000" + "00" + "ffffffff" +
+    "01" + "e803000000000000" +
+    "01" + "51" + "00000000";
+}
+
+function transactionIdFromHex(hex) {
+  const first = createHash("sha256").update(Buffer.from(hex, "hex")).digest();
+  const second = createHash("sha256").update(first).digest();
+  return Buffer.from(second).reverse().toString("hex");
+}
+
+test("PUSD broadcaster uses one relay and reports the provider's exact txid", async () => {
+  const raw = sampleRawTransactionHex();
+  const txid = transactionIdFromHex(raw);
+  const calls = [];
+  const sessions = [
+    { call: async (method, params) => {
+      calls.push([0, method, params]);
+      if (method === "blockchain.transaction.broadcast") return txid;
+      throw new Error("unexpected lookup");
+    } },
+    { call: async (method, params) => {
+      calls.push([1, method, params]);
+      throw new Error("unexpected second-provider call");
+    } },
+  ];
+
+  const result = await broadcastPusdTransactionOnce(sessions, raw, txid);
+  assert.deepEqual(result, { txid, relayStatus: "accepted" });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][1], "blockchain.transaction.broadcast");
+});
+
+test("PUSD broadcaster resolves a lost relay response by finding the exact tx on a provider", async () => {
+  const raw = sampleRawTransactionHex();
+  const txid = transactionIdFromHex(raw);
+  const calls = [];
+  const sessions = [
+    { call: async (method, params) => {
+      calls.push([0, method]);
+      if (method === "blockchain.transaction.broadcast") throw new Error("socket timed out");
+      if (method === "blockchain.transaction.get") throw new Error("not found here");
+      throw new Error("unexpected method");
+    } },
+    { call: async (method, params) => {
+      calls.push([1, method]);
+      if (method === "blockchain.transaction.get") return raw;
+      throw new Error("second provider must never receive a broadcast");
+    } },
+  ];
+
+  const result = await broadcastPusdTransactionOnce(sessions, raw, txid);
+  assert.deepEqual(result, { txid, relayStatus: "already-known" });
+  assert.deepEqual(calls.map((call) => call[1]), [
+    "blockchain.transaction.broadcast",
+    "blockchain.transaction.get",
+    "blockchain.transaction.get",
+  ]);
+});
+
+test("PUSD broadcaster never retries when a relay result remains unknown", async () => {
+  const raw = sampleRawTransactionHex();
+  const txid = transactionIdFromHex(raw);
+  const calls = [];
+  const sessions = [
+    { call: async (method) => {
+      calls.push([0, method]);
+      if (method === "blockchain.transaction.broadcast") throw new Error("socket timed out");
+      throw new Error("transaction not found");
+    } },
+    { call: async (method) => {
+      calls.push([1, method]);
+      throw new Error("transaction not found");
+    } },
+  ];
+
+  await assert.rejects(
+    broadcastPusdTransactionOnce(sessions, raw, txid),
+    /result is UNKNOWN.*It was not retried/s,
+  );
+  assert.equal(calls.filter((call) => call[1] === "blockchain.transaction.broadcast").length, 1);
+  assert.equal(calls.some((call) => call[0] === 1 && call[1] === "blockchain.transaction.broadcast"), false);
+});
+
+test("PUSD broadcaster rejects a transaction ID that does not match the signed bytes", async () => {
+  const raw = sampleRawTransactionHex();
+  let called = false;
+  const sessions = [
+    { call: async () => { called = true; throw new Error("must not be called"); } },
+    { call: async () => { called = true; throw new Error("must not be called"); } },
+  ];
+  await assert.rejects(
+    broadcastPusdTransactionOnce(sessions, raw, "ab".repeat(32)),
+    /does not match the exact signed transaction bytes/,
+  );
+  assert.equal(called, false);
 });
