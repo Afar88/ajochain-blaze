@@ -263,23 +263,30 @@ export async function fetchMainnetTransactionStatus(txid: string): Promise<Mainn
     (result.confirmations === null ||
       (Number.isSafeInteger(result.confirmations) && result.confirmations >= 0));
 
-  const validConfirmed = result.status !== "confirmed" || (
-    result.providerConfidence >= 2 &&
-    result.confirmations !== null && result.confirmations >= 1 &&
-    Number.isSafeInteger(result.blockHeight) && result.blockHeight >= 1 &&
-    typeof result.blockHash === "string" && /^[0-9a-f]{64}$/i.test(result.blockHash) &&
-    Number.isSafeInteger(result.tipHeight) && result.tipHeight >= result.blockHeight &&
-    typeof result.tipHash === "string" && /^[0-9a-f]{64}$/i.test(result.tipHash)
-  );
-  const validPending = result.status !== "pending" || (
-    result.providerConfidence >= 2 && result.confirmations === 0 &&
-    Number.isSafeInteger(result.tipHeight) && result.tipHeight >= 1 &&
-    typeof result.tipHash === "string" && /^[0-9a-f]{64}$/i.test(result.tipHash)
-  );
-  const validUnknown = result.status !== "unknown" || result.confirmations === null;
-
-  if (!validBase || !validConfirmed || !validPending || !validUnknown) {
+  if (!validBase) {
     throw new Error("Mainnet transaction-status response failed validation.");
+  }
+
+  if (result.status === "confirmed") {
+    const blockHeight = result.blockHeight;
+    const tipHeight = result.tipHeight;
+    if (result.providerConfidence < 2 ||
+        typeof result.confirmations !== "number" || result.confirmations < 1 ||
+        typeof blockHeight !== "number" || !Number.isSafeInteger(blockHeight) || blockHeight < 1 ||
+        typeof result.blockHash !== "string" || !/^[0-9a-f]{64}$/i.test(result.blockHash) ||
+        typeof tipHeight !== "number" || !Number.isSafeInteger(tipHeight) || tipHeight < blockHeight ||
+        typeof result.tipHash !== "string" || !/^[0-9a-f]{64}$/i.test(result.tipHash)) {
+      throw new Error("Confirmed Mainnet transaction response failed confirmation-proof validation.");
+    }
+  } else if (result.status === "pending") {
+    if (result.providerConfidence < 2 || result.confirmations !== 0 ||
+        typeof result.tipHeight !== "number" || !Number.isSafeInteger(result.tipHeight) ||
+        result.tipHeight < 1 ||
+        typeof result.tipHash !== "string" || !/^[0-9a-f]{64}$/i.test(result.tipHash)) {
+      throw new Error("Pending Mainnet transaction response failed provider-quorum validation.");
+    }
+  } else if (result.confirmations !== null) {
+    throw new Error("Unknown Mainnet transaction response cannot claim a confirmation count.");
   }
   return result;
 }
