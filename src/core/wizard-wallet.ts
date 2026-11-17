@@ -11,6 +11,15 @@ export type WalletState = 'idle' | 'connecting' | 'connected' | 'reconnecting' |
 
 type Listener = () => void;
 
+/** Keep temporary relay drops visible as recoverable, rather than as a dead wallet session. */
+export function wizardRelayStatusMessage(status: string, detail?: string): string | null {
+  if (status === "connected") return null;
+  const reason = typeof detail === "string" ? detail.trim() : "";
+  return reason
+    ? "WizardConnect relay interrupted: " + reason + ". AjoChain is retrying automatically."
+    : "WizardConnect relay is reconnecting. Keep this page open and return after Selene.";
+}
+
 const PATHS_STORAGE_KEY = 'ajochain:wizardconnect-paths:v1';
 const RECEIVE_INDEX_STORAGE_KEY = 'ajochain:wizardconnect-receive-index:v1';
 const ADDRESS_STORAGE_KEY = 'ajochain:wizardconnect-addresses:v1';
@@ -357,14 +366,16 @@ class WizardWallet {
     });
     mgr.on('reconnecting', () => {
       if (!this.isCurrent(mgr, generation)) return;
-      this.error = null;
       this.state = 'reconnecting';
       this.emit();
     });
-    mgr.on('disconnect', () => {
+    mgr.on('disconnect', (reason, detail) => {
       if (!this.isCurrent(mgr, generation)) return;
       this.clearConnectionWatchdog();
       const relay = this.relay;
+      const reasonText = String(reason ?? "");
+      const detailText = typeof detail === "string" ? detail.trim() : "";
+      const protocolMismatch = reasonText === "protocol_mismatch";
       this.generation++;
       this.mgr = null;
       this.relay = null;
@@ -373,16 +384,32 @@ class WizardWallet {
       this.walletName = null;
       this.receiveIndex = loadReceiveIndex();
       this.state = 'disconnected';
-      // A dropped mobile/background relay is not the user's request to forget
-      // this wallet. Preserve the encrypted WizardConnect session so it can
-      // be resumed when the browser returns to the foreground.
-      this.cleanup(mgr, relay, false);
+      this.error = detailText || (protocolMismatch
+        ? "Selene and AjoChain could not agree on a WizardConnect protocol. Start a fresh pairing."
+        : "Selene closed the WizardConnect session. Start a fresh pairing to reconnect.");
+      // A DappConnectionManager disconnect is a remote wallet disconnect or a
+      // protocol mismatch, not an ordinary background relay interruption.
+      // Such a session must not be silently resumed with stale credentials.
+      this.cleanup(mgr, relay, true);
       this.emit();
     });
 
     try {
       const relay = initiateDappRelay((payload) => {
-        if (this.isCurrent(mgr, generation)) mgr.updateConnection(payload.client, payload.status);
+        if (!this.isCurrent(mgr, generation)) return;
+        mgr.updateConnection(payload.client, payload.status);
+        const status = payload.status as { status?: string; error?: string | null };
+        if (status.status === "reconnecting" || status.status === "disconnected") {
+          this.clearConnectionWatchdog();
+          this.state = "reconnecting";
+          this.error = wizardRelayStatusMessage(status.status, status.error ?? undefined);
+          this.emit();
+        } else if (status.status === "connected") {
+          // The relay is back; wait for wallet_ready before marking the wallet
+          // connected again. The manager will emit walletready after the handshake.
+          this.error = null;
+          this.emit();
+        }
       }, { existingCredentials: existing });
       if (!this.isCurrent(mgr, generation)) {
         this.cleanup(mgr, relay);
