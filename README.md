@@ -8,7 +8,7 @@ This repository is the **independent BCH BLAZE build**. It is not a copy, mirror
 
 - Mainnet-first architecture for Bitcoin Cash.
 - WizardConnect wallet connection for compatible BCH wallets, including Selene.
-- BCH contributions are the current Chipnet covenant prototype. PUSD uses the real Mainnet CashToken category and now has a separately versioned Mainnet V3 covenant prototype under development, with the shared 1% treasury output, member-owned reserve and pre-payout cancellation design.
+- BCH contributions have a tested Chipnet V3 auto-reserve prototype and a separate, guarded Mainnet V3 genesis-preview adapter. PUSD uses the real Mainnet CashToken category and a Mainnet V3 covenant prototype under development. Both Mainnet paths pin the same 1% project-fee treasury, with member-owned reserves and pre-payout cancellation rules.
 - Transparent circle schedules, member payment records, and per-member credit accounting.
 - Mobile-first, accessible fintech UX.
 - Clear transaction previews, fee visibility, and confirmation states.
@@ -19,6 +19,7 @@ This repository is the **independent BCH BLAZE build**. It is not a copy, mirror
 - Local circle drafts persist in the current browser and can be edited or deleted; they are not on-chain records.
 - WizardConnect dapp relay integration with encrypted saved-session resume, mobile focus/visibility recovery, overlap protection, Selene receive-index matching and signed-transaction intent verification.
 - BCH/Chipnet network selection and full CashAddress checksum + network-prefix validation.
+- Separate BCH and PUSD Mainnet circle workspaces are visible in Circles. They can validate drafts and prepare unsigned genesis previews only; Mainnet signing and broadcasting remain locked.
 - The current new-circle flow uses the `fee-v3-auto-reserve` covenant (`AjoCircleV3AutoReserve`): each member funds the current round, and each non-final recipient carries exactly one next contribution forward in their own receipt. The reserve is consumed on the following payout; later rounds still require fresh contributions. The older `fee-v2-escrow` covenant remains versioned separately and requires members to lock every remaining scheduled contribution before payout. Both are Chipnet-only prototypes. The workspace includes a member accountability ledger showing paid-in, member-owned credit, received payout, next-round shortfall and payout lock status.
 - Existing `fee-v1` invites remain on their original rolling-credit contract and are clearly marked as legacy; they do not gain the full-cycle default guarantee retroactively.
 - Ported BCH V2 member-receipt covenant source in `contracts/AjoCircleV2.cash`; each payout consumes one round contribution from every member receipt, including the previous payout recipient.
@@ -65,7 +66,7 @@ See [legacy porting and deployment boundaries](docs/LEGACY_REPO_PORTING_AND_DEPL
 
 ## Mainnet launch status
 
-The current deployment is a **Mainnet read-only release**, not an approved real-value circles release. Classic BCH Mainnet signing/broadcast and PUSD Mainnet spending remain fail-closed; the V2 member-credit covenant remains Chipnet-only. The server cannot be switched to PUSD broadcasting with an environment variable. See [Mainnet release checklist](docs/MAINNET_RELEASE_CHECKLIST.md) and [PUSD Mainnet spending checklist](docs/PUSD_MAINNET_RELEASE_CHECKLIST.md) for the evidence required before any real-value release.
+The current deployment is a **Mainnet read-only release**, not an approved real-value circles release. Classic BCH Mainnet signing/broadcast and PUSD Mainnet spending remain fail-closed; the V2 full-cycle escrow remains Chipnet-only. BCH V3 has a separate Mainnet unsigned genesis-preview adapter, but Mainnet signing and broadcasting remain locked. The server cannot be switched to PUSD broadcasting with an environment variable. See [Mainnet release checklist](docs/MAINNET_RELEASE_CHECKLIST.md) and [PUSD Mainnet spending checklist](docs/PUSD_MAINNET_RELEASE_CHECKLIST.md) for the evidence required before any real-value release.
 
 ## Network and safety policy
 
