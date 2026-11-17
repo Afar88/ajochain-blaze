@@ -227,10 +227,6 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
         }
       }
 
-      // Once a real genesis plan has been built, a prior setup output has either
-      // been consumed as the genesis outpoint or is no longer needed.
-      try { window.localStorage.removeItem(pendingKey); } catch { /* best effort */ }
-
       setContractAddress(plan.contract.address);
       try {
         assertBchTransactionBroadcastAllowed(network);
@@ -255,6 +251,10 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
       );
       const txid = await plan.provider.sendRawTransaction(signed.signedTransaction);
       persist(plan.params);
+      // Retain the setup outpoint lock until the category transaction succeeds.
+      // This prevents a retry from creating a duplicate setup after an uncertain
+      // circle-creation broadcast.
+      try { window.localStorage.removeItem(pendingKey); } catch { /* best effort */ }
       setNotice("Circle creation broadcast on Chipnet. Transaction ID: " + txid + ". Save and share the invite link below.");
       setStatus(null);
     } catch (cause) {
