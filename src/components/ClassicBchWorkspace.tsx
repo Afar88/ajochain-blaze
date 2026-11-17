@@ -111,6 +111,8 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
           const parsed = JSON.parse(rawPending) as { status?: unknown; txid?: unknown; createdAt?: unknown };
           if (parsed.status === "broadcast" && typeof parsed.txid === "string" && /^[0-9a-f]{64}$/i.test(parsed.txid)) {
             pendingSetup = { status: "broadcast", txid: parsed.txid, createdAt: Number(parsed.createdAt) || undefined };
+          } else if (parsed.status === "unknown") {
+            throw new Error("AjoChain could not confirm whether the previous setup transaction reached Chipnet. Check Selene and the Chipnet wallet history before retrying; duplicate setup transactions are blocked.");
           } else {
             throw new Error("A previous CashTokens setup attempt is still recorded for this wallet. Check Selene and the Chipnet transaction history before trying again; AjoChain will not create a duplicate setup transaction.");
           }
@@ -163,17 +165,35 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
             throw new Error("Browser storage is unavailable. AjoChain cannot safely track a pending setup transaction, so nothing was signed or broadcast.");
           }
 
-          let setupTxid: string;
+          let signedSetup: Awaited<ReturnType<typeof wallet.signAndVerify>>;
           try {
-            const signedSetup = await wallet.signAndVerify(
+            signedSetup = await wallet.signAndVerify(
               setup.wc,
               setup.walletInputs,
               "Prepare CashTokens genesis output for AjoChain",
             );
-            setupTxid = await setup.provider.sendRawTransaction(signedSetup.signedTransaction);
           } catch (cause) {
             try { window.localStorage.removeItem(pendingKey); } catch { /* best effort */ }
             throw cause;
+          }
+
+          let setupTxid: string;
+          try {
+            setupTxid = await setup.provider.sendRawTransaction(signedSetup.signedTransaction);
+          } catch (cause) {
+            // Submission may have reached the node even when the response was
+            // lost. Keep the retry lock rather than risk broadcasting twice.
+            try {
+              window.localStorage.setItem(pendingKey, JSON.stringify({
+                status: "unknown",
+                createdAt: Date.now(),
+              }));
+            } catch { /* keep the earlier signing reservation if possible */ }
+            throw new Error(
+              "The setup transaction was signed, but Chipnet did not confirm its submission. " +
+              "AjoChain has blocked automatic retries to avoid a duplicate. Check your wallet history first. " +
+              message(cause),
+            );
           }
 
           try {
