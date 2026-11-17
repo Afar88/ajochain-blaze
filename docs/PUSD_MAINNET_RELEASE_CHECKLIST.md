@@ -30,6 +30,8 @@ This document is the release checklist referenced by `src/core/pusd-mainnet-guar
 - [ ] Re-query all prevouts after verification and immediately before a broadcast attempt.
 - [ ] Verify behavior for server disagreement, timeout, partial broadcast acceptance, unknown result, duplicate submissions, mempool conflicts and chain reorgs.
 
+A read-only `GET /api/transaction/status?txid=<64-hex-txid>` endpoint has been added. It requires matching raw transaction bytes from every configured provider and verifies an identical transaction merkle proof against the same block header from every provider before returning `confirmed`. It returns `pending` only when all providers know the same transaction but return ordinary no-proof responses; provider disagreement or lookup/proof errors return `unknown`. Subsequent reads may downgrade status after a reorganisation. This is provider-quorum merkle verification, not local SPV/chainwork validation, durable history, or full conflict/replacement tracking. Those remaining requirements stay open.
+
 ## Wallet and operational testing
 
 - [ ] End-to-end tests with real supported Selene/WizardConnect versions and a small controlled Mainnet transfer.
