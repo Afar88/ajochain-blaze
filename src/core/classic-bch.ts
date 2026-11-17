@@ -32,8 +32,8 @@ export const CLASSIC_DEFAULT_MAX_FEE = 10_000n;
 export class CashTokensGenesisUtxoMissingError extends Error {
   constructor() {
     super(
-      "CashTokens category creation requires a non-token wallet UTXO at output index 0. " +
-      "There is no 3,000-satoshi minimum for that coin. A setup transaction can create the required output using existing BCH.",
+      "CashTokens category creation requires a spendable non-token wallet output at index 0. " +
+      "A setup transaction can create the required output using existing BCH.",
     );
     this.name = "CashTokensGenesisUtxoMissingError";
   }
@@ -424,7 +424,7 @@ export async function planClassicGenesisSetup(walletAddress: string) {
     CASH_TOKEN_GENESIS_SETUP_OUTPUT_SATOSHIS.toString() +
     "-satoshi vout-0 output, pay the miner fee, and retain at least " +
     CASH_TOKEN_GENESIS_SETUP_MIN_CHANGE_SATOSHIS.toString() +
-    " sats of change reserved for the follow-up circle transaction. No transaction was prepared; do not add funds until the wallet UTXOs are reviewed.",
+    " sats of dust-safe change. No extra reserve is required. No transaction was prepared; do not add funds until the wallet UTXOs are reviewed.",
   );
 }
 
@@ -446,21 +446,34 @@ export async function planClassicGenesis(
   const params: ClassicCircleParams = { ...draft, stateCategory: genesis.txid };
   const contract = classicCircleContract(params, provider);
   const inputs: SpendableUtxo[] = [genesis];
-  let total = genesis.satoshis;
-  for (const utxo of walletUtxos) {
-    if (utxo.txid === genesis.txid && utxo.vout === genesis.vout) continue;
-    if (total >= CLASSIC_STATE_DUST + 5_000n + CLASSIC_CHANGE_DUST) break;
-    inputs.push(utxo);
-    total += utxo.satoshis;
-  }
-  const provisional = createGenesisBuilder(
-    provider, walletAddress, inputs, contract.tokenAddress, params.stateCategory,
-    CLASSIC_CHANGE_DUST,
+  const remainingUtxos = walletUtxos.filter((utxo) =>
+    utxo.txid !== genesis.txid || utxo.vout !== genesis.vout,
   );
-  const fee = feeFor(provisional);
-  const change = total - CLASSIC_STATE_DUST - fee;
-  if (change < CLASSIC_CHANGE_DUST) {
-    throw new Error("Not enough BCH to create the circle, pay the miner fee, and keep dust-safe wallet change.");
+  let total = genesis.satoshis;
+  let fee = 0n;
+  let change = 0n;
+
+  // Add wallet inputs only until the real estimated fee and dust-safe change
+  // are covered. Do not impose an arbitrary 5,000-satoshi reserve.
+  while (true) {
+    const provisional = createGenesisBuilder(
+      provider, walletAddress, inputs, contract.tokenAddress, params.stateCategory,
+      CLASSIC_CHANGE_DUST,
+    );
+    fee = feeFor(provisional);
+    change = total - CLASSIC_STATE_DUST - fee;
+    if (change >= CLASSIC_CHANGE_DUST) break;
+
+    const nextUtxo = remainingUtxos.shift();
+    if (!nextUtxo) {
+      throw new Error(
+        "Not enough BCH to create the circle, pay its estimated miner fee, and keep " +
+        CLASSIC_CHANGE_DUST.toString() + " sats of dust-safe change. " +
+        "No extra reserve is required.",
+      );
+    }
+    inputs.push(nextUtxo);
+    total += nextUtxo.satoshis;
   }
   const builder = createGenesisBuilder(
     provider, walletAddress, inputs, contract.tokenAddress, params.stateCategory, change,
