@@ -193,7 +193,7 @@ async function cancel(provider: MockNetworkProvider, contract: Contract, escrows
   const { state, receipts, escrowUtxos } = await current(contract, escrows);
   const feeAddress = pkhToAddress(initiator.pkh, "chipnet");
   const feeInput = provider.addUtxo(feeAddress, randomUtxo({ satoshis: 25_000n }));
-  const circleUnlock = contract.unlock.cancel(initiator.publicKey, initiator.signature);
+  const circleUnlock = contract.unlock.cancel();
   const builder = new TransactionBuilder({ provider })
     .addInput(state, circleUnlock);
   builder.addInputs(receipts, circleUnlock);
