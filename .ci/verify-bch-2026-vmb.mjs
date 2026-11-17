@@ -28,6 +28,7 @@ const fixtureSets = {
   ],
 };
 
+const fullCorpus = process.argv.includes("--full");
 const standardVm = createVirtualMachineBch2026(true);
 const nonstandardVm = createVirtualMachineBch2026(false);
 const failures = [];
@@ -48,6 +49,25 @@ async function readVectors(mode, name) {
   return { path, vectors };
 }
 
+async function selectedFixtureSets() {
+  if (!fullCorpus) return fixtureSets;
+  const modes = ["standard", "nonstandard", "invalid"];
+  const discovered = {};
+  for (const mode of modes) {
+    const directory = join(generatedRoot, `bch_2026_${mode}`);
+    const files = (await readdir(directory))
+      .filter((file) => file.endsWith(".vmb_tests.json"))
+      .sort();
+    if (files.length === 0) {
+      throw new Error(`Full BCH 2026 corpus is missing fixture files for mode ${mode}.`);
+    }
+    discovered[mode] = files.map((file) =>
+      file.slice(0, -".vmb_tests.json".length),
+    );
+  }
+  return discovered;
+}
+
 function accepts(vm, transactionHex, sourceOutputsHex) {
   try {
     const transaction = decodeTransaction(hexToBin(transactionHex));
@@ -60,7 +80,9 @@ function accepts(vm, transactionHex, sourceOutputsHex) {
   }
 }
 
-for (const [mode, names] of Object.entries(fixtureSets)) {
+const activeFixtureSets = await selectedFixtureSets();
+
+for (const [mode, names] of Object.entries(activeFixtureSets)) {
   for (const name of names) {
     const { path, vectors } = await readVectors(mode, name);
     totalFiles += 1;
@@ -98,7 +120,7 @@ for (const [mode, names] of Object.entries(fixtureSets)) {
 }
 
 console.log(
-  `BCH 2026 targeted VMB suite: ${totalVectors} vectors across ${totalFiles} fixture files.`,
+  `BCH 2026 ${fullCorpus ? "full upstream" : "targeted"} VMB suite: ${totalVectors} vectors across ${totalFiles} fixture files.`,
 );
 console.log(
   "Coverage: bitwise operations, functions, bounded loops, Pay-to-Script, and flow control.",

@@ -1,0 +1,31 @@
+name: BCH 2026 full upstream VMB audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-vmb:
+    name: Full BCH 2026 VMB fixture corpus
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout BLAZE
+        uses: actions/checkout@v4
+      - name: Checkout pinned complete Libauth VMB fixtures
+        uses: actions/checkout@v4
+        with:
+          repository: bitauth/libauth
+          ref: d28da7f595cbd747c1e1125477db655f740f3dbc
+          path: .ci/libauth
+          fetch-depth: 1
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install the exact Libauth verifier
+        run: npm install --prefix .ci --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @bitauth/libauth@3.1.0-next.8
+      - name: Verify all generated BCH 2026 VMB vectors
+        run: node .ci/verify-bch-2026-vmb.mjs .ci/libauth/src/lib/vmb-tests/generated --full
