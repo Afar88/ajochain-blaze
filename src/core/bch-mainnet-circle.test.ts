@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { encodeCashAddress } from "@bitauth/libauth";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "./project-treasury";
 import { createBchMainnetCircleDraft } from "./bch-mainnet-circle";
-import { validateV2FeeCircleDraft, v2FeeCancelWalletInputIndex, validateV2FeePayoutFeePayerAddress } from "./v2-fee-bch";
+import { validateV2FeeCircleDraft, v2FeeCancelWalletInputIndexes, validateV2FeePayoutFeePayerAddress } from "./v2-fee-bch";
 
 function address(seed: number): string {
   const result = encodeCashAddress({
@@ -61,10 +61,10 @@ describe("BCH Mainnet V3 circle adapter", () => {
       .toThrow(/Mainnet V3 covenant cannot be used on Chipnet/);
   });
 
-  it("only requests a wallet signature for the initiator funding input on cancellation", () => {
-    expect(v2FeeCancelWalletInputIndex(2)).toBe(3);
-    expect(v2FeeCancelWalletInputIndex(5)).toBe(6);
-    expect(() => v2FeeCancelWalletInputIndex(1)).toThrow(/2–5 members/);
+  it("requests the initiator signature for the state NFT, every receipt and fee input on cancellation", () => {
+    expect(v2FeeCancelWalletInputIndexes(2)).toEqual([0, 1, 2, 3]);
+    expect(v2FeeCancelWalletInputIndexes(5)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(() => v2FeeCancelWalletInputIndexes(1)).toThrow(/2–5 members/);
   });
 
   it("validates payout fee sponsors against the selected Mainnet or Chipnet address prefix", () => {
