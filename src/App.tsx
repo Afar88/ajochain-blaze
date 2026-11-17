@@ -9,6 +9,7 @@ import { formatAssetAmount, parseAssetAmount, PUSD_ASSET } from "./core/assets";
 import type { PusdTransferPlan } from "./core/pusd-transaction-builder";
 import type { AuthenticatedPusdUtxo } from "./core/pusd-utxo";
 import { PUSD_MAINNET_SPENDING_ENABLED } from "./core/pusd-mainnet-guard";
+import { restoreClassicCircleFromInvite, saveClassicCircle } from "./core/circle-account";
 const ClassicBchWorkspace = lazy(() => import("./components/ClassicBchWorkspace"));
 const V2FeeBchWorkspace = lazy(() => import("./components/V2FeeBchWorkspace"));
 const PusdMainnetCircleWorkspace = lazy(() => import("./components/PusdMainnetCircleWorkspace"));
@@ -81,6 +82,27 @@ export default function App() {
   const walletAddress = walletClient?.address(network) ?? null;
   const connected = walletView.state === "connected";
   const menuLabel = pageLabels[page];
+
+  useEffect(() => {
+    const restoreInviteFromHash = () => {
+      if (!window.location.hash.startsWith("#/classic/")) return;
+      try {
+        // Shared Classic invite URLs are directly restorable on a fresh device.
+        // Save the decoded invite locally before attempting any network reads.
+        const params = restoreClassicCircleFromInvite(window.location.href);
+        saveClassicCircle(window.localStorage, params);
+        setNetwork(params.network);
+        setCircleWorkspace("bch-classic");
+        setPage("circles");
+        setMenuOpen(false);
+      } catch {
+        // Do not silently switch workspaces for a malformed or unsupported link.
+      }
+    };
+    restoreInviteFromHash();
+    window.addEventListener("hashchange", restoreInviteFromHash);
+    return () => window.removeEventListener("hashchange", restoreInviteFromHash);
+  }, []);
 
   useEffect(() => {
     const root = document.documentElement;
