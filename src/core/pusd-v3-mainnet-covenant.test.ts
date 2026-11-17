@@ -108,7 +108,7 @@ async function deposit(
     satoshis: DUST,
     token: { category: PUSD, amount },
   }));
-  const reserveAddress = pkhToAddress(initiator.pkh, "chipnet");
+  const reserveAddress = memberAddress;
   const reserve = provider.addUtxo(reserveAddress, randomUtxo({ satoshis: 20_000n }));
   const circleUnlock = contract.unlock.deposit(BigInt(index), amount);
   const builder = new TransactionBuilder({ provider })
@@ -116,7 +116,7 @@ async function deposit(
     .addInput(receipts[index], circleUnlock)
     .addInput(escrowUtxos[index], escrows[index].unlock.attest())
     .addInput(funding, members[index].signature.unlockP2PKH())
-    .addInput(reserve, initiator.signature.unlockP2PKH())
+    .addInput(reserve, members[index].signature.unlockP2PKH())
     .addOutput({
       to: contract.tokenAddress, amount: state.satoshis,
       token: { category: STATE, amount: 0n, nft: { capability: "minting", commitment: state.token!.nft!.commitment } },
