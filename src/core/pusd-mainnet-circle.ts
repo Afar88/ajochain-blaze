@@ -1,13 +1,12 @@
 import {
   Contract,
-  getDustThreshold,
   TransactionBuilder,
   placeholderP2PKHUnlocker,
   type Artifact,
   type NetworkProvider,
   type SpendableUtxo,
 } from "cashscript";
-import { binToHex, decodeCashAddress, hexToBin } from "@bitauth/libauth";
+import { binToHex, decodeCashAddress, getDustThreshold, hexToBin } from "@bitauth/libauth";
 import circleArtifactJson from "../../contracts/AjoCirclePUSDV3Mainnet.json" with { type: "json" };
 import escrowArtifactJson from "../../contracts/AjoPUSDMemberEscrowV3.json" with { type: "json" };
 import { CASH_TOKEN_MAX_AMOUNT, PUSD_ASSET } from "./assets";
