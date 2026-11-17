@@ -8,7 +8,8 @@ For each scheduled round, every member must have one contribution available in t
 
 ### Fee rules
 
-- The project fee is **1% of the gross round pot**, calculated with integer floor division.
+- On **every payout**, including the final recipient's payout, the project fee is **1% of the gross round pot**: `memberCount × contribution`, calculated with integer floor division. This is the full pooled contribution amount that the scheduled collector receives before the project fee and any next-round reserve are deducted; it is not 1% of the recipient's net payout.
+- The same formula applies to every member in payout order. For example, three members contributing 100 PUSD each create a 300 PUSD gross pot and a 3 PUSD project fee on each round. The fee is paid as a separate PUSD output to the fixed project-fee address.
 - The destination is committed as a fixed constructor argument at circle creation. It cannot be changed for that circle later.
 - The project fee is a separate output, not a miner-fee reserve.
 - Miner fees are separately bounded by the circle's maximum miner-fee value.
@@ -63,6 +64,12 @@ The canonical ParyonUSD category is pinned to the published Mainnet category and
 To provide PUSD read-only balance service in Vercel, configure `ELECTRUM_SERVERS` with at least two independent secure `wss://` Electrum endpoints on different hostnames. `ALLOWED_ORIGINS` may be configured for separately hosted frontends. Do not enable `ENABLE_MAINNET_BROADCAST`.
 
 A separate Mainnet-targeted PUSD V3 covenant, member escrow sidecar, lifecycle planners, state/receipt/escrow chain reader, fee/reserve/cancellation tests and Mainnet-only workspace are now present on the feature branch. The UI can prepare unsigned genesis, deposit, payout and pre-payout cancellation previews, and display current per-member escrow credit after a read-quorum check. It does not sign or broadcast. The shared Mainnet treasury address is pinned for both BCH and PUSD; it still requires independent verification and review as part of the release. PUSD circle operations remain **disabled** until exact signed-byte verification, fresh-prevout revalidation, independent Selene/WizardConnect tests, broadcast/confirmation/reorg handling and external audit are complete. There is no authenticated PUSD Chipnet category. Do not use the Mainnet PUSD category as a Chipnet category. PUSD wallet verification is not permission to spend.
+
+### PUSD V3 automatic next-round reserve
+
+PUSD V3 follows the same **one-next-round-contribution reserve** rule as BCH V3 for the full scheduled rotation. On payout round `r`, the scheduled recipient's own escrow is credited with exactly one `contribution` amount from that payout when `r + 1 < memberCount`. That amount is the exact per-member contribution fixed when the circle is created; it is not an estimate or a percentage. The recipient therefore has their next installment already reserved for the immediately following round.
+
+Every member's receipt is debited by one contribution during each payout. The recipient's reserve is consumed at the next payout, after which that member must fund a later installment in the normal way. The same rule is applied to each scheduled recipient until the last round. The **final recipient receives no withholding**, because the rotation ends and there is no next installment. Only the scheduled recipient receives the reserve; another member's credit cannot be used to cover it. This rolling reserve is not full-cycle prefunding: it secures one next installment at a time, rather than every future installment.
 
 ## Mainnet safety
 
