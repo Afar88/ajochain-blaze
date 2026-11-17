@@ -365,8 +365,8 @@ describe("AjoChain V3 automatic future-contribution reserve covenant", () => {
     };
     const cases = [
       { round: 2, credits: [0n, CONTRIBUTION, 0n, 0n, 0n], direct: [1n, 2n, 2n, 2n, 2n] },
-      { round: 3, credits: [0n, 0n, CONTRIBUTION, 0n, 0n], direct: [2n, 2n, 2n, 3n, 3n] },
-      { round: 4, credits: [0n, 0n, 0n, CONTRIBUTION, 0n], direct: [3n, 3n, 3n, 3n, 4n] },
+      { round: 3, credits: [0n, 0n, CONTRIBUTION, 0n, 0n], direct: [2n, 2n, 3n, 3n, 3n] },
+      { round: 4, credits: [0n, 0n, 0n, CONTRIBUTION, 0n], direct: [3n, 3n, 3n, 4n, 4n] },
       { round: 5, credits: [0n, 0n, 0n, 0n, 0n], direct: [4n, 4n, 4n, 4n, 5n] },
     ];
     for (const snapshot of cases) {
