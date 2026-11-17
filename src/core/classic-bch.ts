@@ -13,6 +13,7 @@ import { ElectrumWebSocket } from "@electrum-cash/web-socket";
 import artifactJson from "../../contracts/AjoCircle.json" with { type: "json" };
 import { MainnetQuorumNetworkProvider } from "./mainnet-quorum-provider";
 import { MAX_CIRCLE_MEMBERS, MIN_CIRCLE_MEMBERS } from "./member-ledger";
+import { selectCashTokensGenesisUtxo } from "./cash-token-genesis";
 
 export type ClassicNetwork = "mainnet" | "chipnet";
 export const CLASSIC_MIN_MEMBERS = MIN_CIRCLE_MEMBERS;
@@ -304,14 +305,16 @@ export async function planClassicGenesis(
   validateClassicCircle(draft);
   const provider = await getClassicProvider(draft.network);
   const walletUtxos = (await provider.getUtxos(walletAddress))
-    .filter((utxo) => !utxo.token && utxo.satoshis > 0n);
-  const genesis = walletUtxos.find((utxo) => utxo.vout === 0 && utxo.satoshis >= 3_000n);
+    .filter((utxo) => !utxo.token && utxo.satoshis > 0n)
+    .sort((a, b) => a.satoshis === b.satoshis
+      ? a.txid.localeCompare(b.txid) || a.vout - b.vout
+      : a.satoshis > b.satoshis ? -1 : 1);
+  const genesis = selectCashTokensGenesisUtxo(walletUtxos);
   if (!genesis) {
-    const total = walletUtxos.reduce((sum, utxo) => sum + utxo.satoshis, 0n);
     throw new Error(
-      "CashTokens genesis needs a non-token wallet UTXO at output index 0 with at least 3,000 sats. " +
-      walletUtxos.length + " BCH coin(s) were found, totalling " + total.toString() +
-      " sats. Check the connected receive address before sending more funds.",
+      "CashTokens category creation requires a non-token wallet UTXO at output index 0. " +
+      "There is no 3,000-satoshi minimum for that coin. If your wallet has no eligible output-0 coin, " +
+      "a setup transaction can create one using existing BCH; do not add funds until the wallet UTXOs are checked.",
     );
   }
   const params: ClassicCircleParams = { ...draft, stateCategory: genesis.txid };
