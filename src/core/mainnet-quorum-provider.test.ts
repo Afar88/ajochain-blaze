@@ -66,7 +66,7 @@ describe("BCH Mainnet quorum provider", () => {
     const valid = {
       height: BCH_MAINNET_FORK_CHECKPOINT_HEIGHT + 10,
       headerHex: fresh,
-      genesisHeaderHex: genesisHeader,
+      genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH,
       forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH,
     };
     expect(validateMainnetTipQuorum([valid, valid], now).height)
