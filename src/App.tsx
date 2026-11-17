@@ -44,7 +44,7 @@ const pageLabels: Record<Page, string> = {
 export default function App() {
   const [network, setNetwork] = useState<NetworkId>(() => getDefaultNetwork(import.meta.env.PROD));
   const [page, setPage] = useState<Page>("overview");
-  const [circleWorkspace, setCircleWorkspace] = useState<"bch-mainnet" | "pusd-mainnet" | "bch-fair-round" | "bch-classic">("bch-fair-round");
+  const [circleWorkspace, setCircleWorkspace] = useState<"bch-mainnet" | "pusd-mainnet" | "bch-fair-round" | "bch-classic">(() => getDefaultNetwork(import.meta.env.PROD) === "mainnet" ? "bch-mainnet" : "bch-fair-round");
   const [menuOpen, setMenuOpen] = useState(false);
   const [walletClient, setWalletClient] = useState<WalletClient | null>(null);
   const [walletView, setWalletView] = useState<WalletView>({
@@ -241,6 +241,10 @@ export default function App() {
 
   const changeNetwork = (next: NetworkId) => {
     setNetwork(next);
+    setCircleWorkspace((current) => {
+      if (next === "mainnet") return current === "bch-mainnet" || current === "pusd-mainnet" ? current : "bch-mainnet";
+      return current === "bch-fair-round" || current === "bch-classic" ? current : "bch-fair-round";
+    });
     setMenuOpen(false);
     setAddressMatchMessage("");
   };
@@ -362,15 +366,16 @@ export default function App() {
           <section className="page-section">
             <div className="page-intro">
               <span className="section-kicker">YOUR SAVINGS GROUPS</span>
-              <h1>Circle tools</h1>
-              <p>BCH and PUSD have separate Mainnet V3 workspaces. Mainnet signing and broadcast remain locked while the covenant and wallet paths are reviewed.</p>
+              <h1>{network === "mainnet" ? "Mainnet circles" : "Chipnet circles"}</h1>
+              <p>{network === "mainnet" ? "Only Bitcoin Cash Mainnet circles are shown here: native BCH or PUSD. Mainnet creation, signing and payouts remain locked until the release checks are complete." : "Only Chipnet test circles are shown here. Use test BCH to try the fair-round member-credit model or open a Classic V1 circle for compatibility testing."}</p>
             </div>
             <section className="circle-choice-guide" aria-label="Choose a circle type">
               <div className="circle-choice-heading">
                 <div><span className="section-kicker">CHOOSE YOUR CIRCLE</span><h2>What kind of circle do you want?</h2>
-                  <p>Pick the asset and rules that match your group. Each option explains where it runs and what members should expect.</p></div>
+                  <p>{network === "mainnet" ? "Choose between native BCH and PUSD. Both options are Mainnet-only previews at this stage." : "Choose the Chipnet circle rules that suit your group. Chipnet funds have no real-money value."}</p></div>
               </div>
               <div className="circle-choice-grid">
+                {network === "mainnet" && <>
                 <button type="button" className={circleWorkspace === "bch-mainnet" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-mainnet"} onClick={() => setCircleWorkspace("bch-mainnet")}>
                   <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status locked">Mainnet · preview</span></span>
                   <b>BCH automatic-reserve circle</b>
@@ -383,6 +388,8 @@ export default function App() {
                   <span>For groups that prefer ParyonUSD instead of BCH. Contributions and payouts are denominated in PUSD, with BCH needed separately for network fees.</span>
                   <small>Choose this if your group wants a stable-value token rather than BCH price exposure.</small>
                 </button>
+                </>}
+                {network === "chipnet" && <>
                 <button type="button" className={circleWorkspace === "bch-fair-round" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-fair-round"} onClick={() => setCircleWorkspace("bch-fair-round")}>
                   <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status testing">Chipnet · test</span></span>
                   <b>Fair-round BCH circle</b>
@@ -395,14 +402,19 @@ export default function App() {
                   <span>Original rotating savings circle with a simple aggregate BCH pot and payout order. It does not provide per-member contribution attribution.</span>
                   <small>Use for existing Classic V1 circles or compatibility testing, not for the newer accounting model.</small>
                 </button>
+                </>}
               </div>
-              <p className="circle-choice-disclaimer"><ShieldCheck size={15} /> Mainnet options are currently unsigned previews. No BCH or PUSD Mainnet circle can accept deposits or send payouts yet. Chipnet is for testing only and has no real-money value.</p>
+              <p className="circle-choice-disclaimer"><ShieldCheck size={15} /> {network === "mainnet" ? "Mainnet circles are unsigned previews. No BCH or PUSD Mainnet circle can accept deposits or send payouts yet." : "Chipnet is a testing network only. Use test BCH; it has no real-money value and cannot be used as Mainnet funds."}</p>
             </section>
             <Suspense fallback={<div className="workspace-loading"><span className="loading-orb" />Loading selected circle…</div>}>
-              <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-mainnet"}><BchMainnetCircleWorkspace network={network} walletConnected={connected} /></div>
-              <div className="circle-workspace-panel" hidden={circleWorkspace !== "pusd-mainnet"}><PusdMainnetCircleWorkspace network={network} walletConnected={connected} /></div>
-              <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-fair-round"}><V2FeeBchWorkspace network={network} walletConnected={connected} /></div>
-              <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-classic"}><ClassicBchWorkspace network={network} walletConnected={connected} /></div>
+              {network === "mainnet" && <>
+                <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-mainnet"}><BchMainnetCircleWorkspace network={network} walletConnected={connected} /></div>
+                <div className="circle-workspace-panel" hidden={circleWorkspace !== "pusd-mainnet"}><PusdMainnetCircleWorkspace network={network} walletConnected={connected} /></div>
+              </>}
+              {network === "chipnet" && <>
+                <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-fair-round"}><V2FeeBchWorkspace network={network} walletConnected={connected} /></div>
+                <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-classic"}><ClassicBchWorkspace network={network} walletConnected={connected} /></div>
+              </>}
             </Suspense>
           </section>
         )}
