@@ -13,7 +13,7 @@ import { ElectrumWebSocket } from "@electrum-cash/web-socket";
 import artifactJson from "../../contracts/AjoCircle.json" with { type: "json" };
 import { MainnetQuorumNetworkProvider } from "./mainnet-quorum-provider";
 import { MAX_CIRCLE_MEMBERS, MIN_CIRCLE_MEMBERS } from "./member-ledger";
-import { calculateGenesisSetupChange, CASH_TOKEN_GENESIS_SETUP_OUTPUT_SATOSHIS, selectCashTokensGenesisUtxo } from "./cash-token-genesis";
+import { calculateGenesisSetupChange, CASH_TOKEN_GENESIS_SETUP_MIN_CHANGE_SATOSHIS, CASH_TOKEN_GENESIS_SETUP_OUTPUT_SATOSHIS, selectCashTokensGenesisUtxo } from "./cash-token-genesis";
 import {
   CHIPNET_ELECTRUM_ENDPOINTS,
   ELECTRUM_PROTOCOL_VERSION,
@@ -421,8 +421,8 @@ export async function planClassicGenesisSetup(walletAddress: string) {
     "The wallet's available non-token BCH is not enough to create a " +
     CASH_TOKEN_GENESIS_SETUP_OUTPUT_SATOSHIS.toString() +
     "-satoshi vout-0 output, pay the miner fee, and retain at least " +
-    CLASSIC_CHANGE_DUST.toString() +
-    " sats of wallet change. No transaction was prepared; do not add funds until the wallet UTXOs are reviewed.",
+    CASH_TOKEN_GENESIS_SETUP_MIN_CHANGE_SATOSHIS.toString() +
+    " sats of change reserved for the follow-up circle transaction. No transaction was prepared; do not add funds until the wallet UTXOs are reviewed.",
   );
 }
 
