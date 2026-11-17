@@ -51,7 +51,7 @@ contract AjoCirclePUSDV3Mainnet(
         require(amount > 0 && amount <= 9223372036854775807);
         require(maxFee >= 0);
         require(this.activeInputIndex >= 0 && this.activeInputIndex <= 2);
-        require(tx.inputs.length == 5 && tx.outputs.length == 4);
+        require(tx.inputs.length == 5 && (tx.outputs.length == 4 || tx.outputs.length == 5));
 
         require(tx.inputs[0].lockingBytecode == tx.inputs[1].lockingBytecode);
         require(tx.inputs[0].tokenCategory == stateCategory + 0x02);
@@ -86,7 +86,7 @@ contract AjoCirclePUSDV3Mainnet(
         require(tx.inputs[2].tokenAmount == oldCredit);
         require(tx.inputs[2].nftCommitment == 0x);
         require(tx.inputs[3].tokenCategory == pusdCategory);
-        require(tx.inputs[3].tokenAmount == amount);
+        require(tx.inputs[3].tokenAmount >= amount);
         require(tx.inputs[3].nftCommitment == 0x);
         require(tx.inputs[3].lockingBytecode == new LockingBytecodeP2PKH(member));
         require(tx.inputs[4].tokenCategory == 0x);
@@ -111,11 +111,26 @@ contract AjoCirclePUSDV3Mainnet(
         // Preserve all BCH backing from both the old escrow and new token input.
         require(tx.outputs[2].value == tx.inputs[2].value + tx.inputs[3].value);
 
-        require(tx.outputs[3].lockingBytecode == new LockingBytecodeP2PKH(initiator));
-        require(tx.outputs[3].tokenCategory == 0x);
-        require(tx.outputs[3].value >= 546);
-        require(tx.outputs[3].value <= tx.inputs[4].value);
-        require(tx.outputs[3].value >= tx.inputs[4].value - maxFee);
+        if (tx.inputs[3].tokenAmount > amount) {
+            require(tx.outputs.length == 5);
+            require(tx.outputs[3].lockingBytecode == new LockingBytecodeP2PKH(member));
+            require(tx.outputs[3].tokenCategory == pusdCategory);
+            require(tx.outputs[3].tokenAmount == tx.inputs[3].tokenAmount - amount);
+            require(tx.outputs[3].nftCommitment == 0x);
+            require(tx.outputs[3].value >= 1000);
+            require(tx.outputs[4].lockingBytecode == new LockingBytecodeP2PKH(member));
+            require(tx.outputs[4].tokenCategory == 0x);
+            require(tx.outputs[4].value >= 546);
+            require(tx.outputs[4].value <= tx.inputs[4].value - 1000);
+            require(tx.outputs[4].value >= tx.inputs[4].value - 1000 - maxFee);
+        } else {
+            require(tx.outputs.length == 4);
+            require(tx.outputs[3].lockingBytecode == new LockingBytecodeP2PKH(member));
+            require(tx.outputs[3].tokenCategory == 0x);
+            require(tx.outputs[3].value >= 546);
+            require(tx.outputs[3].value <= tx.inputs[4].value);
+            require(tx.outputs[3].value >= tx.inputs[4].value - maxFee);
+        }
     }
 
     function payout() {
