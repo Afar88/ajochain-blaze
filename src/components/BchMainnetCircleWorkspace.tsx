@@ -27,8 +27,8 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
     stateCategory: string;
     feeEstimate: string;
     estimatedChange: string;
-    inputs: number;
-    outputs: number;
+    inputCount: number;
+    outputCount: number;
   } | null>(null);
 
   const members = useMemo(
@@ -93,8 +93,8 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
         stateCategory: plan.stateCategory,
         feeEstimate: plan.feeEstimate.toString(),
         estimatedChange: plan.estimatedChange.toString(),
-        inputs: plan.transactionShape.inputs,
-        outputs: plan.transactionShape.outputs,
+        inputCount: plan.transactionInputCount,
+        outputCount: plan.transactionOutputCount,
       });
       setNotice("BCH Mainnet genesis preview prepared. The transaction is unsigned and cannot be broadcast from this workspace.");
     } catch (cause) {
@@ -169,7 +169,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
           <div><span>State CashToken category</span><strong><code>{preview.stateCategory}</code></strong></div>
           <div><span>Conservative miner-fee estimate</span><strong>{preview.feeEstimate} sats</strong></div>
           <div><span>Estimated wallet change</span><strong>{preview.estimatedChange} sats</strong></div>
-          <div><span>Transaction shape</span><strong>{preview.inputs} inputs · {preview.outputs} outputs</strong></div>
+          <div><span>Transaction shape</span><strong>{preview.inputCount} inputs · {preview.outputCount} outputs</strong></div>
           <small>No contract has been deployed and no transaction has been signed or broadcast.</small>
         </div>
       )}
