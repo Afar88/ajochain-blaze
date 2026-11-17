@@ -857,6 +857,15 @@ function applyRateLimit(request) {
   rateLimit.set(key, entries);
 }
 
+export function mainnetApiErrorStatus(message) {
+  if (/Rate limit exceeded/.test(message)) return 429;
+  if (/Request body exceeds/.test(message)) return 413;
+  if (/Origin is not allowed/.test(message)) return 403;
+  // An ambiguous relay result must remain visibly retry-blocked to callers.
+  if (/result is UNKNOWN/.test(message)) return 503;
+  return 400;
+}
+
 export function createMainnetApiServer() {
   return createServer(async (request, response) => {
     if (!setCors(request, response)) {
@@ -946,10 +955,7 @@ export function createMainnetApiServer() {
       sendJson(response, 404, { error: "Not found." });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown service error.";
-      const status = /Rate limit exceeded/.test(message) ? 429 :
-        /Request body exceeds/.test(message) ? 413 :
-        /Origin is not allowed/.test(message) ? 403 : 400;
-      sendJson(response, status, { error: message });
+      sendJson(response, mainnetApiErrorStatus(message), { error: message });
     }
   });
 }
