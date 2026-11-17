@@ -11,6 +11,7 @@ import { PUSD_MAINNET_SPENDING_ENABLED } from "./core/pusd-mainnet-guard";
 const ClassicBchWorkspace = lazy(() => import("./components/ClassicBchWorkspace"));
 const V2FeeBchWorkspace = lazy(() => import("./components/V2FeeBchWorkspace"));
 const PusdMainnetCircleWorkspace = lazy(() => import("./components/PusdMainnetCircleWorkspace"));
+const BchMainnetCircleWorkspace = lazy(() => import("./components/BchMainnetCircleWorkspace"));
 
 type Page = "overview" | "circles" | "assets" | "activity";
 type WalletClient = typeof import("./core/wizard-wallet").wallet;
@@ -365,6 +366,7 @@ export default function App() {
             </div>
             <Suspense fallback={<div className="workspace-loading"><span className="loading-orb" />Loading circle tools…</div>}>
               <PusdMainnetCircleWorkspace network={network} walletConnected={connected} />
+              <BchMainnetCircleWorkspace network={network} walletConnected={connected} />
               <ClassicBchWorkspace network={network} walletConnected={connected} />
               <V2FeeBchWorkspace network={network} walletConnected={connected} />
             </Suspense>
