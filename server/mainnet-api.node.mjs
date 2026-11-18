@@ -88,6 +88,7 @@ test("Upstash Mainnet rate limit is atomic across independent serverless instanc
     now: () => now,
     maxRequests: 2,
     windowMs: 60_000,
+    useForwardedIp: true,
   });
   const secondInstance = createUpstashMainnetRateLimiter({
     url: "https://redis.example.test",
@@ -117,6 +118,7 @@ test("Upstash Mainnet rate limiter fails closed for invalid IP, absent credentia
   const invalidIp = createUpstashMainnetRateLimiter({
     url: "https://redis.example.test", token: "private-test-token",
     fetchImpl: async () => ({ ok: true, json: async () => ({ result: 1 }) }),
+    useForwardedIp: true,
   });
   await assert.rejects(invalidIp.consume({ headers: { "x-vercel-forwarded-for": "spoofed" }, socket: {} }), /valid client IP/i);
   const outage = createUpstashMainnetRateLimiter({
