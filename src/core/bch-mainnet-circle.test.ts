@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { encodeCashAddress } from "@bitauth/libauth";
+import { MockNetworkProvider } from "cashscript";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "./project-treasury";
 import { createBchMainnetCircleDraft } from "./bch-mainnet-circle";
-import { validateV2FeeCircleDraft, v2FeeCancelWalletInputIndexes, validateV2FeePayoutFeePayerAddress } from "./v2-fee-bch";
+import { createV2FeeCircleContract, validateV2FeeCircleDraft, v2FeeCancelWalletInputIndexes, validateV2FeePayoutFeePayerAddress, v2FeeArtifactForCovenant } from "./v2-fee-bch";
 
 function address(seed: number): string {
   const result = encodeCashAddress({
@@ -65,6 +66,31 @@ describe("BCH Mainnet V3 circle adapter", () => {
     expect(v2FeeCancelWalletInputIndexes(2)).toEqual([0, 1, 2, 3]);
     expect(v2FeeCancelWalletInputIndexes(5)).toEqual([0, 1, 2, 3, 4, 5, 6]);
     expect(() => v2FeeCancelWalletInputIndexes(1)).toThrow(/2–5 members/);
+  });
+
+  it("uses the exact Mainnet V3 compiled artifact with every Mainnet member and the fixed treasury bound into the constructor", () => {
+    const provider = new MockNetworkProvider();
+    const mainnetMembers = [1, 2, 3, 4, 5].map(address);
+    const draft = createBchMainnetCircleDraft({
+      ...base,
+      members: mainnetMembers,
+      initiator: mainnetMembers[0],
+    });
+    const params = { ...draft, stateCategory: "ab".repeat(32) };
+    const contract = createV2FeeCircleContract(params, provider);
+    expect(v2FeeArtifactForCovenant("fee-v3-auto-reserve-mainnet").contractName)
+      .toBe("AjoCircleV3AutoReserve");
+    expect(contract.lockingBytecode.length).toBeGreaterThan(0);
+    expect(contract.address).toMatch(/^bchtest:/); // Mock provider address encoding only; constructor PKHs are Mainnet-decoded above.
+    const reordered = createV2FeeCircleContract({
+      ...params,
+      members: [...mainnetMembers].reverse(),
+    }, provider);
+    expect(reordered.lockingBytecode).not.toEqual(contract.lockingBytecode);
+    expect(() => createV2FeeCircleContract({
+      ...params,
+      treasury: address(77),
+    }, provider)).toThrow(/shared BCH\/PUSD project-fee treasury/);
   });
 
   it("validates payout fee sponsors against the selected Mainnet or Chipnet address prefix", () => {
