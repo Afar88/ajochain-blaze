@@ -27,7 +27,7 @@ The issuer-maintained [ParyonUSD withdrawal contract source](https://github.com/
 ## Durable broadcast idempotency
 
 - [ ] Provision a dedicated private Upstash Redis database (or an independently reviewed equivalent) for BLAZE; do not reuse the legacy AjoChain/Neon store.
-- [ ] Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` only in the BLAZE Vercel server environment. Never expose the write token to the browser.
+- [ ] Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` only in the BLAZE Vercel server environment. This private database backs durable submission records and the atomic cross-instance API rate limiter. Never expose the write token to the browser.
 - [ ] Verify the exact signed-transaction ID/digest can be reserved only once across concurrent serverless instances and that `submitting`, `accepted`, `already-known`, and `unknown` states persist across cold starts.
 - [ ] Verify that a missing/unavailable ledger or an ambiguous prior submission blocks a second relay; reconcile the exact transaction through the read-only status endpoints before manual recovery.
 - [ ] Define retention, archival and incident-recovery procedures for durable submission records before enabling any PUSD broadcast.
