@@ -32,24 +32,54 @@ const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const isHex = (value) => typeof value === "string" && /^(?:[0-9a-f]{2})+$/i.test(value);
 const reverseHex = (value) => value.match(/../g).reverse().join("").toLowerCase();
 
-function parseServerList(value = process.env.ELECTRUM_SERVERS ?? "") {
-  const servers = value.split(",").map((item) => item.trim()).filter(Boolean);
-  const unique = [...new Set(servers)];
-  if (unique.length < 2) {
-    throw new Error("Configure at least two independent ELECTRUM_SERVERS endpoints for mainnet quorum.");
+/**
+ * Parse the ordered Mainnet Electrum endpoint/operator manifest.
+ *
+ * Operator labels are declarations supplied by the release operator, not
+ * cryptographic proof of ownership. The release checklist still requires
+ * independent evidence for each operator and its infrastructure fault domain.
+ */
+export function parseMainnetElectrumProviderConfig(
+  serverValue = process.env.ELECTRUM_SERVERS ?? "",
+  operatorValue = process.env.ELECTRUM_PROVIDER_OPERATORS ?? "",
+) {
+  if (typeof serverValue !== "string" || typeof operatorValue !== "string") {
+    throw new Error("ELECTRUM_SERVERS and ELECTRUM_PROVIDER_OPERATORS must be comma-separated strings.");
+  }
+  const servers = serverValue.split(",").map((item) => item.trim()).filter(Boolean);
+  if (servers.length < 2 || new Set(servers).size !== servers.length) {
+    throw new Error("Configure at least two unique ELECTRUM_SERVERS endpoints for Mainnet quorum.");
+  }
+  const operators = operatorValue.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
+  if (operators.length !== servers.length) {
+    throw new Error("ELECTRUM_PROVIDER_OPERATORS must provide exactly one operator ID per ELECTRUM_SERVERS endpoint, in the same order.");
+  }
+  if (operators.some((operator) => !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(operator))) {
+    throw new Error("Electrum operator IDs must be 1–64 lowercase letters, digits, dots, underscores or hyphens.");
+  }
+  if (new Set(operators).size !== operators.length) {
+    throw new Error("Electrum quorum endpoints must declare distinct operator IDs; two hostnames alone do not prove operator independence.");
   }
   const hostnames = new Set();
-  for (const endpoint of unique) {
-    const url = new URL(endpoint);
-    if (url.protocol !== "wss:" || !url.hostname) {
-      throw new Error("Mainnet Electrum endpoints must use secure wss:// URLs.");
+  const providers = servers.map((endpoint, index) => {
+    let url;
+    try { url = new URL(endpoint); }
+    catch { throw new Error("An ELECTRUM_SERVERS endpoint is not a valid URL."); }
+    if (url.protocol !== "wss:" || !url.hostname || url.username || url.password || url.hash) {
+      throw new Error("Mainnet Electrum endpoints must use secure wss:// URLs without embedded credentials or fragments.");
     }
-    hostnames.add(url.hostname.toLowerCase());
-  }
-  if (hostnames.size < 2) {
-    throw new Error("Electrum quorum endpoints must use at least two different hostnames.");
-  }
-  return unique;
+    const hostname = url.hostname.toLowerCase();
+    if (hostnames.has(hostname)) {
+      throw new Error("Electrum quorum endpoints must use at least two different hostnames.");
+    }
+    hostnames.add(hostname);
+    return { endpoint, operatorId: operators[index] };
+  });
+  return providers;
+}
+
+function parseServerList() {
+  return parseMainnetElectrumProviderConfig().map((provider) => provider.endpoint);
 }
 
 function doubleSha256(bytes) {
@@ -129,8 +159,9 @@ export function assertUnspentSnapshotsAgree(snapshots) {
 }
 
 class ElectrumSession {
-  constructor(endpoint, timeoutMs) {
+  constructor(endpoint, timeoutMs, operatorId) {
     this.endpoint = endpoint;
+    this.operatorId = operatorId;
     this.timeoutMs = timeoutMs;
     this.nextId = 1;
     this.pending = new Map();
@@ -213,7 +244,10 @@ async function withElectrumSessions(callback) {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 60_000) {
     throw new Error("ELECTRUM_RPC_TIMEOUT_MS must be between 1000 and 60000.");
   }
-  const sessions = parseServerList().map((endpoint) => new ElectrumSession(endpoint, timeoutMs));
+  const providers = parseMainnetElectrumProviderConfig();
+  const sessions = providers.map(({ endpoint, operatorId }) =>
+    new ElectrumSession(endpoint, timeoutMs, operatorId),
+  );
   try {
     return await callback(sessions);
   } finally {
@@ -1822,13 +1856,17 @@ export function createMainnetApiServer() {
         await withElectrumSessions(async (sessions) => {
           const tip = await getTipQuorum(sessions);
           sendJson(response, 200, {
-            status: "ready",
+            status: "read-only",
             network: "mainnet",
             providerId: "ajochain-electrum-quorum",
             providerConfidence: sessions.length,
+            providerOperatorsDeclared: sessions.map((session) => session.operatorId),
+            providerOperatorLabelsUnique: new Set(sessions.map((session) => session.operatorId)).size === sessions.length,
+            providerOperatorIndependenceVerified: false,
             tipHeight: tip.height,
             tipHash: tip.hash,
             broadcastEnabled: MAINNET_BROADCAST_ENABLED,
+            mainnetReleaseApproved: false,
             pusdDurableSubmissionLedgerConfigured: isPusdBroadcastLedgerConfigured(),
           });
         });
