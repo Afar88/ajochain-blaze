@@ -117,13 +117,20 @@ async function ensureSchema(sql) {
       covenant text NOT NULL,
       initiator_address text NOT NULL,
       treasury_address text NOT NULL,
-      genesis_txid char(64) NOT NULL,
+      genesis_txid char(64),
       member_count smallint NOT NULL CHECK (member_count BETWEEN 2 AND 5),
       created_at timestamptz NOT NULL DEFAULT now(),
       last_seen_at timestamptz NOT NULL DEFAULT now(),
       UNIQUE (network, state_category),
       UNIQUE (network, genesis_txid)
     )
+  `, []);
+  // Existing records created by an earlier release may lack a transaction ID.
+  // Allow verified local-member backfill to attach those circles, then enrich
+  // the row with the exact genesis txid whenever a new creation supplies it.
+  await sql.query(`
+    ALTER TABLE ajo_blaze_circle_registry
+    ALTER COLUMN genesis_txid DROP NOT NULL
   `, []);
   await sql.query(`
     CREATE TABLE IF NOT EXISTS ajo_blaze_circle_members (
@@ -201,8 +208,9 @@ export function createCircleDiscoveryHandler({ getSql } = {}) {
       } catch (error) {
         return send(400, { error: error.message });
       }
-      if (typeof body.genesisTxid !== "string" || !/^[0-9a-f]{64}$/i.test(body.genesisTxid)) {
-        return send(400, { error: "A confirmed Chipnet genesis transaction ID is required." });
+      if (body.genesisTxid !== undefined && body.genesisTxid !== null &&
+          (typeof body.genesisTxid !== "string" || !/^[0-9a-f]{64}$/i.test(body.genesisTxid))) {
+        return send(400, { error: "The optional Chipnet genesis transaction ID is malformed." });
       }
     } else if (body.action === "discover") {
       try {
@@ -235,9 +243,14 @@ export function createCircleDiscoveryHandler({ getSql } = {}) {
             )
             VALUES ($1, 'chipnet', $2, $3, $4, $5, $6, $7, $8, $9)
             ON CONFLICT (network, state_category) DO UPDATE
-              SET last_seen_at = now()
+              SET genesis_txid = COALESCE(ajo_blaze_circle_registry.genesis_txid, EXCLUDED.genesis_txid),
+                  last_seen_at = now()
               WHERE ajo_blaze_circle_registry.encoded_invite = EXCLUDED.encoded_invite
-                AND ajo_blaze_circle_registry.genesis_txid = EXCLUDED.genesis_txid
+                AND (
+                  ajo_blaze_circle_registry.genesis_txid IS NULL OR
+                  EXCLUDED.genesis_txid IS NULL OR
+                  ajo_blaze_circle_registry.genesis_txid = EXCLUDED.genesis_txid
+                )
             RETURNING circle_key
           ),
           registered_members AS (
@@ -252,7 +265,7 @@ export function createCircleDiscoveryHandler({ getSql } = {}) {
           SELECT circle_key FROM circle
         `, [
           key, stateCategory, body.encoded, name, params.covenant,
-          initiatorAddress, treasuryAddress, body.genesisTxid.toLowerCase(),
+          initiatorAddress, treasuryAddress, body.genesisTxid ? body.genesisTxid.toLowerCase() : null,
           members.length, JSON.stringify(members),
         ]);
         if (!result.length) {
