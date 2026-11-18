@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import pusdBroadcastHandler from "../api/pusd/broadcast.mjs";
 import pusdUnspentHandler from "../api/pusd/unspent.mjs";
+import pusdSubmissionHandler from "../api/pusd/submission.mjs";
 import transactionStatusHandler from "../api/transaction/status.mjs";
 import {
   assertPreviousTransactionsAgree,
@@ -19,6 +20,7 @@ import {
   BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT,
   assertBchMainnetChainIdentity,
   broadcastPusdTransactionOnce,
+  createUpstashPusdBroadcastLedger,
   computeElectrumMerkleRoot,
   getVerifiedTransactionStatus,
   verifyElectrumMerkleProof,
@@ -218,6 +220,94 @@ function transactionIdFromHex(hex) {
   const second = createHash("sha256").update(first).digest();
   return Buffer.from(second).reverse().toString("hex");
 }
+
+test("Upstash PUSD ledger reserves one exact transaction across concurrent requests and records accepted state", async () => {
+  const store = new Map();
+  const commands = [];
+  const fetchImpl = async (_url, init) => {
+    const args = JSON.parse(init.body);
+    commands.push(args);
+    const [name, key, value, condition] = args;
+    if (name === "SET") {
+      if (condition === "NX" && store.has(key)) {
+        return { ok: true, status: 200, json: async () => ({ result: null }) };
+      }
+      if (condition === "XX" && !store.has(key)) {
+        return { ok: true, status: 200, json: async () => ({ result: null }) };
+      }
+      store.set(key, value);
+      return { ok: true, status: 200, json: async () => ({ result: "OK" }) };
+    }
+    if (name === "GET") {
+      return { ok: true, status: 200, json: async () => ({ result: store.get(key) ?? null }) };
+    }
+    throw new Error("Unexpected Redis REST command: " + name);
+  };
+  const ledger = createUpstashPusdBroadcastLedger({
+    url: "https://redis.example.test",
+    token: "private-test-token",
+    fetchImpl,
+  });
+  const signed = sampleRawTransactionHex();
+  const txid = transactionIdFromHex(signed);
+
+  const first = await ledger.reserve(txid, signed);
+  assert.equal(first.acquired, true);
+  assert.equal(first.record.status, "submitting");
+
+  const duplicate = await ledger.reserve(txid, signed);
+  assert.equal(duplicate.acquired, false);
+  assert.equal(duplicate.record.status, "submitting");
+
+  const accepted = await ledger.complete(txid, signed, "accepted");
+  assert.equal(accepted.status, "accepted");
+
+  const replay = await ledger.reserve(txid, signed);
+  assert.equal(replay.acquired, false);
+  assert.equal(replay.record.status, "accepted");
+  assert.equal((await ledger.get(txid)).relayStatus, "accepted");
+
+  assert.ok(commands.some((args) => args[0] === "SET" && args.includes("NX")));
+  assert.ok(commands.some((args) => args[0] === "SET" && args.includes("XX")));
+});
+
+test("Upstash PUSD ledger preserves unknown submissions and fails closed when storage is unavailable", async () => {
+  const store = new Map();
+  const ledger = createUpstashPusdBroadcastLedger({
+    url: "https://redis.example.test",
+    token: "private-test-token",
+    fetchImpl: async (_url, init) => {
+      const [name, key, value, condition] = JSON.parse(init.body);
+      if (name === "SET") {
+        if (condition === "NX" && store.has(key)) return { ok: true, status: 200, json: async () => ({ result: null }) };
+        if (condition === "XX" && !store.has(key)) return { ok: true, status: 200, json: async () => ({ result: null }) };
+        store.set(key, value);
+        return { ok: true, status: 200, json: async () => ({ result: "OK" }) };
+      }
+      if (name === "GET") return { ok: true, status: 200, json: async () => ({ result: store.get(key) ?? null }) };
+      throw new Error("Unexpected Redis REST command");
+    },
+  });
+  const signed = sampleRawTransactionHex();
+  const txid = transactionIdFromHex(signed);
+  await ledger.reserve(txid, signed);
+  await ledger.complete(txid, signed, "unknown");
+  const retry = await ledger.reserve(txid, signed);
+  assert.equal(retry.acquired, false);
+  assert.equal(retry.record.status, "unknown");
+
+  assert.throws(() => createUpstashPusdBroadcastLedger({
+    url: "http://redis.example.test",
+    token: "private-test-token",
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ result: "OK" }) }),
+  }), /HTTPS/);
+  assert.throws(() => createUpstashPusdBroadcastLedger({
+    url: "",
+    token: "",
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ result: "OK" }) }),
+  }), /not configured/);
+  assert.equal(mainnetApiErrorStatus("PUSD durable broadcast ledger is unavailable"), 503);
+});
 
 test("PUSD broadcaster uses one relay and reports the provider's exact txid", async () => {
   const raw = sampleRawTransactionHex();
@@ -522,6 +612,15 @@ test("nested transaction-status Vercel route reaches shared API validation", asy
   const response = await invokeServerlessRoute(
     transactionStatusHandler,
     mockApiRequest("GET", "/api/transaction/status?txid=not-a-txid"),
+  );
+  assert.equal(response.statusCode, 400);
+  assert.match(JSON.parse(response.body).error, /64 hexadecimal characters/);
+});
+
+test("nested PUSD submission-status Vercel route validates the transaction ID before ledger access", async () => {
+  const response = await invokeServerlessRoute(
+    pusdSubmissionHandler,
+    mockApiRequest("GET", "/api/pusd/submission?txid=not-a-txid"),
   );
   assert.equal(response.statusCode, 400);
   assert.match(JSON.parse(response.body).error, /64 hexadecimal characters/);
