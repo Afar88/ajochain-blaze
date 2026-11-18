@@ -803,6 +803,20 @@ const PUSD_BROADCAST_LEDGER_PREFIX = "ajochain:mainnet:pusd:submission:v1:";
  * missing credentials, storage failures and ambiguous states fail closed.
  * Raw signed transaction bytes are never persisted.
  */
+export function isPusdBroadcastLedgerConfigured(env = process.env) {
+  const url = env?.UPSTASH_REDIS_REST_URL;
+  const token = env?.UPSTASH_REDIS_REST_TOKEN;
+  if (typeof url !== "string" || !url.trim() ||
+      typeof token !== "string" || !token.trim()) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && Boolean(parsed.hostname) &&
+      !parsed.username && !parsed.password && !parsed.search && !parsed.hash;
+  } catch {
+    return false;
+  }
+}
+
 export function createUpstashPusdBroadcastLedger(options = {}) {
   const restUrl = options.url ?? process.env.UPSTASH_REDIS_REST_URL;
   const token = options.token ?? process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -1260,6 +1274,7 @@ export function createMainnetApiServer() {
             tipHeight: tip.height,
             tipHash: tip.hash,
             broadcastEnabled: MAINNET_BROADCAST_ENABLED,
+            pusdDurableSubmissionLedgerConfigured: isPusdBroadcastLedgerConfigured(),
           });
         });
         return;
