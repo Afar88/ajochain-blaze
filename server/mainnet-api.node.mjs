@@ -1,12 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { encodeCashAddress } from "@bitauth/libauth";
 import pusdBroadcastHandler from "../api/pusd/broadcast.mjs";
 import pusdUnspentHandler from "../api/pusd/unspent.mjs";
 import pusdSubmissionHandler from "../api/pusd/submission.mjs";
 import transactionStatusHandler from "../api/transaction/status.mjs";
 import {
   assertPreviousTransactionsAgree,
+  createBchMainnetV3ContractContext,
+  verifyBchMainnetCircleTransaction,
   assertPusdTokenOutputCarrier,
   assertPusdBchChangeCarrier,
   assertRequiredPusdSighash,
@@ -35,6 +38,74 @@ import {
 const mainnetP2pkh = "bitcoincash:qq2azmyyv6dtgczexyalqar70q036yund54qgw0wg6";
 const testnetP2pkh = "bchtest:qq2azmyyv6dtgczexyalqar70q036yund53jvfde0x";
 const txid = "ab".repeat(32);
+
+
+function createMainnetTestAddress(seed) {
+  const encoded = encodeCashAddress({
+    prefix: "bitcoincash",
+    type: "p2pkh",
+    payload: new Uint8Array(20).fill(seed),
+  });
+  if (typeof encoded === "string") throw new Error(encoded);
+  return encoded.address;
+}
+
+const bchMainnetVerificationCircle = {
+  version: 2,
+  covenant: "fee-v3-auto-reserve-mainnet",
+  network: "mainnet",
+  name: "Preflight test circle",
+  members: [createMainnetTestAddress(11), createMainnetTestAddress(12)],
+  contribution: "200000",
+  maxFee: "10000",
+  stateCategory: "ab".repeat(32),
+  initiator: createMainnetTestAddress(11),
+  treasury: "bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q",
+};
+
+test("BCH Mainnet server derives the exact V3 covenant script from immutable constructor bindings", () => {
+  const context = createBchMainnetV3ContractContext(bchMainnetVerificationCircle);
+  assert.match(context.contractLockingBytecode, /^aa20[0-9a-f]{64}87$/);
+  assert.equal(cashAddressToLockingBytecode(context.contractAddress), context.contractLockingBytecode);
+  assert.equal(context.memberCount, 2);
+  assert.equal(context.treasuryScript, "76a91417c8d3de33e0e229101f756dc5f189b123c1c83c88ac");
+});
+
+test("BCH Mainnet server rejects unsafe or altered covenant constructor contexts", () => {
+  assert.throws(() => createBchMainnetV3ContractContext({
+    ...bchMainnetVerificationCircle,
+    network: "chipnet",
+  }), /valid BCH Mainnet V3 circle context/i);
+  assert.throws(() => createBchMainnetV3ContractContext({
+    ...bchMainnetVerificationCircle,
+    covenant: "fee-v3-auto-reserve",
+  }), /valid BCH Mainnet V3 circle context/i);
+  assert.throws(() => createBchMainnetV3ContractContext({
+    ...bchMainnetVerificationCircle,
+    treasury: createMainnetTestAddress(99),
+  }), /immutable AjoChain treasury/i);
+  assert.throws(() => createBchMainnetV3ContractContext({
+    ...bchMainnetVerificationCircle,
+    members: [createMainnetTestAddress(11), createMainnetTestAddress(11)],
+  }), /must be unique/i);
+  assert.throws(() => createBchMainnetV3ContractContext({
+    ...bchMainnetVerificationCircle,
+    members: [testnetP2pkh, createMainnetTestAddress(12)],
+  }), /only Bitcoin Cash mainnet/i);
+  assert.throws(() => createBchMainnetV3ContractContext({
+    ...bchMainnetVerificationCircle,
+    stateCategory: "not-a-token-category",
+  }), /valid BCH Mainnet V3 circle context/i);
+});
+
+test("BCH Mainnet verifier rejects unknown operations before network access", async () => {
+  await assert.rejects(
+    verifyBchMainnetCircleTransaction([], { height: 900_000, hash: "00".repeat(32) }, {
+      operation: "broadcast",
+    }),
+    /Unsupported BCH Mainnet circle verification operation/i,
+  );
+});
 
 test("CashAddress decoding creates the correct mainnet P2PKH script", () => {
   assert.equal(
