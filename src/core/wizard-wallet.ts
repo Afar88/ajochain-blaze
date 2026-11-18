@@ -184,7 +184,18 @@ export function readPushOnlyUnlockingScript(script: Uint8Array): Uint8Array[] {
   while (offset < script.length) {
     const opcode = script[offset++];
     let length: number;
-    if (opcode <= 75) {
+    // Bitcoin's IsPushOnly semantics include small-integer opcodes.
+    // Convert them to minimally encoded stack values for ABI inspection.
+    if (opcode === 0x00) {
+      pushes.push(new Uint8Array());
+      continue;
+    } else if (opcode === 0x4f) {
+      pushes.push(Uint8Array.from([0x81]));
+      continue;
+    } else if (opcode >= 0x51 && opcode <= 0x60) {
+      pushes.push(Uint8Array.from([opcode - 0x50]));
+      continue;
+    } else if (opcode <= 75) {
       length = opcode;
     } else if (opcode === 0x4c) {
       if (offset + 1 > script.length) throw new Error("Malformed PUSHDATA1 unlocking script.");
