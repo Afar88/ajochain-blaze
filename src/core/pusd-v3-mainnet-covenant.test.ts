@@ -165,7 +165,20 @@ async function deposit(
   await builder.send();
 }
 
-async function payout(provider: MockNetworkProvider, contract: Contract, escrows: Contract[], recipientIndex = 0) {
+type PayoutOverrides = {
+  treasuryPkh?: Uint8Array;
+  recipientPkh?: Uint8Array;
+  escrowInputSourceForMemberZero?: number;
+  escrowOutputTargetForMemberZero?: number;
+};
+
+async function payout(
+  provider: MockNetworkProvider,
+  contract: Contract,
+  escrows: Contract[],
+  recipientIndex = 0,
+  overrides: PayoutOverrides = {},
+) {
   const { state, receipts, escrowUtxos } = await current(contract, escrows);
   const reserveAddress = pkhToAddress(initiator.pkh, "chipnet");
   const reserve = provider.addUtxo(reserveAddress, randomUtxo({ satoshis: 25_000n }));
@@ -173,11 +186,12 @@ async function payout(provider: MockNetworkProvider, contract: Contract, escrows
   const nextRound = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16) + 1;
   const nextStateCommitment = "54" + nextRound.toString(16).padStart(2, "0") + "01";
   const circleUnlock = contract.unlock.payout();
+  const escrowInputZero = overrides.escrowInputSourceForMemberZero ?? 0;
   const builder = new TransactionBuilder({ provider })
     .addInput(state, circleUnlock)
     .addInput(receipts[0], circleUnlock)
     .addInput(receipts[1], circleUnlock)
-    .addInput(escrowUtxos[0], escrows[0].unlock.attest())
+    .addInput(escrowUtxos[escrowInputZero], escrows[escrowInputZero].unlock.attest())
     .addInput(escrowUtxos[1], escrows[1].unlock.attest())
     .addInput(reserve, initiator.signature.unlockP2PKH())
     .addOutput({
@@ -196,13 +210,16 @@ async function payout(provider: MockNetworkProvider, contract: Contract, escrows
   for (let index = 0; index < members.length; index++) {
     const oldCredit = escrowUtxos[index].token?.amount ?? 0n;
     const nextCredit = oldCredit - CONTRIBUTION + (index === recipientIndex ? reserveCredit : 0n);
+    const outputContract = index === 0
+      ? escrows[overrides.escrowOutputTargetForMemberZero ?? index]
+      : escrows[index];
     if (nextCredit > 0n) {
       builder.addOutput({
-        to: escrows[index].tokenAddress, amount: escrowUtxos[index].satoshis,
+        to: outputContract.tokenAddress, amount: escrowUtxos[index].satoshis,
         token: { category: PUSD, amount: nextCredit },
       });
     } else {
-      builder.addOutput({ to: escrows[index].address, amount: escrowUtxos[index].satoshis });
+      builder.addOutput({ to: outputContract.address, amount: escrowUtxos[index].satoshis });
     }
   }
 
@@ -211,11 +228,11 @@ async function payout(provider: MockNetworkProvider, contract: Contract, escrows
   const recipientPayout = grossPot - projectFee - reserveCredit;
   builder
     .addOutput({
-      to: tokenAddress(treasuryPkh), amount: DUST,
+      to: tokenAddress(overrides.treasuryPkh ?? treasuryPkh), amount: DUST,
       token: { category: PUSD, amount: projectFee },
     })
     .addOutput({
-      to: tokenAddress(members[recipientIndex].pkh), amount: DUST,
+      to: tokenAddress(overrides.recipientPkh ?? members[recipientIndex].pkh), amount: DUST,
       token: { category: PUSD, amount: recipientPayout },
     })
     .addOutput({ to: reserveAddress, amount: 10_000n });
@@ -333,6 +350,56 @@ describe("AjoChain PUSD V3 Mainnet covenant (mock-chain invariants)", () => {
     const { receipts, escrowUtxos } = await current(contract, escrows);
     expect(receipts[0].token!.nft!.commitment).toBe(creditCommitment(0, 0n));
     expect(escrowUtxos[0].token?.category).toBeUndefined();
+  }, 60_000);
+
+  it("rejects a payout redirected away from the fixed Mainnet treasury or scheduled member", async () => {
+    const wrongKey = key(41);
+
+    {
+      const provider = new MockNetworkProvider();
+      const { contract, escrows } = makeContracts(provider);
+      addGenesis(provider, contract, escrows);
+      await deposit(provider, contract, escrows, 0);
+      await deposit(provider, contract, escrows, 1);
+      await expect(payout(provider, contract, escrows, 0, {
+        treasuryPkh: wrongKey.pkh,
+      })).rejects.toThrow();
+    }
+
+    {
+      const provider = new MockNetworkProvider();
+      const { contract, escrows } = makeContracts(provider);
+      addGenesis(provider, contract, escrows);
+      await deposit(provider, contract, escrows, 0);
+      await deposit(provider, contract, escrows, 1);
+      await expect(payout(provider, contract, escrows, 0, {
+        recipientPkh: wrongKey.pkh,
+      })).rejects.toThrow();
+    }
+  }, 60_000);
+
+  it("rejects cross-member escrow input and output substitutions", async () => {
+    {
+      const provider = new MockNetworkProvider();
+      const { contract, escrows } = makeContracts(provider);
+      addGenesis(provider, contract, escrows);
+      await deposit(provider, contract, escrows, 0);
+      await deposit(provider, contract, escrows, 1);
+      await expect(payout(provider, contract, escrows, 0, {
+        escrowInputSourceForMemberZero: 1,
+      })).rejects.toThrow();
+    }
+
+    {
+      const provider = new MockNetworkProvider();
+      const { contract, escrows } = makeContracts(provider);
+      addGenesis(provider, contract, escrows);
+      await deposit(provider, contract, escrows, 0);
+      await deposit(provider, contract, escrows, 1);
+      await expect(payout(provider, contract, escrows, 0, {
+        escrowOutputTargetForMemberZero: 1,
+      })).rejects.toThrow();
+    }
   }, 60_000);
 
   it("pays a separate 1% PUSD fee and reserves one next contribution for the non-final recipient", async () => {
