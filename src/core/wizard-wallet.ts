@@ -627,7 +627,6 @@ class WizardWallet {
       try {
         localStorage.removeItem(PATHS_STORAGE_KEY);
         localStorage.removeItem(RECEIVE_INDEX_STORAGE_KEY);
-        localStorage.removeItem(ADDRESS_STORAGE_KEY);
       } catch { /* best effort */ }
       this.error = null;
       this.state = 'idle';
