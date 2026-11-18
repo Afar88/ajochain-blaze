@@ -97,6 +97,7 @@ test("Upstash Mainnet rate limit is atomic across independent serverless instanc
     now: () => now,
     maxRequests: 2,
     windowMs: 60_000,
+    useForwardedIp: true,
   });
   const clientA = { headers: { "x-vercel-forwarded-for": "203.0.113.10" }, socket: {} };
   const clientB = { headers: { "x-vercel-forwarded-for": "203.0.113.11" }, socket: {} };
