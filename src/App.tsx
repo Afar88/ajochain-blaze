@@ -9,6 +9,7 @@ import { formatAssetAmount, parseAssetAmount, PUSD_ASSET } from "./core/assets";
 import type { PusdTransferPlan } from "./core/pusd-transaction-builder";
 import type { AuthenticatedPusdUtxo } from "./core/pusd-utxo";
 import { PUSD_MAINNET_SPENDING_ENABLED } from "./core/pusd-mainnet-guard";
+import { dedupeSavedV2FeeCircleRecords, getV2FeeCircleRecordIdentity } from "./core/v2-fee-circle-records";
 const ClassicBchWorkspace = lazy(() => import("./components/ClassicBchWorkspace"));
 const V2FeeBchWorkspace = lazy(() => import("./components/V2FeeBchWorkspace"));
 const PusdMainnetCircleWorkspace = lazy(() => import("./components/PusdMainnetCircleWorkspace"));
@@ -16,33 +17,32 @@ const BchMainnetCircleWorkspace = lazy(() => import("./components/BchMainnetCirc
 const ActivityRecords = lazy(() => import("./components/ActivityRecords"));
 
 type Page = "overview" | "create-circle" | "circle-detail" | "assets" | "activity";
-type MenuCircle = { encoded: string; name: string };
+type MenuCircle = { encoded: string; name: string; label: string; stateCategory: string };
 
 const V2_MENU_STORAGE_KEY = "ajochain-blaze:v2-fee-circles:v1";
 function readSavedV2MenuCircles(): MenuCircle[] {
   try {
     const stored: unknown = JSON.parse(window.localStorage.getItem(V2_MENU_STORAGE_KEY) || "[]");
-    if (!Array.isArray(stored)) return [];
-    const result: MenuCircle[] = [];
-    for (const entry of stored) {
-      if (!entry || typeof entry.encoded !== "string") continue;
-      try {
-        const normalized = entry.encoded.replace(/-/g, "+").replace(/_/g, "/");
-        const binary = atob(normalized + "=".repeat((4 - normalized.length % 4) % 4));
-        const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-        const decoded = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
-        if (decoded.version === 2 && typeof decoded.name === "string" && decoded.name.trim()) {
-          result.push({ encoded: entry.encoded, name: decoded.name.trim() });
-        }
-      } catch {
-        // Ignore malformed local entries; never let one damaged invite hide other circles.
-      }
-    }
-    return result.slice(0, 100);
+    const unique = dedupeSavedV2FeeCircleRecords(stored);
+    const records = unique.flatMap((entry) => {
+      const identity = getV2FeeCircleRecordIdentity(entry.encoded);
+      return identity ? [{ ...entry, name: identity.name, stateCategory: identity.stateCategory }] : [];
+    });
+    const nameCounts = new Map<string, number>();
+    records.forEach((record) => nameCounts.set(record.name, (nameCounts.get(record.name) ?? 0) + 1));
+    return records.map((record) => ({
+      encoded: record.encoded,
+      name: record.name,
+      stateCategory: record.stateCategory,
+      label: (nameCounts.get(record.name) ?? 0) > 1
+        ? record.name + " · " + record.stateCategory.slice(-6)
+        : record.name,
+    }));
   } catch {
     return [];
   }
 }
+
 type ThemePreference = "system" | "light" | "dark";
 type WalletClient = typeof import("./core/wizard-wallet").wallet;
 type WalletView = {
@@ -409,7 +409,7 @@ export default function App() {
                           navigate("circle-detail");
                         }}
                       >
-                        <Users size={16} /><span>{circle.name}</span>
+                        <Users size={16} /><span>{circle.label}</span>
                         {page === "circle-detail" && selectedMenuCircle === circle.encoded && <Check size={15} />}
                       </button>
                     ))}

@@ -4,6 +4,7 @@ import { parseAssetAmount } from "../core/assets";
 import { classicAddressToPkh, getClassicProvider } from "../core/classic-bch";
 import { formatBch, type NetworkId } from "../core/network";
 import { wallet } from "../core/wizard-wallet";
+import { dedupeSavedV2FeeCircleRecords } from "../core/v2-fee-circle-records";
 import {
   buildV2FeeMemberOrder,
   planV2FeeCancel,
@@ -69,14 +70,12 @@ function decodeCircle(encoded: string): V2FeeCircleParams {
 function readSaved(): SavedCircle[] {
   try {
     const value: unknown = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "[]");
-    if (!Array.isArray(value)) return [];
-    return value.filter((item): item is SavedCircle => {
-      if (!item || typeof item !== "object" || typeof item.encoded !== "string" ||
-          !Number.isSafeInteger(item.savedAt)) return false;
+    return dedupeSavedV2FeeCircleRecords(value).filter((item) => {
       try { decodeCircle(item.encoded); return true; } catch { return false; }
-    }).slice(0, 100);
+    });
   } catch { return []; }
 }
+
 function errorText(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
@@ -113,7 +112,7 @@ export default function V2FeeBchWorkspace({
 
   const persist = (params: V2FeeCircleParams) => {
     const encoded = encodeCircle(params);
-    const next = [{ encoded, savedAt: Date.now() }, ...saved.filter((item) => item.encoded !== encoded)].slice(0, 100);
+    const next = dedupeSavedV2FeeCircleRecords([{ encoded, savedAt: Date.now() }, ...saved]);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     setSaved(next);
     setSelected(encoded);
