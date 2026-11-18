@@ -59,7 +59,7 @@ CI now emits the exact source SHA-256, compiled artifact JSON SHA-256 and compil
 
 - [ ] Configure `ELECTRUM_SERVERS` and the same-order `ELECTRUM_PROVIDER_OPERATORS` list in the BLAZE server environment. The API rejects missing, duplicate or mismatched operator IDs and reports only the declared IDs in health responses. These labels are not proof: attach operator ownership, hosting/fault-domain and endpoint-control evidence for every provider; verify monitoring, timeouts and failover separately.
 - [ ] PUSD API environment configured with the minimum required settings; no private endpoint credentials are exposed to the browser.
-- [ ] Rate limiting, request-size limits, origin handling, error handling, alerting, and incident response tested in the deployed environment.
+- [ ] Shared Upstash Redis rate limiting is configured and tested across multiple Vercel instances; the serverless path fails closed when the shared limiter is unavailable. Local development alone uses the in-memory limiter. Also test request-size limits, origin handling, error handling, alerting, and incident response in the deployed environment.
 - [ ] Production build, CI, dependency review, and security scans pass on the exact release commit.
 - [ ] Backup/recovery plan for circle invite metadata and clear disclosure that local browser storage is not a durable account.
 - [ ] A staged production release and rollback procedure is tested before opening real-value transactions.
