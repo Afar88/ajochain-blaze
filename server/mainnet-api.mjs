@@ -78,10 +78,6 @@ export function parseMainnetElectrumProviderConfig(
   return providers;
 }
 
-function parseServerList() {
-  return parseMainnetElectrumProviderConfig().map((provider) => provider.endpoint);
-}
-
 function doubleSha256(bytes) {
   const first = createHash("sha256").update(bytes).digest();
   return createHash("sha256").update(first).digest();
