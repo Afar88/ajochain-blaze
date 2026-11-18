@@ -32,11 +32,19 @@ member receipts remain authoritative on Chipnet.
   returns candidate invites indexed for the supplied public Chipnet receive
   addresses.
 
-The client derives up to 50 receive addresses from the connected
-WizardConnect session. It then decodes every candidate and calls
-`readV2FeeCircle` to independently verify the current contract state and
-member receipts before saving it in the local menu. Invalid, stale, or
-non-member candidates are ignored.
+The client derives up to 50 Chipnet receive addresses from the connected
+WizardConnect session, even when the workspace opens on Mainnet. It decodes
+each returned candidate and calls `readV2FeeCircle` to independently verify
+the current contract state and member receipts before saving it in the local
+menu. Invalid, stale, or non-member candidates are ignored.
+
+When the dedicated database becomes available, a connected member can also
+backfill circles already saved in that browser. The client confirms that the
+connected wallet's derived receive branch matches a registered member and
+re-reads the live Chipnet state and receipts before registering the invite.
+For historical records, the genesis transaction ID remains null rather than
+being guessed; a later creation registration may enrich the row with the exact
+transaction ID.
 
 Invites continue to work as a recovery and sharing mechanism when the registry
 is unavailable.
