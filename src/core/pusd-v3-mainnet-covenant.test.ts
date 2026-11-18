@@ -313,7 +313,7 @@ describe("PUSD Mainnet adapter constructor bindings", () => {
     const params = mainnetParams(fiveMembers);
     const { contract, escrows } = createPusdMainnetCircleContracts(params, provider);
     expect(escrows).toHaveLength(5);
-    expect(new Set(escrows.map((escrow) => binToHex(escrow.lockingBytecode))).size).toBe(5);
+    expect(new Set(escrows.map((escrow) => escrow.lockingBytecode)).size).toBe(5);
     expect(contract.lockingBytecode.length).toBeGreaterThan(0);
   });
 });
