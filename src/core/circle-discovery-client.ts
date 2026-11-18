@@ -25,12 +25,56 @@ async function postCircleRegistry(body: Record<string, unknown>) {
 }
 
 /** Register only after Selene-approved genesis has been accepted by Chipnet. */
-export async function registerCircleForDiscovery(encoded: string, genesisTxid: string): Promise<void> {
+export async function registerCircleForDiscovery(encoded: string, genesisTxid?: string): Promise<void> {
   if (typeof encoded !== "string" || encoded.length > 20_000 ||
-      !/^[0-9a-f]{64}$/i.test(genesisTxid)) {
+      (genesisTxid !== undefined && !/^[0-9a-f]{64}$/i.test(genesisTxid))) {
     throw new Error("Circle discovery registration contains an invalid invite or genesis transaction ID.");
   }
-  await postCircleRegistry({ action: "register", encoded, genesisTxid: genesisTxid.toLowerCase() });
+  await postCircleRegistry({
+    action: "register",
+    encoded,
+    ...(genesisTxid ? { genesisTxid: genesisTxid.toLowerCase() } : {}),
+  });
+}
+
+const backfilledLocalCircles = new Set<string>();
+
+/**
+ * Backfill circles saved before the dedicated registry was configured.
+ * Only a connected wallet whose receive branch matches a member can submit
+ * the invite, and each circle is independently re-read from Chipnet first.
+ * This is a discovery repair path, not a source of financial state.
+ */
+export async function registerSavedCirclesForDiscovery(
+  addresses: readonly string[],
+  encodedInvites: readonly string[],
+): Promise<void> {
+  const walletAddresses = new Set(
+    addresses.map((address) => address.trim().toLowerCase()).filter(Boolean),
+  );
+  const candidates = [...new Set(encodedInvites)].filter((encoded) =>
+    typeof encoded === "string" && encoded.length <= 20_000 &&
+    !backfilledLocalCircles.has(encoded),
+  );
+  let next = 0;
+  const worker = async () => {
+    while (next < candidates.length) {
+      const encoded = candidates[next++];
+      try {
+        const params = decodeV2FeeCircle(encoded);
+        if (params.network !== "chipnet" ||
+            !params.members.some((member) => walletAddresses.has(member.toLowerCase()))) {
+          continue;
+        }
+        await readV2FeeCircle(params);
+        await registerCircleForDiscovery(encoded);
+        backfilledLocalCircles.add(encoded);
+      } catch {
+        // Keep failures eligible for a later retry after the chain/database recovers.
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(3, candidates.length) }, () => worker()));
 }
 
 /**
