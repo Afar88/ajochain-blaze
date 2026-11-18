@@ -25,6 +25,8 @@ This checklist is a release control, not a list of UI switches. A checkbox may b
 - [ ] Test reorgs, duplicate observations, conflicting events, malformed receipts, unknown tokens, and all member-order edge cases.
 - [ ] External audit before any real-value deployment.
 
+CI now emits the exact source SHA-256, compiled artifact JSON SHA-256 and compiled bytecode SHA-256 for the Mainnet BCH V3 circle, PUSD V3 circle and PUSD V3 member-escrow contracts. Preserve those fingerprints with the reviewed commit and deployment record. A fingerprint proves which bytes were built; it is not an independent security approval or proof that the constructor arguments are safe.
+
 ## BCH V3 automatic future-contribution reserve covenant
 
 - [ ] Independently audit `contracts/AjoCircleV3AutoReserve.cash` and the exact compiled artifact, including current-round debit, member-specific reserve thresholds, recipient reserve arithmetic, terminal state, dust and overflow.
