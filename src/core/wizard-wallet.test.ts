@@ -57,6 +57,16 @@ describe("WizardConnect signed input inspection", () => {
     expect(() => assertRequiredWalletSighash(weakScript)).toThrow(/0x61/);
   });
 
+  it("accepts OP_0 and small-integer opcodes as push-only values", () => {
+    expect(readPushOnlyUnlockingScript(Uint8Array.from([0x00, 0x4f, 0x51, 0x60])))
+      .toEqual([
+        new Uint8Array(),
+        Uint8Array.from([0x81]),
+        Uint8Array.from([0x01]),
+        Uint8Array.from([0x10]),
+      ]);
+  });
+
   it("rejects non-push unlocking opcodes", () => {
     expect(() => readPushOnlyUnlockingScript(Uint8Array.from([0xac]))).toThrow(/non-push opcode/);
   });
