@@ -912,7 +912,7 @@ export function createUpstashPusdBroadcastLedger(options = {}) {
         !/^[0-9a-f]{64}$/.test(record.transactionDigest) ||
         !Array.isArray(record.inputOutpoints) || record.inputOutpoints.length === 0 ||
         record.inputOutpoints.length > 500 ||
-        record.inputOutpoints.some((item) => typeof item !== "string" || !/^[0-9a-f]{64}:\\d+$/.test(item)) ||
+        record.inputOutpoints.some((item) => typeof item !== "string" || !/^[0-9a-f]{64}:\d+$/.test(item)) ||
         new Set(record.inputOutpoints).size !== record.inputOutpoints.length ||
         !["submitting", "accepted", "already-known", "unknown"].includes(record.status)) {
       throw new Error("PUSD durable broadcast ledger record failed validation; broadcast remains blocked.");
