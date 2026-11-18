@@ -375,8 +375,8 @@ export default function V2FeeBchWorkspace({
       <div className="section-heading workspace-heading">
         <div>
           <span className="section-kicker">MEMBER CREDIT · FEE COVENANT</span>
-          <h2 id="v2-fee-title">Fair-round BCH circle</h2>
-          <p>Members fund the current round. When a member receives a payout, exactly one next contribution is withheld and carried forward in that member’s own on-chain receipt.</p>
+          <h2 id="v2-fee-title">{view === "create" ? "Fair-round BCH circle" : active?.name ?? "Your circle"}</h2>
+          <p>{view === "create" ? "Members fund the current round. When a member receives a payout, exactly one next contribution is withheld and carried forward in that member’s own on-chain receipt." : "Track this circle’s own member credits, contribution status, payout readiness and available actions."}</p>
         </div>
         <span className="classic-network">Chipnet · automatic future reserve</span>
       </div>
