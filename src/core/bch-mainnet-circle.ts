@@ -45,6 +45,8 @@ export async function prepareBchMainnetCircleGenesisPreview(
     estimatedChange: plan.estimatedChange,
     transactionInputCount: plan.walletInputs.length,
     transactionOutputCount: draft.members.length + 2,
+    wc: plan.wc,
+    walletInputs: plan.walletInputs,
     summary: "Unsigned BCH Mainnet genesis preview only. No signature, deployment or broadcast occurred.",
   };
 }
