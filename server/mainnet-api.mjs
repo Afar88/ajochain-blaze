@@ -795,7 +795,8 @@ function normalizeWalletAddresses(value) {
  * returning an outcome. Never blindly relay to a second provider after an
  * ambiguous result: the first provider may already have accepted the spend.
  */
-const PUSD_BROADCAST_LEDGER_PREFIX = "ajochain:mainnet:pusd:submission:v1:";
+const PUSD_BROADCAST_LEDGER_PREFIX = "ajochain:{mainnet-spend}:pusd:submission:v2:";
+const MAINNET_SPEND_INPUT_LOCK_PREFIX = "ajochain:{mainnet-spend}:input:v1:";
 
 /**
  * Durable cross-instance idempotency ledger for PUSD Mainnet broadcasts.
@@ -868,49 +869,173 @@ export function createUpstashPusdBroadcastLedger(options = {}) {
     }
     const normalizedTxid = txid.toLowerCase();
     const normalizedHex = signedTransactionHex.toLowerCase();
-    const actualTxid = hashTransaction(hexToBin(normalizedHex)).toLowerCase();
+    const signedBytes = hexToBin(normalizedHex);
+    const actualTxid = hashTransaction(signedBytes).toLowerCase();
     if (actualTxid !== normalizedTxid) {
       throw new Error("PUSD durable ledger transaction ID does not match the signed transaction bytes.");
     }
+    const decoded = decodeTransactionBCH(signedBytes);
+    if (typeof decoded === "string") {
+      throw new Error("PUSD durable ledger could not decode the exact signed transaction inputs: " + decoded);
+    }
+    if (decoded.inputs.length === 0 || decoded.inputs.length > 500) {
+      throw new Error("Mainnet spend reservation requires between 1 and 500 input outpoints.");
+    }
+    const inputOutpoints = decoded.inputs.map((input) => {
+      if (!Number.isSafeInteger(input.outpointIndex) || input.outpointIndex < 0) {
+        throw new Error("Signed transaction contains an invalid input outpoint index.");
+      }
+      const previousTxid = reverseHex(binToHex(input.outpointTransactionHash));
+      if (!/^[0-9a-f]{64}$/.test(previousTxid)) {
+        throw new Error("Signed transaction contains a malformed input transaction hash.");
+      }
+      return previousTxid + ":" + input.outpointIndex;
+    }).sort();
+    if (new Set(inputOutpoints).size !== inputOutpoints.length) {
+      throw new Error("Signed transaction contains duplicate input outpoints.");
+    }
     const digest = createHash("sha256").update(Buffer.from(normalizedHex, "hex")).digest("hex");
-    return { txid: normalizedTxid, digest };
+    return { txid: normalizedTxid, digest, inputOutpoints };
   }
 
   const keyFor = (txid) => PUSD_BROADCAST_LEDGER_PREFIX + txid;
+  const inputLockKeyFor = (outpoint) => MAINNET_SPEND_INPUT_LOCK_PREFIX + outpoint;
 
-  async function readRecord(txid) {
-    const raw = await command(["GET", keyFor(txid)]);
-    if (raw === null || raw === undefined) return null;
-    if (typeof raw !== "string") throw new Error("PUSD durable broadcast ledger record has an invalid type.");
+  function parseRecord(raw, txid) {
+    if (typeof raw !== "string") {
+      throw new Error("PUSD durable broadcast ledger record has an invalid type.");
+    }
     let record;
     try { record = JSON.parse(raw); }
     catch { throw new Error("PUSD durable broadcast ledger record is corrupt; broadcast remains blocked."); }
-    if (!record || record.version !== 1 || record.txid !== txid ||
+    if (!record || record.version !== 2 || record.txid !== txid ||
         !/^[0-9a-f]{64}$/.test(record.transactionDigest) ||
+        !Array.isArray(record.inputOutpoints) || record.inputOutpoints.length === 0 ||
+        record.inputOutpoints.length > 500 ||
+        record.inputOutpoints.some((item) => typeof item !== "string" || !/^[0-9a-f]{64}:\\d+$/.test(item)) ||
+        new Set(record.inputOutpoints).size !== record.inputOutpoints.length ||
         !["submitting", "accepted", "already-known", "unknown"].includes(record.status)) {
       throw new Error("PUSD durable broadcast ledger record failed validation; broadcast remains blocked.");
     }
     return record;
   }
 
+  async function readRecord(txid) {
+    const raw = await command(["GET", keyFor(txid)]);
+    if (raw === null || raw === undefined) return null;
+    return parseRecord(raw, txid);
+  }
+
+  function parseInputLock(raw, outpoint) {
+    if (raw === null || raw === undefined) return null;
+    if (typeof raw !== "string") {
+      throw new Error("Mainnet input reservation has an invalid type; broadcast remains blocked.");
+    }
+    let lock;
+    try { lock = JSON.parse(raw); }
+    catch { throw new Error("Mainnet input reservation is corrupt; broadcast remains blocked."); }
+    if (!lock || lock.version !== 1 || lock.outpoint !== outpoint ||
+        !/^[0-9a-f]{64}$/.test(lock.txid) ||
+        !/^[0-9a-f]{64}$/.test(lock.transactionDigest)) {
+      throw new Error("Mainnet input reservation failed validation; broadcast remains blocked.");
+    }
+    return lock;
+  }
+
+  function assertLockMatches(lock, normalized, outpoint) {
+    if (!lock || lock.txid !== normalized.txid ||
+        lock.transactionDigest !== normalized.digest ||
+        lock.outpoint !== outpoint) {
+      const owner = lock?.txid ? " (" + lock.txid + ")" : "";
+      throw new Error(
+        "Mainnet input outpoint " + outpoint +
+        " is already reserved by a different transaction" + owner +
+        ". It was not broadcast; reconcile the existing spend before attempting another transaction.",
+      );
+    }
+  }
+
   async function reserve(txid, signedTransactionHex) {
     const normalized = normalizeTransaction(txid, signedTransactionHex);
     const now = new Date().toISOString();
     const record = {
-      version: 1, txid: normalized.txid, transactionDigest: normalized.digest,
-      status: "submitting", relayStatus: null, createdAt: now, updatedAt: now,
+      version: 2,
+      txid: normalized.txid,
+      transactionDigest: normalized.digest,
+      inputOutpoints: normalized.inputOutpoints,
+      status: "submitting",
+      relayStatus: null,
+      createdAt: now,
+      updatedAt: now,
     };
-    // Redis SET NX is atomic across all serverless instances. No TTL is used:
-    // an ambiguous record must not silently become eligible for rebroadcast.
-    const result = await command(["SET", keyFor(normalized.txid), JSON.stringify(record), "NX"]);
-    if (result === "OK") return { acquired: true, record };
-    if (result !== null) throw new Error("PUSD durable broadcast ledger returned an unexpected reservation result.");
-    const existing = await readRecord(normalized.txid);
-    if (!existing) throw new Error("PUSD durable broadcast reservation disappeared; broadcast remains blocked.");
-    if (existing.transactionDigest !== normalized.digest) {
-      throw new Error("PUSD durable broadcast ledger found a transaction-ID/digest mismatch; broadcast remains blocked.");
+    const lockEntries = normalized.inputOutpoints.map((outpoint) => [
+      inputLockKeyFor(outpoint),
+      JSON.stringify({
+        version: 1,
+        txid: normalized.txid,
+        transactionDigest: normalized.digest,
+        outpoint,
+      }),
+    ]);
+    const allEntries = [[keyFor(normalized.txid), JSON.stringify(record)], ...lockEntries];
+
+    // MSETNX atomically reserves the transaction ID and every input outpoint.
+    // All keys share a Redis hash tag so the multi-key reservation stays in one
+    // Redis Cluster slot. Locks have no TTL and are intentionally shared by
+    // future BCH and PUSD Mainnet spend paths.
+    const result = await command(["MSETNX", ...allEntries.flat()]);
+    if (Number(result) === 1) return { acquired: true, record };
+    if (Number(result) !== 0) {
+      throw new Error("PUSD durable broadcast ledger returned an unexpected atomic reservation result.");
     }
-    return { acquired: false, record: existing };
+
+    const keys = allEntries.map(([key]) => key);
+    const values = await command(["MGET", ...keys]);
+    if (!Array.isArray(values) || values.length !== keys.length) {
+      throw new Error("Mainnet input reservation lookup returned an incomplete result; broadcast remains blocked.");
+    }
+    const existingRecord = values[0] === null || values[0] === undefined
+      ? null
+      : parseRecord(values[0], normalized.txid);
+    if (!existingRecord) {
+      const conflictLocks = normalized.inputOutpoints.map((outpoint, index) =>
+        parseInputLock(values[index + 1], outpoint),
+      );
+      const conflict = conflictLocks.find((lock) =>
+        lock && (lock.txid !== normalized.txid || lock.transactionDigest !== normalized.digest),
+      );
+      if (conflict) assertLockMatches(conflict, normalized, conflict.outpoint);
+      throw new Error("Mainnet input reservation exists without its transaction record; broadcast remains blocked for manual reconciliation.");
+    }
+    if (existingRecord.transactionDigest !== normalized.digest ||
+        JSON.stringify(existingRecord.inputOutpoints) !== JSON.stringify(normalized.inputOutpoints)) {
+      throw new Error("PUSD durable broadcast ledger found a transaction-ID, input-set or digest mismatch; broadcast remains blocked.");
+    }
+
+    const missingEntries = [];
+    for (let index = 0; index < normalized.inputOutpoints.length; index += 1) {
+      const outpoint = normalized.inputOutpoints[index];
+      const lock = parseInputLock(values[index + 1], outpoint);
+      if (lock) assertLockMatches(lock, normalized, outpoint);
+      else missingEntries.push(lockEntries[index]);
+    }
+    if (missingEntries.length > 0) {
+      // Backfill only missing locks, still atomically. A competing transaction
+      // that wins any input lock causes this reservation to fail.
+      const backfillResult = await command(["MSETNX", ...missingEntries.flat()]);
+      if (Number(backfillResult) !== 1) {
+        const backfillValues = await command(["MGET", ...missingEntries.map(([key]) => key)]);
+        if (!Array.isArray(backfillValues) || backfillValues.length !== missingEntries.length) {
+          throw new Error("Mainnet input reservation backfill could not be verified; broadcast remains blocked.");
+        }
+        for (let index = 0; index < missingEntries.length; index += 1) {
+          const outpoint = normalized.inputOutpoints.find((item) => inputLockKeyFor(item) === missingEntries[index][0]);
+          const lock = parseInputLock(backfillValues[index], outpoint);
+          assertLockMatches(lock, normalized, outpoint);
+        }
+      }
+    }
+    return { acquired: false, record: existingRecord };
   }
 
   async function complete(txid, signedTransactionHex, status) {
@@ -919,8 +1044,23 @@ export function createUpstashPusdBroadcastLedger(options = {}) {
     }
     const normalized = normalizeTransaction(txid, signedTransactionHex);
     const current = await readRecord(normalized.txid);
-    if (!current || current.transactionDigest !== normalized.digest) {
-      throw new Error("PUSD durable broadcast reservation is missing or does not match the signed bytes.");
+    if (!current || current.transactionDigest !== normalized.digest ||
+        JSON.stringify(current.inputOutpoints) !== JSON.stringify(normalized.inputOutpoints)) {
+      throw new Error("PUSD durable broadcast reservation is missing or does not match the signed bytes and input set.");
+    }
+    const locks = await command([
+      "MGET",
+      ...normalized.inputOutpoints.map(inputLockKeyFor),
+    ]);
+    if (!Array.isArray(locks) || locks.length !== normalized.inputOutpoints.length) {
+      throw new Error("Mainnet input reservations could not be rechecked; broadcast remains blocked.");
+    }
+    for (let index = 0; index < locks.length; index += 1) {
+      assertLockMatches(
+        parseInputLock(locks[index], normalized.inputOutpoints[index]),
+        normalized,
+        normalized.inputOutpoints[index],
+      );
     }
     if (current.status !== "submitting") {
       if (current.status === status) return current;
@@ -1234,8 +1374,10 @@ export function mainnetApiErrorStatus(message) {
   if (/Rate limit exceeded/.test(message)) return 429;
   if (/Request body exceeds/.test(message)) return 413;
   if (/Origin is not allowed/.test(message)) return 403;
+  // A competing transaction cannot reserve an already-locked input.
+  if (/input outpoint .*already reserved|input reservation exists/i.test(message)) return 409;
   // Durable state and ambiguous relay failures must fail closed as unavailable.
-  if (/result is UNKNOWN|durable broadcast ledger|UPSTASH_REDIS_REST/i.test(message)) return 503;
+  if (/result is UNKNOWN|durable broadcast ledger|UPSTASH_REDIS_REST|input reservation/i.test(message)) return 503;
   return 400;
 }
 
