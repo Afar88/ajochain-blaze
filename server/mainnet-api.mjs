@@ -1475,9 +1475,9 @@ function assertBchMainnetReceiptIndex(output, expectedIndex, label) {
   }
 }
 
-function assertBchMainnetStateCommitment(output, expectedRound, expectedPaid, label) {
+export function assertBchMainnetStateCommitment(output, expectedRound, expectedPaid, label) {
   const commitment = bchMainnetNftCommitment(output, label);
-  if (!/^540[0-5][01]$/.test(commitment) ||
+  if (!/^54(?:0[0-5])(?:00|01)$/.test(commitment) ||
       Number.parseInt(commitment.slice(2, 4), 16) !== expectedRound ||
       Number.parseInt(commitment.slice(4, 6), 16) !== expectedPaid) {
     throw new Error(label + " does not contain the expected V3 round and payout marker.");
@@ -1651,7 +1651,7 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
       throw new Error("BCH Mainnet V3 payout input 0 must be the minting state NFT.");
     }
     const stateCommitment = bchMainnetNftCommitment(sourceOutputs[0], "BCH Mainnet payout state");
-    if (!/^540[0-5][01]$/.test(stateCommitment)) {
+    if (!/^54(?:0[0-5])(?:00|01)$/.test(stateCommitment)) {
       throw new Error("BCH Mainnet payout state commitment is malformed.");
     }
     const round = Number.parseInt(stateCommitment.slice(2, 4), 16);
