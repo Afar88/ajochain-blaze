@@ -3,7 +3,7 @@ import {
   Contract, MockNetworkProvider, SignatureTemplate, TransactionBuilder,
   randomUtxo, type Artifact, type SpendableUtxo,
 } from "cashscript";
-import { encodeCashAddress, hash160, hexToBin, secp256k1 } from "@bitauth/libauth";
+import { binToHex, encodeCashAddress, hash160, hexToBin, secp256k1 } from "@bitauth/libauth";
 import circleArtifactJson from "../../contracts/AjoCirclePUSDV3Mainnet.json" with { type: "json" };
 import escrowArtifactJson from "../../contracts/AjoPUSDMemberEscrowV3.json" with { type: "json" };
 import { PUSD_ASSET } from "./assets";
@@ -291,7 +291,7 @@ describe("PUSD Mainnet adapter constructor bindings", () => {
 
   it("pins five ordered members and five separately derived escrow scripts", () => {
     const provider = new MockNetworkProvider();
-    const fiveMembers = [...members, key(4), key(5), key(6)];
+    const fiveMembers = [...members, key(4), key(5)];
     const params = mainnetParams(fiveMembers);
     const { contract, escrows } = createPusdMainnetCircleContracts(params, provider);
     expect(escrows).toHaveLength(5);
