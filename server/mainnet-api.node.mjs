@@ -9,6 +9,7 @@ import transactionStatusHandler from "../api/transaction/status.mjs";
 import {
   assertPreviousTransactionsAgree,
   parseMainnetElectrumProviderConfig,
+  createUpstashMainnetRateLimiter,
   assertBchMainnetStateCommitment,
   createBchMainnetV3ContractContext,
   verifyBchMainnetCircleTransaction,
@@ -65,6 +66,65 @@ const bchMainnetVerificationCircle = {
   treasury: "bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q",
 };
 
+
+test("Upstash Mainnet rate limit is atomic across independent serverless instances", async () => {
+  const store = new Map();
+  let now = 1_800_000_000_000;
+  const fetchImpl = async (_url, init) => {
+    const [command, script, numberOfKeys, key, ttl] = JSON.parse(init.body);
+    assert.equal(command, "EVAL");
+    assert.equal(numberOfKeys, "1");
+    assert.match(script, /INCR/);
+    assert.match(script, /PEXPIRE/);
+    assert.equal(ttl, "65000");
+    const count = (store.get(key) ?? 0) + 1;
+    store.set(key, count);
+    return { ok: true, status: 200, json: async () => ({ result: count }) };
+  };
+  const firstInstance = createUpstashMainnetRateLimiter({
+    url: "https://redis.example.test",
+    token: "private-test-token",
+    fetchImpl,
+    now: () => now,
+    maxRequests: 2,
+    windowMs: 60_000,
+  });
+  const secondInstance = createUpstashMainnetRateLimiter({
+    url: "https://redis.example.test",
+    token: "private-test-token",
+    fetchImpl,
+    now: () => now,
+    maxRequests: 2,
+    windowMs: 60_000,
+  });
+  const clientA = { headers: { "x-vercel-forwarded-for": "203.0.113.10" }, socket: {} };
+  const clientB = { headers: { "x-vercel-forwarded-for": "203.0.113.11" }, socket: {} };
+  assert.equal((await firstInstance.consume(clientA)).remaining, 1);
+  assert.equal((await secondInstance.consume(clientA)).remaining, 0);
+  await assert.rejects(firstInstance.consume(clientA), /Rate limit exceeded/i);
+  assert.equal((await secondInstance.consume(clientB)).count, 1);
+  now += 60_000;
+  assert.equal((await firstInstance.consume(clientA)).count, 1);
+  const keys = [...store.keys()];
+  assert.ok(keys.every((item) => item.startsWith("ajochain:{mainnet-spend}:rate:v1:")));
+  assert.ok(keys.every((item) => !item.includes("203.0.113.")));
+});
+
+test("Upstash Mainnet rate limiter fails closed for invalid IP, absent credentials and storage outage", async () => {
+  assert.throws(() => createUpstashMainnetRateLimiter({
+    url: "", token: "", fetchImpl: async () => ({}),
+  }), /not configured/i);
+  const invalidIp = createUpstashMainnetRateLimiter({
+    url: "https://redis.example.test", token: "private-test-token",
+    fetchImpl: async () => ({ ok: true, json: async () => ({ result: 1 }) }),
+  });
+  await assert.rejects(invalidIp.consume({ headers: { "x-vercel-forwarded-for": "spoofed" }, socket: {} }), /valid client IP/i);
+  const outage = createUpstashMainnetRateLimiter({
+    url: "https://redis.example.test", token: "private-test-token",
+    fetchImpl: async () => { throw new Error("network down"); },
+  });
+  await assert.rejects(outage.consume({ headers: {}, socket: { remoteAddress: "127.0.0.1" } }), /rate limiter is unavailable/i);
+});
 
 test("Mainnet Electrum provider manifest requires unique operator identities", () => {
   const providers = parseMainnetElectrumProviderConfig(
