@@ -187,12 +187,13 @@ async function payout(
   const nextStateCommitment = "54" + nextRound.toString(16).padStart(2, "0") + "01";
   const circleUnlock = contract.unlock.payout();
   const escrowInputZero = overrides.escrowInputSourceForMemberZero ?? 0;
+  const escrowInputOne = escrowInputZero === 0 ? 1 : 0;
   const builder = new TransactionBuilder({ provider })
     .addInput(state, circleUnlock)
     .addInput(receipts[0], circleUnlock)
     .addInput(receipts[1], circleUnlock)
     .addInput(escrowUtxos[escrowInputZero], escrows[escrowInputZero].unlock.attest())
-    .addInput(escrowUtxos[1], escrows[1].unlock.attest())
+    .addInput(escrowUtxos[escrowInputOne], escrows[escrowInputOne].unlock.attest())
     .addInput(reserve, initiator.signature.unlockP2PKH())
     .addOutput({
       to: contract.tokenAddress, amount: state.satoshis,
