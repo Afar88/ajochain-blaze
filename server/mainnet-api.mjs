@@ -795,6 +795,139 @@ function normalizeWalletAddresses(value) {
  * returning an outcome. Never blindly relay to a second provider after an
  * ambiguous result: the first provider may already have accepted the spend.
  */
+const PUSD_BROADCAST_LEDGER_PREFIX = "ajochain:mainnet:pusd:submission:v1:";
+
+/**
+ * Durable cross-instance idempotency ledger for PUSD Mainnet broadcasts.
+ * Uses Upstash Redis REST. There is intentionally no in-memory fallback:
+ * missing credentials, storage failures and ambiguous states fail closed.
+ * Raw signed transaction bytes are never persisted.
+ */
+export function createUpstashPusdBroadcastLedger(options = {}) {
+  const restUrl = options.url ?? process.env.UPSTASH_REDIS_REST_URL;
+  const token = options.token ?? process.env.UPSTASH_REDIS_REST_TOKEN;
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  if (typeof restUrl !== "string" || !restUrl.trim() ||
+      typeof token !== "string" || !token.trim()) {
+    throw new Error("PUSD durable broadcast ledger is not configured. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN as private server-side environment variables.");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("PUSD durable broadcast ledger requires a server-side HTTPS fetch implementation.");
+  }
+  let endpoint;
+  try { endpoint = new URL(restUrl); }
+  catch { throw new Error("PUSD durable broadcast ledger URL is invalid."); }
+  if (endpoint.protocol !== "https:" || !endpoint.hostname ||
+      endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
+    throw new Error("PUSD durable broadcast ledger must use a clean HTTPS REST URL.");
+  }
+  const endpointUrl = endpoint.toString().replace(/\/+$/, "");
+
+  async function command(args) {
+    let response;
+    try {
+      response = await fetchImpl(endpointUrl, {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify(args),
+      });
+    } catch {
+      throw new Error("PUSD durable broadcast ledger is unavailable; no retry or broadcast was attempted.");
+    }
+    if (!response || !response.ok) {
+      throw new Error("PUSD durable broadcast ledger request failed (HTTP " +
+        String(response?.status ?? "unknown") + "); broadcast remains blocked.");
+    }
+    let payload;
+    try { payload = await response.json(); }
+    catch { throw new Error("PUSD durable broadcast ledger returned malformed JSON; broadcast remains blocked."); }
+    if (!payload || typeof payload !== "object" ||
+        Object.prototype.hasOwnProperty.call(payload, "error")) {
+      throw new Error("PUSD durable broadcast ledger command failed; broadcast remains blocked.");
+    }
+    return payload.result;
+  }
+
+  function normalizeTransaction(txid, signedTransactionHex) {
+    if (!/^[0-9a-f]{64}$/i.test(String(txid)) || !isHex(signedTransactionHex)) {
+      throw new Error("A valid PUSD transaction ID and exact signed transaction bytes are required for durable idempotency.");
+    }
+    const normalizedTxid = txid.toLowerCase();
+    const normalizedHex = signedTransactionHex.toLowerCase();
+    const actualTxid = hashTransaction(hexToBin(normalizedHex)).toLowerCase();
+    if (actualTxid !== normalizedTxid) {
+      throw new Error("PUSD durable ledger transaction ID does not match the signed transaction bytes.");
+    }
+    const digest = createHash("sha256").update(Buffer.from(normalizedHex, "hex")).digest("hex");
+    return { txid: normalizedTxid, digest };
+  }
+
+  const keyFor = (txid) => PUSD_BROADCAST_LEDGER_PREFIX + txid;
+
+  async function readRecord(txid) {
+    const raw = await command(["GET", keyFor(txid)]);
+    if (raw === null || raw === undefined) return null;
+    if (typeof raw !== "string") throw new Error("PUSD durable broadcast ledger record has an invalid type.");
+    let record;
+    try { record = JSON.parse(raw); }
+    catch { throw new Error("PUSD durable broadcast ledger record is corrupt; broadcast remains blocked."); }
+    if (!record || record.version !== 1 || record.txid !== txid ||
+        !/^[0-9a-f]{64}$/.test(record.transactionDigest) ||
+        !["submitting", "accepted", "already-known", "unknown"].includes(record.status)) {
+      throw new Error("PUSD durable broadcast ledger record failed validation; broadcast remains blocked.");
+    }
+    return record;
+  }
+
+  async function reserve(txid, signedTransactionHex) {
+    const normalized = normalizeTransaction(txid, signedTransactionHex);
+    const now = new Date().toISOString();
+    const record = {
+      version: 1, txid: normalized.txid, transactionDigest: normalized.digest,
+      status: "submitting", relayStatus: null, createdAt: now, updatedAt: now,
+    };
+    // Redis SET NX is atomic across all serverless instances. No TTL is used:
+    // an ambiguous record must not silently become eligible for rebroadcast.
+    const result = await command(["SET", keyFor(normalized.txid), JSON.stringify(record), "NX"]);
+    if (result === "OK") return { acquired: true, record };
+    if (result !== null) throw new Error("PUSD durable broadcast ledger returned an unexpected reservation result.");
+    const existing = await readRecord(normalized.txid);
+    if (!existing) throw new Error("PUSD durable broadcast reservation disappeared; broadcast remains blocked.");
+    if (existing.transactionDigest !== normalized.digest) {
+      throw new Error("PUSD durable broadcast ledger found a transaction-ID/digest mismatch; broadcast remains blocked.");
+    }
+    return { acquired: false, record: existing };
+  }
+
+  async function complete(txid, signedTransactionHex, status) {
+    if (!["accepted", "already-known", "unknown"].includes(status)) {
+      throw new Error("Invalid PUSD durable broadcast terminal status.");
+    }
+    const normalized = normalizeTransaction(txid, signedTransactionHex);
+    const current = await readRecord(normalized.txid);
+    if (!current || current.transactionDigest !== normalized.digest) {
+      throw new Error("PUSD durable broadcast reservation is missing or does not match the signed bytes.");
+    }
+    if (current.status !== "submitting") {
+      if (current.status === status) return current;
+      throw new Error("PUSD durable broadcast record is already terminal (" + current.status + ").");
+    }
+    const updated = { ...current, status, relayStatus: status, updatedAt: new Date().toISOString() };
+    const result = await command(["SET", keyFor(normalized.txid), JSON.stringify(updated), "XX"]);
+    if (result !== "OK") throw new Error("PUSD durable broadcast state could not be persisted; later retries remain blocked.");
+    return updated;
+  }
+
+  async function get(txid) {
+    if (!/^[0-9a-f]{64}$/i.test(String(txid))) {
+      throw new Error("Supply a transaction ID containing exactly 64 hexadecimal characters.");
+    }
+    return readRecord(txid.toLowerCase());
+  }
+
+  return Object.freeze({ reserve, complete, get });
+}
+
 export async function broadcastPusdTransactionOnce(sessions, signedTransactionHex, expectedTxid) {
   if (!Array.isArray(sessions) || sessions.length < 2) {
     throw new Error("PUSD broadcast recovery requires the configured Electrum quorum.");
@@ -980,11 +1113,34 @@ async function verifyPusdSpendAndBroadcast(sessions, tip, body) {
   }
 
   const expectedTxid = hashTransaction(signedBytes).toLowerCase();
-  const relay = await broadcastPusdTransactionOnce(
-    sessions,
-    body.signedTransactionHex,
-    expectedTxid,
-  );
+  const ledger = createUpstashPusdBroadcastLedger();
+  const reservation = await ledger.reserve(expectedTxid, body.signedTransactionHex);
+  let relay;
+  if (!reservation.acquired) {
+    if (reservation.record.status === "accepted" ||
+        reservation.record.status === "already-known") {
+      relay = {
+        txid: expectedTxid,
+        relayStatus: reservation.record.relayStatus ?? reservation.record.status,
+      };
+    } else {
+      throw new Error(
+        "PUSD durable broadcast ledger already records this exact transaction as " +
+        reservation.record.status + ". It was not relayed again. Check the exact transaction ID and reconcile its provider/confirmation status before taking any further action.",
+      );
+    }
+  } else {
+    try {
+      relay = await broadcastPusdTransactionOnce(sessions, body.signedTransactionHex, expectedTxid);
+      await ledger.complete(expectedTxid, body.signedTransactionHex, relay.relayStatus);
+    } catch (cause) {
+      // A failed final state write leaves the original submitting reservation
+      // in place, which continues to block every later relay attempt.
+      try { await ledger.complete(expectedTxid, body.signedTransactionHex, "unknown"); }
+      catch { /* submitting remains a permanent retry lock */ }
+      throw cause;
+    }
+  }
 
   return {
     txid: expectedTxid,
@@ -1064,8 +1220,8 @@ export function mainnetApiErrorStatus(message) {
   if (/Rate limit exceeded/.test(message)) return 429;
   if (/Request body exceeds/.test(message)) return 413;
   if (/Origin is not allowed/.test(message)) return 403;
-  // An ambiguous relay result must remain visibly retry-blocked to callers.
-  if (/result is UNKNOWN/.test(message)) return 503;
+  // Durable state and ambiguous relay failures must fail closed as unavailable.
+  if (/result is UNKNOWN|durable broadcast ledger|UPSTASH_REDIS_REST/i.test(message)) return 503;
   return 400;
 }
 
@@ -1105,6 +1261,22 @@ export function createMainnetApiServer() {
             tipHash: tip.hash,
             broadcastEnabled: MAINNET_BROADCAST_ENABLED,
           });
+        });
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/api/pusd/submission") {
+        const txid = url.searchParams.get("txid") ?? "";
+        if (!/^[0-9a-f]{64}$/i.test(txid)) {
+          throw new Error("Supply a transaction ID containing exactly 64 hexadecimal characters.");
+        }
+        const record = await createUpstashPusdBroadcastLedger().get(txid);
+        sendJson(response, 200, {
+          network: "mainnet",
+          txid: txid.toLowerCase(),
+          submissionStatus: record?.status ?? "not-recorded",
+          relayStatus: record?.relayStatus ?? null,
+          createdAt: record?.createdAt ?? null,
+          updatedAt: record?.updatedAt ?? null,
         });
         return;
       }
