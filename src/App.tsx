@@ -105,6 +105,8 @@ export default function App() {
   const [pusdTransferPlan, setPusdTransferPlan] = useState<PusdTransferPlan | null>(null);
   const [pusdPlanError, setPusdPlanError] = useState("");
   const [pusdPlanBusy, setPusdPlanBusy] = useState(false);
+  const [pusdSignatureBusy, setPusdSignatureBusy] = useState(false);
+  const [pusdSignatureMessage, setPusdSignatureMessage] = useState("");
 
   const walletAddress = walletClient?.address(network) ?? null;
   const connected = walletView.state === "connected";
@@ -281,6 +283,7 @@ export default function App() {
   const preparePusdTransfer = async () => {
     setPusdPlanError("");
     setPusdTransferPlan(null);
+    setPusdSignatureMessage("");
     if (!connected || walletClient?.state !== "connected") {
       setPusdPlanError("Connect your wallet before preparing a PUSD transfer.");
       return;
@@ -318,6 +321,76 @@ export default function App() {
       setPusdPlanError(cause instanceof Error ? cause.message : "Could not prepare the PUSD transfer.");
     } finally {
       setPusdPlanBusy(false);
+    }
+  };
+
+  const verifyPusdTransferSignature = async () => {
+    setPusdSignatureMessage("");
+    if (!walletClient || walletClient.state !== "connected" || !connected) {
+      setPusdSignatureMessage("Connect Selene through WizardConnect before testing the PUSD signature path.");
+      return;
+    }
+    if (network !== "mainnet" || pusdView.status !== "ready") {
+      setPusdSignatureMessage("A verified Mainnet PUSD balance is required before signature verification.");
+      return;
+    }
+    const senderAddress = walletClient.address("mainnet");
+    if (!senderAddress || !pusdRecipient.trim()) {
+      setPusdSignatureMessage("Confirm the connected sender address and a valid recipient address.");
+      return;
+    }
+    if (!/^\d+$/.test(pusdMaxFee.trim())) {
+      setPusdSignatureMessage("Maximum miner fee must be entered as whole satoshis.");
+      return;
+    }
+    setPusdSignatureBusy(true);
+    try {
+      const [
+        { buildPusdTransferPlan },
+        { cashAddressToExpectedLockingBytecode, fetchPusdWalletBalance, fetchPusdFeeQuote },
+      ] = await Promise.all([
+        import("./core/pusd-transaction-builder"),
+        import("./core/pusd-api"),
+      ]);
+      // Rebuild from a fresh authenticated UTXO snapshot and current fee quote
+      // immediately before asking Selene to sign. Never sign the stale preview.
+      const [freshBalance, feeQuote] = await Promise.all([
+        fetchPusdWalletBalance(senderAddress),
+        fetchPusdFeeQuote(),
+      ]);
+      const freshPlan = buildPusdTransferPlan({
+        authenticatedUtxos: freshBalance.utxos,
+        requiredPusdAmount: parseAssetAmount("PUSD", pusdAmount),
+        recipientLockingBytecode: cashAddressToExpectedLockingBytecode(pusdRecipient),
+        changeLockingBytecode: cashAddressToExpectedLockingBytecode(senderAddress),
+        feeRateSatoshisPerKb: feeQuote.feeRateSatoshisPerKb,
+        maxFeeSatoshis: BigInt(pusdMaxFee.trim()),
+      });
+      const verified = await walletClient.signAndVerify(
+        freshPlan,
+        freshPlan.walletInputs,
+        "Verify PUSD Mainnet transfer to " + pusdRecipient.trim() + " (local verification only; never broadcast)",
+      );
+      setPusdTransferPlan(freshPlan);
+      setPusdSignatureMessage(
+        "Selene signed the freshly rebuilt PUSD transfer and AjoChain passed exact input/output comparison, CashTokens output comparison, 0x61 sighash checks and BCH 2026 VM verification (" +
+        verified.decoded.inputs.length + " inputs, " + verified.decoded.outputs.length +
+        " outputs). The signed bytes were discarded. Nothing was broadcast and no PUSD payment occurred.",
+      );
+      setPusdView((current) => ({
+        ...current,
+        amount: freshBalance.balance,
+        utxos: freshBalance.utxos,
+        rawPreviousTransactions: freshBalance.rawPreviousTransactions,
+        tipHeight: freshBalance.tipHeight,
+        providerConfidence: freshBalance.providerConfidence,
+        utxoCount: freshBalance.utxos.length,
+        detail: "Refreshed " + freshBalance.providerConfidence + " provider-authenticated wallet UTXOs immediately before local signature verification.",
+      }));
+    } catch (cause) {
+      setPusdSignatureMessage(cause instanceof Error ? cause.message : "PUSD signature verification failed. Nothing was broadcast.");
+    } finally {
+      setPusdSignatureBusy(false);
     }
   };
 
@@ -634,14 +707,14 @@ export default function App() {
                 <div><span className="section-kicker">TRANSFER PLANNER</span><h3>Prepare a PUSD transfer</h3>
                   <p>Builds a transaction preview from authenticated PUSD UTXOs and a live fee quote. It does not sign or broadcast.</p></div>
                 <label>Recipient Bitcoin Cash address
-                  <input value={pusdRecipient} onChange={(event) => { setPusdRecipient(event.target.value); setPusdTransferPlan(null); setPusdPlanError(""); }} placeholder="bitcoincash:…" autoComplete="off" />
+                  <input value={pusdRecipient} onChange={(event) => { setPusdRecipient(event.target.value); setPusdTransferPlan(null); setPusdSignatureMessage(""); setPusdPlanError(""); }} placeholder="bitcoincash:…" autoComplete="off" />
                 </label>
                 <div className="pusd-transfer-fields">
                   <label>Amount (PUSD)
-                    <input value={pusdAmount} onChange={(event) => { setPusdAmount(event.target.value); setPusdTransferPlan(null); setPusdPlanError(""); }} inputMode="decimal" placeholder="0.02" />
+                    <input value={pusdAmount} onChange={(event) => { setPusdAmount(event.target.value); setPusdTransferPlan(null); setPusdSignatureMessage(""); setPusdPlanError(""); }} inputMode="decimal" placeholder="0.02" />
                   </label>
                   <label>Maximum miner fee (sats)
-                    <input value={pusdMaxFee} onChange={(event) => { setPusdMaxFee(event.target.value); setPusdTransferPlan(null); setPusdPlanError(""); }} inputMode="numeric" />
+                    <input value={pusdMaxFee} onChange={(event) => { setPusdMaxFee(event.target.value); setPusdTransferPlan(null); setPusdSignatureMessage(""); setPusdPlanError(""); }} inputMode="numeric" />
                   </label>
                 </div>
                 <button type="button" className="secondary-button" onClick={() => void preparePusdTransfer()} disabled={pusdPlanBusy || pusdView.status !== "ready" || network !== "mainnet"}>
@@ -659,6 +732,11 @@ export default function App() {
                     <small>Estimated size {pusdTransferPlan.estimatedSizeBytes} bytes · fee rate {pusdTransferPlan.feeRateSatoshisPerKb.toString()} sats/kB. The plan must be rebuilt from fresh chain data before any signature.</small>
                   </div>
                 )}
+                <button type="button" className="secondary-button" disabled={!pusdTransferPlan || pusdSignatureBusy || !connected || network !== "mainnet"}
+                  onClick={() => void verifyPusdTransferSignature()}>
+                  {pusdSignatureBusy ? "Verifying Selene signature…" : "Verify Selene signature · no broadcast"}
+                </button>
+                {pusdSignatureMessage && <p className="classic-notice" role="status">{pusdSignatureMessage}</p>}
                 <button type="button" className="primary-button" disabled={!PUSD_MAINNET_SPENDING_ENABLED || !pusdTransferPlan}
                   title="PUSD Mainnet spending is not yet approved by the security release gate">
                   Send PUSD · Mainnet locked
