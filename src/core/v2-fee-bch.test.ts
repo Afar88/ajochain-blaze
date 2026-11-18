@@ -12,7 +12,8 @@ import { hash160, secp256k1, hexToBin } from '@bitauth/libauth';
 import artifactJson from '../../contracts/AjoCircleV2Fee.json' with { type: 'json' };
 import legacyArtifactJson from '../../contracts/AjoCircleV2Fee.legacy.json' with { type: 'json' };
 import { pkhToAddress } from './bch-address';
-import { buildV2FeeMemberOrder, v2FeeArtifactForCovenant } from './v2-fee-bch';
+import { buildV2FeeMemberOrder, requireV2FeeGenesisUtxo, v2FeeArtifactForCovenant } from './v2-fee-bch';
+import { CashTokensGenesisUtxoMissingError } from './classic-bch';
 
 const artifact = artifactJson as unknown as Artifact;
 const legacyArtifact = legacyArtifactJson as unknown as Artifact;
@@ -161,6 +162,29 @@ async function cancel(provider: MockNetworkProvider, contract: Contract, signer 
   builder.addOutput({ to: fundingAddress, amount: 15_000n });
   await builder.send();
 }
+
+describe('V2 fee genesis outpoint selection', () => {
+  const eligible = {
+    txid: 'ab'.repeat(32),
+    vout: 0,
+    satoshis: 1n,
+    lockingBytecode: hexToBin('76a914' + '11'.repeat(20) + '88ac'),
+  } as SpendableUtxo;
+
+  it('accepts any positive non-token vout-0 coin without a 3,000-sat floor', () => {
+    expect(requireV2FeeGenesisUtxo([eligible])).toBe(eligible);
+  });
+
+  it('returns the recoverable setup condition when no eligible vout-0 coin exists', () => {
+    const nonzeroOutput = { ...eligible, vout: 1 };
+    const tokenOutput = {
+      ...eligible,
+      token: { category: CATEGORY, amount: 1n },
+    } as SpendableUtxo;
+    expect(() => requireV2FeeGenesisUtxo([nonzeroOutput, tokenOutput]))
+      .toThrow(CashTokensGenesisUtxoMissingError);
+  });
+});
 
 describe('V2 fee covenant artifact version routing', () => {
   it('keeps all three legacy and guarded covenant identifiers on separate script addresses', () => {
