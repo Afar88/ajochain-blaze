@@ -412,14 +412,47 @@ function findReceipt(utxos: SpendableUtxo[], category: string, index: number) {
   return matches[0];
 }
 
+export function describeV2FeeTokenSetMismatch(
+  utxos: SpendableUtxo[],
+  category: string,
+  expectedCount: number,
+  network: ClassicNetwork,
+  contractAddress: string,
+): string {
+  const categoryUtxos = utxos.filter((utxo) => utxo.token?.category === category);
+  const otherCategories = [...new Set(
+    utxos.flatMap((utxo) => utxo.token?.category && utxo.token.category !== category ? [utxo.token.category] : []),
+  )].slice(0, 3);
+  const expected = expectedCount + " state/receipt NFTs";
+  if (categoryUtxos.length > 0) {
+    return `Invalid V2 fee token set at ${contractAddress} (${network}): expected ${expected} for category ${category}, found ${categoryUtxos.length}. Stop and investigate.`;
+  }
+  if (utxos.length === 0) {
+    return `No on-chain outputs were found at the saved circle's derived ${network} contract address ${contractAddress}. The record expects CashTokens category ${category}. This menu entry may be an old or incorrect saved invite; it is not proof that your other circle or contribution is missing. No transaction was sent. Verify the circle invite and contract details before paying, cancelling, or recreating anything.`;
+  }
+  const found = otherCategories.length
+    ? " Other CashToken categories present: " + otherCategories.join(", ") + "."
+    : " The address returned outputs, but none carry CashTokens.";
+  return `The saved circle does not match the outputs at derived ${network} contract address ${contractAddress}. Expected category ${category}, but found 0 matching NFTs in ${utxos.length} outputs.${found} Do not recreate the circle or send another contribution until the saved invite is checked.`;
+}
+
 function assertUtxoSet(
   utxos: SpendableUtxo[],
   category: string,
   memberCount: number,
   covenant: V2FeeCircleParams['covenant'],
+  network: ClassicNetwork,
+  contractAddress: string,
 ) {
   const categoryUtxos = utxos.filter(u => u.token?.category === category);
-  if (categoryUtxos.length !== memberCount + 1) throw new Error(`Invalid V2 fee token set: expected ${memberCount + 1} state/receipt NFTs, found ${categoryUtxos.length}. Stop and investigate.`);
+  if (categoryUtxos.length !== memberCount + 1) {
+    if (categoryUtxos.length === 0) {
+      throw new Error(describeV2FeeTokenSetMismatch(
+        utxos, category, memberCount + 1, network, contractAddress,
+      ));
+    }
+    throw new Error(`Invalid V2 fee token set at ${contractAddress}: expected ${memberCount + 1} state/receipt NFTs, found ${categoryUtxos.length}. Stop and investigate.`);
+  }
   const state = findState(utxos, category, covenant, memberCount);
   const receipts = Array.from({ length: memberCount }, (_, index) => findReceipt(utxos, category, index));
   const known = new Set([state, ...receipts].map(u => `${u.txid}:${u.vout}`));
@@ -480,7 +513,7 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
   const all = await contract.getUtxos();
-  assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant);
+  assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant, params.network, contract.address);
   const state = findState(all, params.stateCategory, params.covenant, params.members.length);
   const currentRound = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
   assertV2FeeDepositRoundOpen(params.covenant, currentRound, params.members.length);
@@ -531,7 +564,7 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
   const all = await contract.getUtxos();
-  assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant);
+  assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant, params.network, contract.address);
   const state = findState(all, params.stateCategory, params.covenant, params.members.length);
   const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
   const hasPaid = state.token!.nft!.commitment.slice(4) === "01";
@@ -640,7 +673,7 @@ export async function planV2FeeCancel(params: V2FeeCircleParams, walletAddress: 
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
   const all = await contract.getUtxos();
-  assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant);
+  assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant, params.network, contract.address);
   const state = findState(all, params.stateCategory, params.covenant, params.members.length);
   const stateCommitment = state.token!.nft!.commitment;
   const round = Number.parseInt(stateCommitment.slice(2, 4), 16);
@@ -675,7 +708,7 @@ export async function readV2FeeCircle(params: V2FeeCircleParams) {
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
   const utxos = await contract.getUtxos();
-  assertUtxoSet(utxos, params.stateCategory, params.members.length, params.covenant);
+  assertUtxoSet(utxos, params.stateCategory, params.members.length, params.covenant, params.network, contract.address);
   const state = findState(utxos, params.stateCategory, params.covenant, params.members.length);
   const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
   const hasPaid = state.token!.nft!.commitment.slice(4) === '01';
