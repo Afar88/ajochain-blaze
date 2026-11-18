@@ -1437,3 +1437,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     padding: 12px;
   }
 }
+
+
+/* Show both Mainnet asset workspaces together in the submission flow. */
+.mainnet-dual-workspaces {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+}
+.mainnet-dual-workspaces > .circle-workspace-panel {
+  min-width: 0;
+  scroll-margin-top: 92px;
+}
