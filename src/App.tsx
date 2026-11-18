@@ -466,9 +466,6 @@ export default function App() {
                 <span><b>{connected ? walletView.walletName ?? "Wallet connected" : "Connect wallet"}</b><small>{connected ? shortAddress(walletAddress) : walletView.state === "reconnecting" ? "Restoring Selene session…" : "WizardConnect · Selene"}</small></span>
                 <ArrowRight size={16} />
               </button>
-              <button type="button" className="dropdown-create-button" onClick={() => navigate("create-circle")}>
-                <Users size={16} /> Create a circle <ArrowRight size={15} />
-              </button>
             </section>
           </>
         )}
