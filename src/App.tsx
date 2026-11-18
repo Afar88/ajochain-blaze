@@ -127,7 +127,10 @@ export default function App() {
   // requiring a link, a page refresh, or a wallet reconnection.
   useEffect(() => {
     let active = true;
-    if (network !== "chipnet" || walletView.state !== "connected" || !walletClient) {
+    // Discovery is always for Chipnet circles, even when the production
+    // workspace opens on Mainnet. Selecting a discovered circle switches its
+    // detail view to Chipnet; the app's selected network must not hide it.
+    if (walletView.state !== "connected" || !walletClient) {
       return () => { active = false; };
     }
     const addresses = walletClient.receiveAddresses("chipnet", 50);
@@ -172,7 +175,7 @@ export default function App() {
       active = false;
       window.clearInterval(poll);
     };
-  }, [network, walletView.state, walletView.receiveIndex, walletClient]);
+  }, [walletView.state, walletView.receiveIndex, walletClient]);
 
   useEffect(() => {
     let active = true;
