@@ -3,7 +3,7 @@ import { decodeCashAddress, binToHex } from "@bitauth/libauth";
 import { neon } from "@neondatabase/serverless";
 
 const MAX_BODY_BYTES = 32 * 1024;
-const MAX_DISCOVERY_ADDRESSES = 50;
+const MAX_DISCOVERY_ADDRESSES = 51;
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT = 120;
 
