@@ -869,7 +869,8 @@ export function createUpstashPusdBroadcastLedger(options = {}) {
       endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
     throw new Error("PUSD durable broadcast ledger must use a clean HTTPS REST URL.");
   }
-  const endpointUrl = endpoint.toString().replace(/\/+$/, "");
+  const endpointText = endpoint.toString();
+  const endpointUrl = endpointText.endsWith("/") ? endpointText.slice(0, -1) : endpointText;
 
   async function command(args) {
     let response;
