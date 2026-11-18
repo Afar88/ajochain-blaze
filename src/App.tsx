@@ -695,7 +695,9 @@ export default function App() {
             </div>
             {connected ? (
               <div className="wallet-detail-body">
-                <div className="wallet-address-card"><span>{NETWORKS[network].label}</span><code>{walletAddress ?? "Address not available yet"}</code><small>Live WizardConnect receive key · address index {walletView.receiveIndex} · public address only</small></div>
+                <div className="wallet-address-card"><span>{NETWORKS[network].label}</span><code>{walletAddress ?? "Address not available yet"}</code>{walletAddress
+                  ? <small>Live WizardConnect receive key · address index {walletView.receiveIndex} · public address only</small>
+                  : <small className="wallet-match-message">WizardConnect is connected, but no valid live receive key is available yet. Check the Selene session and reconnect if needed.</small>}</div>
                 <label className="field-label" htmlFor="selene-address">Verify against the receive address shown in Selene</label>
                 <input id="selene-address" className="form-control" value={seleneAddress} onChange={(event) => setSeleneAddress(event.target.value)} placeholder="Paste Selene receive address to verify derivation" autoComplete="off" />
                 <button className="primary-button" onClick={() => {
