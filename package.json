@@ -7,7 +7,7 @@
     "dev": "npm run compile && vite",
     "build": "npm run compile && tsc -b && vite build",
     "preview": "vite preview",
-    "test": "node --test server/mainnet-api.node.mjs && npm run compile && vitest run --testTimeout=20000",
+    "test": "npm run compile && node --test server/mainnet-api.node.mjs && vitest run --testTimeout=20000",
     "typecheck": "npm run compile && tsc -b",
     "compile": "cashc contracts/AjoCircle.cash -o contracts/AjoCircle.json && cashc contracts/AjoCircleV2.cash -o contracts/AjoCircleV2.json && cashc contracts/AjoCircleV2Fee.cash -o contracts/AjoCircleV2Fee.json && cashc contracts/AjoCircleV2Fee.legacy.cash -o contracts/AjoCircleV2Fee.legacy.json && cashc contracts/AjoCircleV2FeeEscrow.cash -o contracts/AjoCircleV2FeeEscrow.json && cashc contracts/AjoCircleV2FeeEscrow.legacy.cash -o contracts/AjoCircleV2FeeEscrow.legacy.json && cashc contracts/AjoCircleV3AutoReserve.cash -o contracts/AjoCircleV3AutoReserve.json && cashc contracts/AjoCircleV3AutoReserve.legacy.cash -o contracts/AjoCircleV3AutoReserve.legacy.json && cashc contracts/AjoCirclePUSDV2.cash -o contracts/AjoCirclePUSDV2.json && cashc contracts/AjoPUSDMemberEscrow.cash -o contracts/AjoPUSDMemberEscrow.json && cashc contracts/AjoCirclePUSDV3Mainnet.cash -o contracts/AjoCirclePUSDV3Mainnet.json && cashc contracts/AjoPUSDMemberEscrowV3.cash -o contracts/AjoPUSDMemberEscrowV3.json"
   },
