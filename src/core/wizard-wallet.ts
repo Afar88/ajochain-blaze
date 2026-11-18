@@ -634,6 +634,28 @@ class WizardWallet {
     }
   }
 
+  /**
+   * Derive a bounded set of public receive addresses for circle discovery.
+   * This does not change the selected receive index or expose signing keys.
+   */
+  receiveAddresses(network: Net, count = 50): string[] {
+    if (this.state !== "connected" || !this.mgr || this.mgr.protocol !== "hdwalletv1") return [];
+    if (!Number.isSafeInteger(count) || count < 1 || count > 100) {
+      throw new Error("Receive address discovery count must be between 1 and 100.");
+    }
+    const addresses: string[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const address = deriveWizardConnectReceiveAddress(
+        this.mgr.protocol,
+        (childIndex, addressIndex) => this.mgr?.getPubkey(childIndex, addressIndex),
+        network,
+        index,
+      );
+      if (address) addresses.push(address);
+    }
+    return addresses;
+  }
+
   /** Derive the active Selene receive address from its live WizardConnect xpub. */
   address(network: Net): string | null {
     if (this.state !== "connected" || !this.mgr) return null;

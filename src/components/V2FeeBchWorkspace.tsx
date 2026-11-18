@@ -373,7 +373,14 @@ export default function V2FeeBchWorkspace({
       const txid = await provider.sendRawTransaction(signed.signedTransaction);
       persist(plan.params);
       try { window.localStorage.removeItem(pendingKey); } catch { /* best effort */ }
-      setNotice("V2 fee circle genesis broadcast on Chipnet. Transaction: " + txid);
+      try {
+        const { registerCircleForDiscovery } = await import("../core/circle-discovery-client");
+        await registerCircleForDiscovery(encodeCircle(plan.params), txid);
+        setNotice("V2 fee circle created on Chipnet and added to shared circle discovery. Transaction: " + txid);
+      } catch {
+        // A registry outage must never roll back or hide a confirmed on-chain circle.
+        setNotice("V2 fee circle created on Chipnet and saved on this device. Shared discovery could not sync yet; the invite link still works. Transaction: " + txid);
+      }
     } catch (cause) { setError(errorText(cause)); }
     finally { setBusy(false); }
   };

@@ -120,6 +120,48 @@ export default function App() {
     return () => window.removeEventListener("storage", refreshSavedCircles);
   }, []);
 
+  // Discover circle invites registered by other members. The registry is only
+  // a discovery index: every returned invite is decoded and its live covenant
+  // state/receipts are re-read from Chipnet before it is saved or shown.
+  useEffect(() => {
+    let active = true;
+    if (network !== "chipnet" || walletView.state !== "connected" || !walletClient) {
+      return () => { active = false; };
+    }
+    const addresses = walletClient.receiveAddresses("chipnet", 50);
+    if (addresses.length === 0) return () => { active = false; };
+
+    void import("./core/circle-discovery-client")
+      .then(({ discoverVerifiedCircles }) => discoverVerifiedCircles(addresses))
+      .then((discovered) => {
+        if (!active || discovered.length === 0) return;
+        const existing = readSavedV2MenuCircles().map((circle) => ({
+          encoded: circle.encoded,
+          savedAt: Date.now(),
+        }));
+        const merged = dedupeSavedV2FeeCircleMenuRecords([...discovered, ...existing]);
+        try {
+          window.localStorage.setItem(V2_MENU_STORAGE_KEY, JSON.stringify(merged));
+        } catch {
+          // The current session can still display verified discoveries.
+        }
+        setMenuCircles(merged.flatMap((record) => {
+          const identity = getV2FeeCircleRecordIdentity(record.encoded);
+          return identity ? [{
+            encoded: record.encoded,
+            name: identity.name,
+            label: identity.name,
+          }] : [];
+        }));
+      })
+      .catch(() => {
+        // Missing backend configuration or a temporary outage must not block
+        // normal wallet use or the existing share-link restoration flow.
+      });
+
+    return () => { active = false; };
+  }, [network, walletView.state, walletView.receiveIndex, walletClient]);
+
   useEffect(() => {
     let active = true;
     let lastInviteHash = "";
