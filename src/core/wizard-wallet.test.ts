@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { decodeCashAddress } from "@bitauth/libauth";
 import {
   wizardRelayStatusMessage,
   buildWizardSignRequest,
@@ -6,6 +7,8 @@ import {
   assertRequiredContractWalletSighash,
   assertRequiredWalletSighash,
   readPushOnlyUnlockingScript,
+  deriveWizardConnectReceiveAddress,
+  WIZARDCONNECT_RECEIVE_CHILD_INDEX,
 } from "./wizard-wallet";
 
 function push(value: Uint8Array): Uint8Array {
@@ -17,6 +20,53 @@ function push(value: Uint8Array): Uint8Array {
 function hexToBytes(value: string): Uint8Array {
   return Uint8Array.from(value.match(/../g)!.map((byte) => Number.parseInt(byte, 16)));
 }
+
+describe("WizardConnect live receive-address derivation", () => {
+  const publicKey = Uint8Array.from([0x02, ...new Uint8Array(32).fill(0x11)]);
+
+  it("derives the receive child (path index 0) from the active hdwalletv1 xpub", () => {
+    const calls: Array<[number, bigint]> = [];
+    const address = deriveWizardConnectReceiveAddress(
+      "hdwalletv1",
+      (childIndex, addressIndex) => {
+        calls.push([childIndex, addressIndex]);
+        return publicKey;
+      },
+      "chipnet",
+      7,
+    );
+    expect(WIZARDCONNECT_RECEIVE_CHILD_INDEX).toBe(0);
+    expect(calls).toEqual([[0, 7n]]);
+    expect(address).toMatch(/^bchtest:/);
+  });
+
+  it("uses the same public key but the correct network-specific CashAddress prefix", () => {
+    const getPubkey = () => publicKey;
+    const chipnet = deriveWizardConnectReceiveAddress("hdwalletv1", getPubkey, "chipnet", 0);
+    const mainnet = deriveWizardConnectReceiveAddress("hdwalletv1", getPubkey, "mainnet", 0);
+    expect(chipnet).toMatch(/^bchtest:/);
+    expect(mainnet).toMatch(/^bitcoincash:/);
+    const chipnetDecoded = decodeCashAddress(chipnet!);
+    const mainnetDecoded = decodeCashAddress(mainnet!);
+    expect(typeof chipnetDecoded).not.toBe("string");
+    expect(typeof mainnetDecoded).not.toBe("string");
+    if (typeof chipnetDecoded === "string" || typeof mainnetDecoded === "string") return;
+    expect(Array.from(chipnetDecoded.payload)).toEqual(Array.from(mainnetDecoded.payload));
+  });
+
+  it("does not return an address from another protocol or a missing session xpub", () => {
+    const getPubkey = () => publicKey;
+    expect(deriveWizardConnectReceiveAddress("walletconnect", getPubkey, "chipnet", 0)).toBeNull();
+    expect(deriveWizardConnectReceiveAddress(null, getPubkey, "chipnet", 0)).toBeNull();
+    expect(deriveWizardConnectReceiveAddress("hdwalletv1", null, "chipnet", 0)).toBeNull();
+  });
+
+  it("rejects invalid child keys and invalid address indexes", () => {
+    expect(deriveWizardConnectReceiveAddress("hdwalletv1", () => new Uint8Array(32), "chipnet", 0)).toBeNull();
+    expect(deriveWizardConnectReceiveAddress("hdwalletv1", () => Uint8Array.from([0x04, ...new Uint8Array(32)]), "chipnet", 0)).toBeNull();
+    expect(deriveWizardConnectReceiveAddress("hdwalletv1", () => publicKey, "chipnet", -1)).toBeNull();
+  });
+});
 
 describe("WizardConnect wallet-input coverage", () => {
   const p2pkh = hexToBytes("76a914" + "11".repeat(20) + "88ac");
