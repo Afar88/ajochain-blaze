@@ -228,7 +228,7 @@ contract AjoCirclePUSDV3Mainnet(
         int payoutOutput = 2 * memberCount + 2;
         int feeChangeOutput = 2 * memberCount + 3;
         int feeInput = 2 * memberCount + 1;
-        // A wallet-signed BCH input bound to the registered initiator authorizes cancellation.
+        // A wallet-signed BCH input bound to the registered initiator authorizes this payout.
         require(tx.inputs[feeInput].tokenCategory == 0x);
         require(tx.inputs[feeInput].lockingBytecode == new LockingBytecodeP2PKH(initiator));
 
