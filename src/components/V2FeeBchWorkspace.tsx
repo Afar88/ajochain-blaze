@@ -411,7 +411,6 @@ export default function V2FeeBchWorkspace({
           <small className="field-hint">Add 1–4 other unique Chipnet addresses in payout order (2–5 members total). Each member funds the current round; a non-final recipient carries one next contribution forward.</small>
         </div>
       </div>
-      </div>
       <form className="classic-restore-form circle-restore-form" onSubmit={restore}>
         <label>Join an existing circle with its invite link<input value={restoreInput} onChange={(event) => setRestoreInput(event.target.value)} placeholder="Paste circle invite URL" /></label>
         <button type="submit" className="secondary-button" disabled={!restoreInput.trim()}>Restore circle</button>
