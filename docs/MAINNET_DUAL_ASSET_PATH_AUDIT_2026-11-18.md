@@ -58,6 +58,8 @@ GitHub Actions CI run #588 reported:
 
 These findings are not reported by the production-only audit, but the build/test toolchain still needs maintenance. The repository currently has no checked-in `package-lock.json`, so `npm install` resolves the dependency tree during each build. Do not apply `npm audit fix --force` blindly: the CI report's suggested remediation involves a SemVer-major Vitest change to 3.1.4. Review a compatible Vite/Vitest toolchain, add a reproducible lockfile, and rerun the full CI suite as a separate change.
 
+The verifier dependency is pinned exactly to `@bitauth/libauth@3.1.0-next.8`. Upstream currently labels this release a pre-release, but its release notes include the BCH 2026 VM and VMB updates used by this project. The stable `3.0.0` release is not a drop-in substitute for BCH 2026 validation. Keep the exact pin until a stable release with equivalent BCH 2026 behavior is available and has passed this repository's full and upstream vector suites; review and retain the upstream release provenance as part of the security sign-off.
+
 ## Findings that block real-value opening
 
 ### Review item — shared network-neutral BCH V3 artifact
