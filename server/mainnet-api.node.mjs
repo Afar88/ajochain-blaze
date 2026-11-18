@@ -8,6 +8,7 @@ import pusdSubmissionHandler from "../api/pusd/submission.mjs";
 import transactionStatusHandler from "../api/transaction/status.mjs";
 import {
   assertPreviousTransactionsAgree,
+  parseMainnetElectrumProviderConfig,
   assertBchMainnetStateCommitment,
   createBchMainnetV3ContractContext,
   verifyBchMainnetCircleTransaction,
@@ -64,6 +65,37 @@ const bchMainnetVerificationCircle = {
   treasury: "bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q",
 };
 
+
+test("Mainnet Electrum provider manifest requires unique operator identities", () => {
+  const providers = parseMainnetElectrumProviderConfig(
+    "wss://node-a.example:50004,wss://node-b.example:50004",
+    "provider-a,provider-b",
+  );
+  assert.deepEqual(providers, [
+    { endpoint: "wss://node-a.example:50004", operatorId: "provider-a" },
+    { endpoint: "wss://node-b.example:50004", operatorId: "provider-b" },
+  ]);
+  assert.throws(() => parseMainnetElectrumProviderConfig(
+    "wss://node-a.example:50004,wss://node-b.example:50004",
+    "",
+  ), /exactly one operator ID per/i);
+  assert.throws(() => parseMainnetElectrumProviderConfig(
+    "wss://node-a.example:50004,wss://node-b.example:50004",
+    "same-operator,same-operator",
+  ), /distinct operator IDs/i);
+  assert.throws(() => parseMainnetElectrumProviderConfig(
+    "wss://node-a.example:50004,wss://node-a.example:50005",
+    "provider-a,provider-b",
+  ), /different hostnames/i);
+  assert.throws(() => parseMainnetElectrumProviderConfig(
+    "ws://node-a.example:50004,wss://node-b.example:50004",
+    "provider-a,provider-b",
+  ), /secure wss/i);
+  assert.throws(() => parseMainnetElectrumProviderConfig(
+    "wss://user:password@node-a.example:50004,wss://node-b.example:50004",
+    "provider-a,provider-b",
+  ), /without embedded credentials/i);
+});
 
 test("BCH Mainnet V3 verifier parses exact three-byte state NFT commitments", () => {
   const outputFor = (commitment) => ({
