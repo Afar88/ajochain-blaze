@@ -1389,7 +1389,8 @@ export function createUpstashMainnetRateLimiter(options = {}) {
       typeof now !== "function") {
     throw new Error("Shared Mainnet rate limiter configuration is invalid.");
   }
-  const endpointUrl = endpoint.toString().replace(/\\/+$/, "");
+  const endpointText = endpoint.toString();
+  const endpointUrl = endpointText.endsWith("/") ? endpointText.slice(0, -1) : endpointText;
 
   return {
     async consume(request) {
