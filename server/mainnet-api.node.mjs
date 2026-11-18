@@ -8,6 +8,8 @@ import pusdSubmissionHandler from "../api/pusd/submission.mjs";
 import transactionStatusHandler from "../api/transaction/status.mjs";
 import {
   assertPreviousTransactionsAgree,
+  parseMainnetElectrumProviderConfig,
+  createUpstashMainnetRateLimiter,
   assertBchMainnetStateCommitment,
   createBchMainnetV3ContractContext,
   verifyBchMainnetCircleTransaction,
@@ -64,6 +66,99 @@ const bchMainnetVerificationCircle = {
   treasury: "bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q",
 };
 
+
+test("Upstash Mainnet rate limit is atomic across independent serverless instances", async () => {
+  const store = new Map();
+  let now = 1_800_000_000_000;
+  const fetchImpl = async (_url, init) => {
+    const [command, script, numberOfKeys, key, ttl] = JSON.parse(init.body);
+    assert.equal(command, "EVAL");
+    assert.equal(numberOfKeys, "1");
+    assert.match(script, /INCR/);
+    assert.match(script, /PEXPIRE/);
+    assert.equal(ttl, "65000");
+    const count = (store.get(key) ?? 0) + 1;
+    store.set(key, count);
+    return { ok: true, status: 200, json: async () => ({ result: count }) };
+  };
+  const firstInstance = createUpstashMainnetRateLimiter({
+    url: "https://redis.example.test",
+    token: "private-test-token",
+    fetchImpl,
+    now: () => now,
+    maxRequests: 2,
+    windowMs: 60_000,
+    useForwardedIp: true,
+  });
+  const secondInstance = createUpstashMainnetRateLimiter({
+    url: "https://redis.example.test",
+    token: "private-test-token",
+    fetchImpl,
+    now: () => now,
+    maxRequests: 2,
+    windowMs: 60_000,
+    useForwardedIp: true,
+  });
+  const clientA = { headers: { "x-vercel-forwarded-for": "203.0.113.10" }, socket: {} };
+  const clientB = { headers: { "x-vercel-forwarded-for": "203.0.113.11" }, socket: {} };
+  assert.equal((await firstInstance.consume(clientA)).remaining, 1);
+  assert.equal((await secondInstance.consume(clientA)).remaining, 0);
+  await assert.rejects(firstInstance.consume(clientA), /Rate limit exceeded/i);
+  assert.equal((await secondInstance.consume(clientB)).count, 1);
+  now += 60_000;
+  assert.equal((await firstInstance.consume(clientA)).count, 1);
+  const keys = [...store.keys()];
+  assert.ok(keys.every((item) => item.startsWith("ajochain:{mainnet-spend}:rate:v1:")));
+  assert.ok(keys.every((item) => !item.includes("203.0.113.")));
+});
+
+test("Upstash Mainnet rate limiter fails closed for invalid IP, absent credentials and storage outage", async () => {
+  assert.throws(() => createUpstashMainnetRateLimiter({
+    url: "", token: "", fetchImpl: async () => ({}),
+  }), /not configured/i);
+  const invalidIp = createUpstashMainnetRateLimiter({
+    url: "https://redis.example.test", token: "private-test-token",
+    fetchImpl: async () => ({ ok: true, json: async () => ({ result: 1 }) }),
+    useForwardedIp: true,
+  });
+  await assert.rejects(invalidIp.consume({ headers: { "x-vercel-forwarded-for": "spoofed" }, socket: {} }), /valid client IP/i);
+  const outage = createUpstashMainnetRateLimiter({
+    url: "https://redis.example.test", token: "private-test-token",
+    fetchImpl: async () => { throw new Error("network down"); },
+  });
+  await assert.rejects(outage.consume({ headers: {}, socket: { remoteAddress: "127.0.0.1" } }), /rate limiter is unavailable/i);
+});
+
+test("Mainnet Electrum provider manifest requires unique operator identities", () => {
+  const providers = parseMainnetElectrumProviderConfig(
+    "wss://node-a.example:50004,wss://node-b.example:50004",
+    "provider-a,provider-b",
+  );
+  assert.deepEqual(providers, [
+    { endpoint: "wss://node-a.example:50004", operatorId: "provider-a" },
+    { endpoint: "wss://node-b.example:50004", operatorId: "provider-b" },
+  ]);
+  assert.throws(() => parseMainnetElectrumProviderConfig(
+    "wss://node-a.example:50004,wss://node-b.example:50004",
+    "",
+  ), /exactly one operator ID per/i);
+  assert.throws(() => parseMainnetElectrumProviderConfig(
+    "wss://node-a.example:50004,wss://node-b.example:50004",
+    "same-operator,same-operator",
+  ), /distinct operator IDs/i);
+  assert.throws(() => parseMainnetElectrumProviderConfig(
+    "wss://node-a.example:50004,wss://node-a.example:50005",
+    "provider-a,provider-b",
+  ), /different hostnames/i);
+  assert.throws(() => parseMainnetElectrumProviderConfig(
+    "ws://node-a.example:50004,wss://node-b.example:50004",
+    "provider-a,provider-b",
+  ), /secure wss/i);
+  assert.throws(() => parseMainnetElectrumProviderConfig(
+    "wss://user:password@node-a.example:50004,wss://node-b.example:50004",
+    "provider-a,provider-b",
+  ), /without embedded credentials/i);
+});
 
 test("BCH Mainnet V3 verifier parses exact three-byte state NFT commitments", () => {
   const outputFor = (commitment) => ({

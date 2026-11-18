@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { Contract } from "cashscript";
 import v3AutoReserveArtifact from "../contracts/AjoCircleV3AutoReserve.json" with { type: "json" };
 import { createServer } from "node:http";
+import { isIP } from "node:net";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import {
@@ -32,24 +33,50 @@ const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const isHex = (value) => typeof value === "string" && /^(?:[0-9a-f]{2})+$/i.test(value);
 const reverseHex = (value) => value.match(/../g).reverse().join("").toLowerCase();
 
-function parseServerList(value = process.env.ELECTRUM_SERVERS ?? "") {
-  const servers = value.split(",").map((item) => item.trim()).filter(Boolean);
-  const unique = [...new Set(servers)];
-  if (unique.length < 2) {
-    throw new Error("Configure at least two independent ELECTRUM_SERVERS endpoints for mainnet quorum.");
+/**
+ * Parse the ordered Mainnet Electrum endpoint/operator manifest.
+ *
+ * Operator labels are declarations supplied by the release operator, not
+ * cryptographic proof of ownership. The release checklist still requires
+ * independent evidence for each operator and its infrastructure fault domain.
+ */
+export function parseMainnetElectrumProviderConfig(
+  serverValue = process.env.ELECTRUM_SERVERS ?? "",
+  operatorValue = process.env.ELECTRUM_PROVIDER_OPERATORS ?? "",
+) {
+  if (typeof serverValue !== "string" || typeof operatorValue !== "string") {
+    throw new Error("ELECTRUM_SERVERS and ELECTRUM_PROVIDER_OPERATORS must be comma-separated strings.");
+  }
+  const servers = serverValue.split(",").map((item) => item.trim()).filter(Boolean);
+  if (servers.length < 2 || new Set(servers).size !== servers.length) {
+    throw new Error("Configure at least two unique ELECTRUM_SERVERS endpoints for Mainnet quorum.");
+  }
+  const operators = operatorValue.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
+  if (operators.length !== servers.length) {
+    throw new Error("ELECTRUM_PROVIDER_OPERATORS must provide exactly one operator ID per ELECTRUM_SERVERS endpoint, in the same order.");
+  }
+  if (operators.some((operator) => !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(operator))) {
+    throw new Error("Electrum operator IDs must be 1–64 lowercase letters, digits, dots, underscores or hyphens.");
+  }
+  if (new Set(operators).size !== operators.length) {
+    throw new Error("Electrum quorum endpoints must declare distinct operator IDs; two hostnames alone do not prove operator independence.");
   }
   const hostnames = new Set();
-  for (const endpoint of unique) {
-    const url = new URL(endpoint);
-    if (url.protocol !== "wss:" || !url.hostname) {
-      throw new Error("Mainnet Electrum endpoints must use secure wss:// URLs.");
+  const providers = servers.map((endpoint, index) => {
+    let url;
+    try { url = new URL(endpoint); }
+    catch { throw new Error("An ELECTRUM_SERVERS endpoint is not a valid URL."); }
+    if (url.protocol !== "wss:" || !url.hostname || url.username || url.password || url.hash) {
+      throw new Error("Mainnet Electrum endpoints must use secure wss:// URLs without embedded credentials or fragments.");
     }
-    hostnames.add(url.hostname.toLowerCase());
-  }
-  if (hostnames.size < 2) {
-    throw new Error("Electrum quorum endpoints must use at least two different hostnames.");
-  }
-  return unique;
+    const hostname = url.hostname.toLowerCase();
+    if (hostnames.has(hostname)) {
+      throw new Error("Electrum quorum endpoints must use at least two different hostnames.");
+    }
+    hostnames.add(hostname);
+    return { endpoint, operatorId: operators[index] };
+  });
+  return providers;
 }
 
 function doubleSha256(bytes) {
@@ -129,8 +156,9 @@ export function assertUnspentSnapshotsAgree(snapshots) {
 }
 
 class ElectrumSession {
-  constructor(endpoint, timeoutMs) {
+  constructor(endpoint, timeoutMs, operatorId) {
     this.endpoint = endpoint;
+    this.operatorId = operatorId;
     this.timeoutMs = timeoutMs;
     this.nextId = 1;
     this.pending = new Map();
@@ -213,7 +241,10 @@ async function withElectrumSessions(callback) {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 60_000) {
     throw new Error("ELECTRUM_RPC_TIMEOUT_MS must be between 1000 and 60000.");
   }
-  const sessions = parseServerList().map((endpoint) => new ElectrumSession(endpoint, timeoutMs));
+  const providers = parseMainnetElectrumProviderConfig();
+  const sessions = providers.map(({ endpoint, operatorId }) =>
+    new ElectrumSession(endpoint, timeoutMs, operatorId),
+  );
   try {
     return await callback(sessions);
   } finally {
@@ -838,7 +869,8 @@ export function createUpstashPusdBroadcastLedger(options = {}) {
       endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
     throw new Error("PUSD durable broadcast ledger must use a clean HTTPS REST URL.");
   }
-  const endpointUrl = endpoint.toString().replace(/\/+$/, "");
+  const endpointText = endpoint.toString();
+  const endpointUrl = endpointText.endsWith("/") ? endpointText.slice(0, -1) : endpointText;
 
   async function command(args) {
     let response;
@@ -1321,6 +1353,97 @@ const allowedOrigins = new Set(
 const rateLimit = new Map();
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 60;
+const SHARED_RATE_LIMIT_KEY_PREFIX = "ajochain:{mainnet-spend}:rate:v1:";
+const SHARED_RATE_LIMIT_LUA =
+  "local count = redis.call('INCR', KEYS[1]); " +
+  "if count == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]); end; " +
+  "return count";
+
+/**
+ * Atomic cross-instance rate limit for Vercel/serverless requests.
+ * IP addresses are hashed before storage. Vercel's forwarded-client-IP header
+ * is used only in the Vercel runtime; local development uses the socket peer.
+ */
+export function createUpstashMainnetRateLimiter(options = {}) {
+  const restUrl = options.url ?? process.env.UPSTASH_REDIS_REST_URL;
+  const token = options.token ?? process.env.UPSTASH_REDIS_REST_TOKEN;
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  const now = options.now ?? Date.now;
+  const maxRequests = options.maxRequests ?? RATE_LIMIT_MAX;
+  const windowMs = options.windowMs ?? RATE_LIMIT_WINDOW_MS;
+  const useForwardedIp = options.useForwardedIp ?? (process.env.VERCEL === "1");
+  if (typeof restUrl !== "string" || !restUrl.trim() ||
+      typeof token !== "string" || !token.trim()) {
+    throw new Error("Shared Mainnet rate limiter is not configured. Set private UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN server-side.");
+  }
+  let endpoint;
+  try { endpoint = new URL(restUrl); }
+  catch { throw new Error("Shared Mainnet rate limiter URL is invalid."); }
+  if (endpoint.protocol !== "https:" || !endpoint.hostname ||
+      endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
+    throw new Error("Shared Mainnet rate limiter must use a clean HTTPS REST URL.");
+  }
+  if (typeof fetchImpl !== "function" ||
+      !Number.isSafeInteger(maxRequests) || maxRequests < 1 || maxRequests > 100_000 ||
+      !Number.isSafeInteger(windowMs) || windowMs < 1000 || windowMs > 86_400_000 ||
+      typeof now !== "function") {
+    throw new Error("Shared Mainnet rate limiter configuration is invalid.");
+  }
+  const endpointText = endpoint.toString();
+  const endpointUrl = endpointText.endsWith("/") ? endpointText.slice(0, -1) : endpointText;
+
+  return {
+    async consume(request) {
+      const forwarded = useForwardedIp
+        ? (request.headers["x-vercel-forwarded-for"] ??
+          request.headers["x-forwarded-for"] ??
+          request.headers["x-real-ip"])
+        : null;
+      const candidate = String(
+        (Array.isArray(forwarded) ? forwarded[0] : forwarded) ??
+        request.socket?.remoteAddress ??
+        "",
+      ).split(",")[0].trim();
+      if (!candidate || isIP(candidate) === 0) {
+        throw new Error("Shared Mainnet rate limiter could not identify a valid client IP.");
+      }
+      const windowId = Math.floor(now() / windowMs);
+      const clientHash = createHash("sha256").update(candidate).digest("hex");
+      const key = SHARED_RATE_LIMIT_KEY_PREFIX + clientHash + ":" + windowId;
+      let response;
+      try {
+        response = await fetchImpl(endpointUrl, {
+          method: "POST",
+          headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+          body: JSON.stringify([
+            "EVAL",
+            SHARED_RATE_LIMIT_LUA,
+            "1",
+            key,
+            String(windowMs + 5_000),
+          ]),
+        });
+      } catch {
+        throw new Error("Shared Mainnet rate limiter is unavailable; request blocked.");
+      }
+      if (!response?.ok) {
+        throw new Error("Shared Mainnet rate limiter failed (HTTP " +
+          String(response?.status ?? "unknown") + "); request blocked.");
+      }
+      let payload;
+      try { payload = await response.json(); }
+      catch { throw new Error("Shared Mainnet rate limiter returned malformed JSON; request blocked."); }
+      const count = Number(payload?.result);
+      if (!Number.isSafeInteger(count) || count < 1) {
+        throw new Error("Shared Mainnet rate limiter returned an invalid counter; request blocked.");
+      }
+      if (count > maxRequests) {
+        throw new Error("Rate limit exceeded; retry in one minute.");
+      }
+      return { count, remaining: Math.max(0, maxRequests - count), windowId };
+    },
+  };
+}
 
 
 const BCH_MAINNET_PROJECT_TREASURY_ADDRESS = "bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q";
@@ -1774,17 +1897,30 @@ async function readJson(request) {
   }
 }
 
-function applyRateLimit(request) {
+async function applyRateLimit(request) {
+  if (process.env.VERCEL === "1") {
+    const limiter = createUpstashMainnetRateLimiter();
+    await limiter.consume(request);
+    return;
+  }
   const now = Date.now();
-  const key = request.headers["x-forwarded-for"]?.split(",")[0]?.trim() || request.socket.remoteAddress || "unknown";
+  const key = request.socket?.remoteAddress || "local";
   const entries = (rateLimit.get(key) ?? []).filter((timestamp) => now - timestamp < RATE_LIMIT_WINDOW_MS);
   if (entries.length >= RATE_LIMIT_MAX) throw new Error("Rate limit exceeded; retry in one minute.");
   entries.push(now);
   rateLimit.set(key, entries);
+  if (rateLimit.size > 5_000) {
+    for (const [address, timestamps] of rateLimit) {
+      const retained = timestamps.filter((timestamp) => now - timestamp < RATE_LIMIT_WINDOW_MS);
+      if (retained.length === 0) rateLimit.delete(address);
+      else rateLimit.set(address, retained);
+    }
+  }
 }
 
 export function mainnetApiErrorStatus(message) {
   if (/Rate limit exceeded/.test(message)) return 429;
+  if (/shared Mainnet rate limiter/i.test(message)) return 503;
   if (/Request body exceeds/.test(message)) return 413;
   if (/Origin is not allowed/.test(message)) return 403;
   // A competing transaction cannot reserve an already-locked input.
@@ -1806,7 +1942,7 @@ export function createMainnetApiServer() {
       return;
     }
     try {
-      applyRateLimit(request);
+      await applyRateLimit(request);
       const url = new URL(request.url ?? "/", "http://localhost");
       if (request.method === "GET" && url.pathname === "/api/fees") {
         await withElectrumSessions(async (sessions) => {
@@ -1822,13 +1958,17 @@ export function createMainnetApiServer() {
         await withElectrumSessions(async (sessions) => {
           const tip = await getTipQuorum(sessions);
           sendJson(response, 200, {
-            status: "ready",
+            status: "read-only",
             network: "mainnet",
             providerId: "ajochain-electrum-quorum",
             providerConfidence: sessions.length,
+            providerOperatorsDeclared: sessions.map((session) => session.operatorId),
+            providerOperatorLabelsUnique: new Set(sessions.map((session) => session.operatorId)).size === sessions.length,
+            providerOperatorIndependenceVerified: false,
             tipHeight: tip.height,
             tipHash: tip.hash,
             broadcastEnabled: MAINNET_BROADCAST_ENABLED,
+            mainnetReleaseApproved: false,
             pusdDurableSubmissionLedgerConfigured: isPusdBroadcastLedgerConfigured(),
           });
         });
