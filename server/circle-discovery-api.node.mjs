@@ -111,7 +111,35 @@ test("circle discovery registers a circle idempotently and stores member indexes
   const registerQuery = queries.find((query) => query.statement.includes("INSERT INTO ajo_blaze_circle_registry"));
   assert.equal(registerQuery.params[8], 2);
   assert.equal(JSON.parse(registerQuery.params[9]).length, 2);
+  assert.match(registerQuery.statement, /ON CONFLICT \\(circle_key\\)/);
+  assert.doesNotMatch(queries[0].statement, /UNIQUE \\(network, state_category\\)/);
   assert.equal(queries.filter((query) => query.statement.includes("CREATE TABLE")).length, 2);
+});
+
+test("different invite payloads sharing one CashToken category cannot overwrite each other", async () => {
+  const first = makeInvite();
+  const secondParams = JSON.parse(Buffer.from(first, "base64url").toString("utf8"));
+  secondParams.name = "Competing circle label";
+  const second = Buffer.from(JSON.stringify(secondParams)).toString("base64url");
+  const keys = [];
+  const sql = {
+    async query(statement, params) {
+      if (statement.includes("INSERT INTO ajo_blaze_circle_registry")) {
+        keys.push(params[0]);
+        return [{ circle_key: params[0] }];
+      }
+      return [];
+    },
+  };
+  const handler = createCircleDiscoveryHandler({ getSql: async () => sql });
+  const firstResponse = responseMock();
+  const secondResponse = responseMock();
+  await handler(requestMock({ action: "register", encoded: first, genesisTxid: "cd".repeat(32) }), firstResponse);
+  await handler(requestMock({ action: "register", encoded: second, genesisTxid: "cd".repeat(32) }), secondResponse);
+  assert.equal(firstResponse.statusCode, 201);
+  assert.equal(secondResponse.statusCode, 201);
+  assert.equal(keys.length, 2);
+  assert.notEqual(keys[0], keys[1]);
 });
 
 test("circle discovery can backfill an already-created circle without inventing a genesis txid", async () => {
