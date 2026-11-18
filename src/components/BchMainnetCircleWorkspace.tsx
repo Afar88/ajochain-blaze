@@ -24,6 +24,7 @@ type StoredCircle = Omit<V2FeeCircleParams, "contribution" | "maxFee"> & {
   contribution: string;
   maxFee: string;
 };
+type MainnetSigningPlan = { wc: unknown; walletInputs: number[]; prompt: string; createdAt: number };
 
 function readActiveCircle(): V2FeeCircleParams | null {
   try {
@@ -94,6 +95,8 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
   const [actionPreview, setActionPreview] = useState<{
     title: string; summary: string; feeEstimate: string; size: string; walletInputCount: number;
   } | null>(null);
+  const [genesisSigningPlan, setGenesisSigningPlan] = useState<MainnetSigningPlan | null>(null);
+  const [actionSigningPlan, setActionSigningPlan] = useState<MainnetSigningPlan | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -185,6 +188,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
     setError("");
     setNotice("");
     setActionPreview(null);
+    setActionSigningPlan(null);
     try {
       const snapshot = await readV2FeeCircle(activeCircle);
       setCircleSnapshot(snapshot);
@@ -208,11 +212,17 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
     setError("");
     setNotice("");
     setActionPreview(null);
+    setActionSigningPlan(null);
     try {
       const memberIndex = activeCircle.members.findIndex((member) => sameMainnetAddress(member, address));
       if (memberIndex < 0) throw new Error("The connected wallet is not a registered member of this BCH circle.");
       const amount = parseAssetAmount("BCH", depositAmount);
       const plan = await planV2FeeDeposit(activeCircle, memberIndex, amount, address);
+      setActionSigningPlan({
+        wc: plan.wc, walletInputs: plan.walletInputs,
+        prompt: "Verify BCH Mainnet member deposit for " + activeCircle.name,
+        createdAt: Date.now(),
+      });
       setActionPreview({
         title: "Unsigned BCH member-deposit preview",
         summary: plan.wc ? "Member contribution plan prepared. It remains unsigned and will not be broadcast." : "No transaction plan was returned.",
@@ -239,8 +249,14 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
     setError("");
     setNotice("");
     setActionPreview(null);
+    setActionSigningPlan(null);
     try {
       const plan = await planV2FeePayout(activeCircle, address);
+      setActionSigningPlan({
+        wc: plan.wc, walletInputs: plan.walletInputs,
+        prompt: "Verify BCH Mainnet payout for " + activeCircle.name,
+        createdAt: Date.now(),
+      });
       setActionPreview({
         title: "Unsigned BCH payout preview",
         summary: "Payout plan prepared with the immutable 1% fee and member reserve rules. It remains unsigned and is not broadcast.",
@@ -267,8 +283,14 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
     setError("");
     setNotice("");
     setActionPreview(null);
+    setActionSigningPlan(null);
     try {
       const plan = await planV2FeeCancel(activeCircle, address);
+      setActionSigningPlan({
+        wc: plan.wc, walletInputs: plan.walletInputs,
+        prompt: "Verify BCH Mainnet pre-payout cancellation for " + activeCircle.name,
+        createdAt: Date.now(),
+      });
       setActionPreview({
         title: "Unsigned pre-payout cancellation preview",
         summary: "Initiator cancellation/refund plan prepared. It remains unsigned and is not broadcast.",
@@ -284,11 +306,50 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
     }
   };
 
+  const verifyMainnetSignature = async (target: "genesis" | "action") => {
+    const signingPlan = target === "genesis" ? genesisSigningPlan : actionSigningPlan;
+    if (!signingPlan) return;
+    if (network !== "mainnet" || !walletConnected || wallet.state !== "connected") {
+      setError("Reconnect Selene on BCH Mainnet before starting signature verification.");
+      return;
+    }
+    if (Date.now() - signingPlan.createdAt > 60_000) {
+      if (target === "genesis") setGenesisSigningPlan(null);
+      else setActionSigningPlan(null);
+      setError("This signed-transaction review plan is older than 60 seconds. Refresh the chain preview and prepare a new plan before asking Selene to sign.");
+      return;
+    }
+    setLifecycleBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const verified = await wallet.signAndVerify(
+        signingPlan.wc,
+        signingPlan.walletInputs,
+        signingPlan.prompt + " (local verification only; never broadcast)",
+      );
+      const inputCount = verified.decoded.inputs.length;
+      const outputCount = verified.decoded.outputs.length;
+      if (target === "genesis") setGenesisSigningPlan(null);
+      else setActionSigningPlan(null);
+      setNotice(
+        "Selene signed the BCH Mainnet review transaction and AjoChain passed exact input/output comparison, 0x61 sighash checks and BCH 2026 VM verification (" +
+        inputCount + " inputs, " + outputCount + " outputs). The signed bytes were discarded. Nothing was broadcast and no circle state changed.",
+      );
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setLifecycleBusy(false);
+    }
+  };
+
   const prepare = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
     setNotice("");
     setPreview(null);
+    setGenesisSigningPlan(null);
+    setActionSigningPlan(null);
 
     if (network !== "mainnet") {
       setError("Switch the app to Bitcoin Cash Mainnet. This V3 BCH circle uses the shared Mainnet fee treasury.");
@@ -318,6 +379,11 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
         maxFee: BigInt(maxFee.trim()),
         initiator,
       }, initiator);
+      setGenesisSigningPlan({
+        wc: plan.wc, walletInputs: plan.walletInputs,
+        prompt: "Verify BCH Mainnet circle genesis for " + name.trim(),
+        createdAt: Date.now(),
+      });
       setActiveCircle(plan.params);
       persistActiveCircle(plan.params);
       setCircleSnapshot(null);
@@ -406,7 +472,8 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
           <div><span>Conservative miner-fee estimate</span><strong>{preview.feeEstimate} sats</strong></div>
           <div><span>Estimated wallet change</span><strong>{preview.estimatedChange} sats</strong></div>
           <div><span>Transaction shape</span><strong>{preview.inputCount} inputs · {preview.outputCount} outputs</strong></div>
-          <small>No contract has been deployed and no transaction has been signed or broadcast.</small>
+          <small>No contract has been deployed. This preview is not a payment or deployment.</small>
+          {genesisSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis")}>Verify Selene signature · no broadcast</button>}
         </div>
       )}
       {activeCircle && (
@@ -444,7 +511,8 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
               <div><span>Estimated miner fee</span><strong>{actionPreview.feeEstimate} sats</strong></div>
               <div><span>Transaction size</span><strong>{actionPreview.size}</strong></div>
               <div><span>Wallet-owned inputs requiring signatures</span><strong>{actionPreview.walletInputCount}</strong></div>
-              <small>No transaction was signed or broadcast. Re-read the state before any future authorization.</small>
+              <small>No transaction is broadcast by this workspace. Re-read state before each new review.</small>
+              {actionSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action")}>Verify Selene signature · no broadcast</button>}
             </div>
           )}
         </div>
@@ -470,7 +538,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
 
       <div className="pusd-mainnet-build-status">
         <LockKeyhole size={16} />
-        <span><b>Mainnet transaction execution remains disabled</b><small>The BCH V3 covenant can be prepared for review. Wallet signing, fresh-prevout verification, safe broadcasting and reorg reconciliation are not enabled for real funds.</small></span>
+        <span><b>Mainnet transaction execution remains disabled</b><small>Selene signing can now be exercised in a local verification-only step: exact transaction intent, 0x61 sighashes and BCH 2026 VM are checked, then signed bytes are discarded. Broadcasting, durable idempotency and reorg reconciliation remain locked.</small></span>
       </div>
     </section>
   );
