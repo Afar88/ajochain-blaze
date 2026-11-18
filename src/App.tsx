@@ -133,7 +133,7 @@ export default function App() {
     if (walletView.state !== "connected" || !walletClient) {
       return () => { active = false; };
     }
-    const addresses = walletClient.receiveAddresses("chipnet", 50);
+    const addresses = walletClient.receiveAddresses("chipnet", 51);
     if (addresses.length === 0) return () => { active = false; };
 
     const syncDiscovery = async () => {
