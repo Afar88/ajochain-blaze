@@ -57,7 +57,7 @@ CI now emits the exact source SHA-256, compiled artifact JSON SHA-256 and compil
 
 ## Production operations
 
-- [ ] Mainnet provider endpoints and their operators are independently verified, monitored, and covered by timeouts/failover tests.
+- [ ] Configure `ELECTRUM_SERVERS` and the same-order `ELECTRUM_PROVIDER_OPERATORS` list in the BLAZE server environment. The API rejects missing, duplicate or mismatched operator IDs and reports only the declared IDs in health responses. These labels are not proof: attach operator ownership, hosting/fault-domain and endpoint-control evidence for every provider; verify monitoring, timeouts and failover separately.
 - [ ] PUSD API environment configured with the minimum required settings; no private endpoint credentials are exposed to the browser.
 - [ ] Rate limiting, request-size limits, origin handling, error handling, alerting, and incident response tested in the deployed environment.
 - [ ] Production build, CI, dependency review, and security scans pass on the exact release commit.
