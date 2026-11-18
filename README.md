@@ -81,7 +81,7 @@ Mainnet compatibility is a product goal; it is not permission to expose users to
 
 ## Mainnet server provider configuration
 
-The Mainnet API is read-only and requires an ordered endpoint/operator manifest before it connects to Electrum. Configure these only in the server environment (never in browser variables):
+The Mainnet API is read-only and requires an ordered endpoint/operator manifest and a private Upstash REST connection before production requests are served. In Vercel, the shared Redis-backed rate limiter fails closed if those credentials are missing or unavailable. The same private database holds durable spend-submission records. Never expose its write token to browser code. Configure these only in the server environment (never in browser variables):
 
 ```env
 ELECTRUM_SERVERS=wss://provider-a.example:50004,wss://provider-b.example:50004
