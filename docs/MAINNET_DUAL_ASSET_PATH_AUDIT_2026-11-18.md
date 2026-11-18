@@ -47,11 +47,11 @@ The PUSD code is configured for two display decimals. Issuer-controlled confirma
 
 ## Findings that block real-value opening
 
-### Critical — BCH Mainnet reuses the Chipnet V3 compiled artifact
+### Review item — shared network-neutral BCH V3 artifact
 
-`v2FeeArtifactForCovenant("fee-v3-auto-reserve-mainnet")` currently returns `autoReserveArtifact`, the same compiled artifact returned for `fee-v3-auto-reserve-guarded`. That artifact is built from `contracts/AjoCircleV3AutoReserve.cash`. The Mainnet identifier and adapter are distinct in application code, but the contract artifact is not separately versioned.
+`v2FeeArtifactForCovenant("fee-v3-auto-reserve-mainnet")` and the guarded Chipnet V3 identifier currently resolve to the same compiled `AjoCircleV3AutoReserve` artifact. The CashScript source explicitly describes this as a **network-neutral script template**: member, initiator and treasury public-key hashes are constructor-bound, while the Mainnet adapter selects Mainnet address validation and the Mainnet quorum provider.
 
-The Mainnet release checklist requires a separately versioned Mainnet-compatible artifact. Create a dedicated Mainnet source/artifact, pin its hash and constructor bindings, and independently review it. Do not promote the Chipnet artifact by changing only the network parameter or covenant label.
+This shared artifact is not, by itself, proof of a defect or a reason to invent a second bytecode version. The release requirement is to independently audit the exact compiled artifact and Mainnet constructor bindings, including the Mainnet treasury and every member/initiator PKH. Confirm and document that this network-neutral use is intentional and safe for the BCH chain. If that review identifies network-dependent covenant behavior, then create and audit a distinct Mainnet source/artifact. Until that review is attached, the Mainnet contract remains blocked regardless of artifact naming.
 
 ### Critical — BCH has no complete Mainnet signing/broadcast route
 
