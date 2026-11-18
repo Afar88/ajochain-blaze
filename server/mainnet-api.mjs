@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { Contract } from "cashscript";
 import v3AutoReserveArtifact from "../contracts/AjoCircleV3AutoReserve.json" with { type: "json" };
 import { createServer } from "node:http";
+import { isIP } from "node:net";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import {
@@ -1351,6 +1352,95 @@ const allowedOrigins = new Set(
 const rateLimit = new Map();
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 60;
+const SHARED_RATE_LIMIT_KEY_PREFIX = "ajochain:{mainnet-spend}:rate:v1:";
+const SHARED_RATE_LIMIT_LUA =
+  "local count = redis.call('INCR', KEYS[1]); " +
+  "if count == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]); end; " +
+  "return count";
+
+/**
+ * Atomic cross-instance rate limit for Vercel/serverless requests.
+ * IP addresses are hashed before storage. Vercel's forwarded-client-IP header
+ * is used only in the Vercel runtime; local development uses the socket peer.
+ */
+export function createUpstashMainnetRateLimiter(options = {}) {
+  const restUrl = options.url ?? process.env.UPSTASH_REDIS_REST_URL;
+  const token = options.token ?? process.env.UPSTASH_REDIS_REST_TOKEN;
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  const now = options.now ?? Date.now;
+  const maxRequests = options.maxRequests ?? RATE_LIMIT_MAX;
+  const windowMs = options.windowMs ?? RATE_LIMIT_WINDOW_MS;
+  if (typeof restUrl !== "string" || !restUrl.trim() ||
+      typeof token !== "string" || !token.trim()) {
+    throw new Error("Shared Mainnet rate limiter is not configured. Set private UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN server-side.");
+  }
+  let endpoint;
+  try { endpoint = new URL(restUrl); }
+  catch { throw new Error("Shared Mainnet rate limiter URL is invalid."); }
+  if (endpoint.protocol !== "https:" || !endpoint.hostname ||
+      endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
+    throw new Error("Shared Mainnet rate limiter must use a clean HTTPS REST URL.");
+  }
+  if (typeof fetchImpl !== "function" ||
+      !Number.isSafeInteger(maxRequests) || maxRequests < 1 || maxRequests > 100_000 ||
+      !Number.isSafeInteger(windowMs) || windowMs < 1000 || windowMs > 86_400_000 ||
+      typeof now !== "function") {
+    throw new Error("Shared Mainnet rate limiter configuration is invalid.");
+  }
+  const endpointUrl = endpoint.toString().replace(/\\/+$/, "");
+
+  return {
+    async consume(request) {
+      const forwarded = process.env.VERCEL === "1"
+        ? (request.headers["x-vercel-forwarded-for"] ??
+          request.headers["x-forwarded-for"] ??
+          request.headers["x-real-ip"])
+        : null;
+      const candidate = String(
+        (Array.isArray(forwarded) ? forwarded[0] : forwarded) ??
+        request.socket?.remoteAddress ??
+        "",
+      ).split(",")[0].trim();
+      if (!candidate || isIP(candidate) === 0) {
+        throw new Error("Shared Mainnet rate limiter could not identify a valid client IP.");
+      }
+      const windowId = Math.floor(now() / windowMs);
+      const clientHash = createHash("sha256").update(candidate).digest("hex");
+      const key = SHARED_RATE_LIMIT_KEY_PREFIX + clientHash + ":" + windowId;
+      let response;
+      try {
+        response = await fetchImpl(endpointUrl, {
+          method: "POST",
+          headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+          body: JSON.stringify([
+            "EVAL",
+            SHARED_RATE_LIMIT_LUA,
+            "1",
+            key,
+            String(windowMs + 5_000),
+          ]),
+        });
+      } catch {
+        throw new Error("Shared Mainnet rate limiter is unavailable; request blocked.");
+      }
+      if (!response?.ok) {
+        throw new Error("Shared Mainnet rate limiter failed (HTTP " +
+          String(response?.status ?? "unknown") + "); request blocked.");
+      }
+      let payload;
+      try { payload = await response.json(); }
+      catch { throw new Error("Shared Mainnet rate limiter returned malformed JSON; request blocked."); }
+      const count = Number(payload?.result);
+      if (!Number.isSafeInteger(count) || count < 1) {
+        throw new Error("Shared Mainnet rate limiter returned an invalid counter; request blocked.");
+      }
+      if (count > maxRequests) {
+        throw new Error("Rate limit exceeded; retry in one minute.");
+      }
+      return { count, remaining: Math.max(0, maxRequests - count), windowId };
+    },
+  };
+}
 
 
 const BCH_MAINNET_PROJECT_TREASURY_ADDRESS = "bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q";
@@ -1804,17 +1894,30 @@ async function readJson(request) {
   }
 }
 
-function applyRateLimit(request) {
+async function applyRateLimit(request) {
+  if (process.env.VERCEL === "1") {
+    const limiter = createUpstashMainnetRateLimiter();
+    await limiter.consume(request);
+    return;
+  }
   const now = Date.now();
-  const key = request.headers["x-forwarded-for"]?.split(",")[0]?.trim() || request.socket.remoteAddress || "unknown";
+  const key = request.socket?.remoteAddress || "local";
   const entries = (rateLimit.get(key) ?? []).filter((timestamp) => now - timestamp < RATE_LIMIT_WINDOW_MS);
   if (entries.length >= RATE_LIMIT_MAX) throw new Error("Rate limit exceeded; retry in one minute.");
   entries.push(now);
   rateLimit.set(key, entries);
+  if (rateLimit.size > 5_000) {
+    for (const [address, timestamps] of rateLimit) {
+      const retained = timestamps.filter((timestamp) => now - timestamp < RATE_LIMIT_WINDOW_MS);
+      if (retained.length === 0) rateLimit.delete(address);
+      else rateLimit.set(address, retained);
+    }
+  }
 }
 
 export function mainnetApiErrorStatus(message) {
   if (/Rate limit exceeded/.test(message)) return 429;
+  if (/shared Mainnet rate limiter/i.test(message)) return 503;
   if (/Request body exceeds/.test(message)) return 413;
   if (/Origin is not allowed/.test(message)) return 403;
   // A competing transaction cannot reserve an already-locked input.
@@ -1836,7 +1939,7 @@ export function createMainnetApiServer() {
       return;
     }
     try {
-      applyRateLimit(request);
+      await applyRateLimit(request);
       const url = new URL(request.url ?? "/", "http://localhost");
       if (request.method === "GET" && url.pathname === "/api/fees") {
         await withElectrumSessions(async (sessions) => {
