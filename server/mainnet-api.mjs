@@ -1495,11 +1495,12 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
   }
   const context = createBchMainnetV3ContractContext(body.circle);
   const walletScripts = normalizeWalletAddresses(body.walletAddresses);
-  if (operation === "genesis" && !walletScripts.includes(context.initiatorScript)) {
-    throw new Error("BCH Mainnet V3 genesis must be reviewed by the registered connected initiator wallet.");
+  if (walletScripts.length !== 1 ||
+      walletScripts.some((script) => !/^76a914[0-9a-f]{40}88ac$/.test(script))) {
+    throw new Error("BCH Mainnet verification requires exactly one connected wallet-derived P2PKH address.");
   }
-  if (walletScripts.some((script) => !/^76a914[0-9a-f]{40}88ac$/.test(script))) {
-    throw new Error("BCH Mainnet verification only accepts wallet-derived P2PKH addresses.");
+  if (operation === "genesis" && walletScripts[0] !== context.initiatorScript) {
+    throw new Error("BCH Mainnet V3 genesis must be reviewed by the registered connected initiator wallet.");
   }
   if (!isHex(body.signedTransactionHex)) {
     throw new Error("Signed BCH Mainnet transaction must be complete hexadecimal bytes.");
@@ -1609,14 +1610,14 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
         throw new Error("BCH Mainnet V3 genesis member receipt reserve must be exactly 1,000 satoshis.");
       }
     }
+    if (inputScripts.some((script) => script !== context.initiatorScript)) {
+      throw new Error("Every BCH Mainnet V3 genesis funding input must belong to the registered initiator wallet.");
+    }
     assertBchMainnetPlainOutput(
       transaction.outputs[memberCount + 1],
-      walletScripts.includes(inputScripts[0]) ? inputScripts[0] : walletScripts[0],
+      context.initiatorScript,
       memberCount + 1,
     );
-    if (!walletScripts.includes(inputScripts[0])) {
-      throw new Error("BCH Mainnet V3 genesis funding must be supplied by the connected wallet.");
-    }
   } else if (operation === "deposit") {
     const memberIndex = body.memberIndex;
     if (!Number.isSafeInteger(memberIndex) || memberIndex < 0 || memberIndex >= memberCount ||
@@ -1627,8 +1628,8 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
       throw new Error("BCH Mainnet V3 deposit input 0 must be the minting state NFT.");
     }
     assertBchMainnetReceiptIndex(sourceOutputs[1], memberIndex, "BCH Mainnet deposit input 1");
-    if (inputScripts[2] !== context.members[memberIndex]) {
-      throw new Error("BCH Mainnet deposit funding input does not belong to the registered member.");
+    if (inputScripts[2] !== context.members[memberIndex] || inputScripts[2] !== walletScripts[0]) {
+      throw new Error("BCH Mainnet deposit funding input must belong to both the registered member and the connected wallet.");
     }
     if (bchTokenCategoryHex(transaction.outputs[0].token) !== context.stateCategory ||
         transaction.outputs[0].token?.nft?.capability !== "minting" ||
@@ -1659,6 +1660,9 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
       assertBchMainnetReceiptIndex(sourceOutputs[index + 1], index, "BCH Mainnet payout receipt input " + (index + 1));
     }
     const feeInputScript = inputScripts[memberCount + 1];
+    if (feeInputScript !== walletScripts[0]) {
+      throw new Error("BCH Mainnet payout fee input must belong to the connected fee-paying wallet.");
+    }
     const pot = BigInt(memberCount) * context.contribution;
     const projectFee = pot / 100n;
     const reserve = round + 1 < memberCount ? context.contribution : 0n;
@@ -1679,7 +1683,8 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
   } else {
     if (transaction.inputs.length !== memberCount + 2 ||
         transaction.outputs.length !== memberCount + 1 ||
-        inputScripts[memberCount + 1] !== context.initiatorScript) {
+        inputScripts[memberCount + 1] !== context.initiatorScript ||
+        walletScripts[0] !== context.initiatorScript) {
       throw new Error("BCH Mainnet V3 cancellation must include every ordered receipt and the registered initiator fee input.");
     }
     assertBchMainnetStateCommitment(sourceOutputs[0], 0, 0, "BCH Mainnet cancellation state");
