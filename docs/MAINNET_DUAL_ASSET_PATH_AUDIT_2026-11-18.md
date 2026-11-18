@@ -48,6 +48,16 @@ The nested API route smoke tests were performed after PR #48; PR #49 then added 
 
 The PUSD code is configured for two display decimals. Issuer-controlled confirmation of the exact category's decimals and token policy remains an explicit release requirement.
 
+## CI dependency audit — 18 November 2026
+
+GitHub Actions CI run #588 reported:
+
+- **Production-only dependency audit:** 0 vulnerabilities (0 info, low, moderate, high or critical).
+- **Full dependency tree:** 5 high-severity findings, 0 critical. They are in the development/build/test toolchain: direct development dependencies `vite` and `vitest`, plus transitive `fdir`, `picomatch` and `tinyglobby`.
+- The `picomatch` finding references GHSA-fc5q-39xc-vjpf (ReDoS through repeated extglobs; vulnerable range reported as `<=4.0.7`).
+
+These findings are not reported by the production-only audit, but the build/test toolchain still needs maintenance. The repository currently has no checked-in `package-lock.json`, so `npm install` resolves the dependency tree during each build. Do not apply `npm audit fix --force` blindly: the CI report's suggested remediation involves a SemVer-major Vitest change to 3.1.4. Review a compatible Vite/Vitest toolchain, add a reproducible lockfile, and rerun the full CI suite as a separate change.
+
 ## Findings that block real-value opening
 
 ### Review item — shared network-neutral BCH V3 artifact
