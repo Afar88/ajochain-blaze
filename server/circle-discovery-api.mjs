@@ -77,7 +77,7 @@ export function decodeInvite(encoded) {
 
 function normaliseDiscoveryAddresses(addresses) {
   if (!Array.isArray(addresses) || addresses.length < 1 || addresses.length > MAX_DISCOVERY_ADDRESSES) {
-    throw new Error("Supply between 1 and 100 connected wallet receive addresses.");
+    throw new Error("Supply between 1 and 51 connected wallet receive addresses.");
   }
   const normalised = addresses.map((address) => canonicalChipnetP2pkhAddress(address));
   return [...new Set(normalised.map((entry) => entry.address))];
