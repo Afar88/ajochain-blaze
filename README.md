@@ -79,6 +79,17 @@ Mainnet compatibility is a product goal; it is not permission to expose users to
 - Clearly distinguish wallet connection from transaction authorization.
 - Require explicit user confirmation for every transaction.
 
+## Mainnet server provider configuration
+
+The Mainnet API is read-only and requires an ordered endpoint/operator manifest before it connects to Electrum. Configure these only in the server environment (never in browser variables):
+
+```env
+ELECTRUM_SERVERS=wss://provider-a.example:50004,wss://provider-b.example:50004
+ELECTRUM_PROVIDER_OPERATORS=provider-a,provider-b
+```
+
+Each operator ID corresponds positionally to one endpoint and must be unique. The IDs are administrative declarations, not proof that operators are independent. Attach evidence of ownership, infrastructure and fault-domain separation to the release review before treating the quorum as independent. The health endpoint explicitly reports that provider independence has not been verified and that Mainnet release approval is false.
+
 ## Release gates
 
 A mainnet-ready release requires all of the following:
