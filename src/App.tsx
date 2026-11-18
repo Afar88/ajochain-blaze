@@ -139,7 +139,7 @@ export default function App() {
           setClassicInviteRevision((revision) => revision + 1);
           setNetwork(params.network);
           setCircleWorkspace("bch-classic");
-          setPage("circles");
+          setPage("create-circle");
           setMenuOpen(false);
         } catch {
           // Do not silently switch workspaces for a malformed or unsupported link.
