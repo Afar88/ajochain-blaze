@@ -1495,6 +1495,9 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
   }
   const context = createBchMainnetV3ContractContext(body.circle);
   const walletScripts = normalizeWalletAddresses(body.walletAddresses);
+  if (operation === "genesis" && !walletScripts.includes(context.initiatorScript)) {
+    throw new Error("BCH Mainnet V3 genesis must be reviewed by the registered connected initiator wallet.");
+  }
   if (walletScripts.some((script) => !/^76a914[0-9a-f]{40}88ac$/.test(script))) {
     throw new Error("BCH Mainnet verification only accepts wallet-derived P2PKH addresses.");
   }
