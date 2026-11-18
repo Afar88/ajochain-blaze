@@ -244,18 +244,24 @@ test("Upstash PUSD ledger reserves one exact transaction across concurrent reque
   const fetchImpl = async (_url, init) => {
     const args = JSON.parse(init.body);
     commands.push(args);
-    const [name, key, value, condition] = args;
+    const [name, ...rest] = args;
+    if (name === "MSETNX") {
+      const pairs = [];
+      for (let index = 0; index < rest.length; index += 2) pairs.push([rest[index], rest[index + 1]]);
+      if (pairs.some(([key]) => store.has(key))) return { ok: true, status: 200, json: async () => ({ result: 0 }) };
+      for (const [key, value] of pairs) store.set(key, value);
+      return { ok: true, status: 200, json: async () => ({ result: 1 }) };
+    }
+    if (name === "MGET") return { ok: true, status: 200, json: async () => ({ result: rest.map((key) => store.get(key) ?? null) }) };
     if (name === "SET") {
-      if (condition === "NX" && store.has(key)) {
-        return { ok: true, status: 200, json: async () => ({ result: null }) };
-      }
-      if (condition === "XX" && !store.has(key)) {
-        return { ok: true, status: 200, json: async () => ({ result: null }) };
-      }
+      const [key, value, condition] = rest;
+      if (condition === "NX" && store.has(key)) return { ok: true, status: 200, json: async () => ({ result: null }) };
+      if (condition === "XX" && !store.has(key)) return { ok: true, status: 200, json: async () => ({ result: null }) };
       store.set(key, value);
       return { ok: true, status: 200, json: async () => ({ result: "OK" }) };
     }
     if (name === "GET") {
+      const [key] = rest;
       return { ok: true, status: 200, json: async () => ({ result: store.get(key) ?? null }) };
     }
     throw new Error("Unexpected Redis REST command: " + name);
@@ -289,8 +295,50 @@ test("Upstash PUSD ledger reserves one exact transaction across concurrent reque
   assert.equal(replay.record.status, "accepted");
   assert.equal((await ledger.get(txid)).relayStatus, "accepted");
 
-  assert.ok(commands.some((args) => args[0] === "SET" && args.includes("NX")));
+  assert.ok(commands.some((args) => args[0] === "MSETNX"));
+  assert.ok(commands.some((args) => args[0] === "MGET"));
   assert.ok(commands.some((args) => args[0] === "SET" && args.includes("XX")));
+});
+
+test("Upstash Mainnet input locks reject a different transaction spending the same outpoint", async () => {
+  const store = new Map();
+  const fetchImpl = async (_url, init) => {
+    const [name, ...rest] = JSON.parse(init.body);
+    if (name === "MSETNX") {
+      const pairs = [];
+      for (let index = 0; index < rest.length; index += 2) pairs.push([rest[index], rest[index + 1]]);
+      if (pairs.some(([key]) => store.has(key))) return { ok: true, status: 200, json: async () => ({ result: 0 }) };
+      for (const [key, value] of pairs) store.set(key, value);
+      return { ok: true, status: 200, json: async () => ({ result: 1 }) };
+    }
+    if (name === "MGET") return { ok: true, status: 200, json: async () => ({ result: rest.map((key) => store.get(key) ?? null) }) };
+    if (name === "GET") return { ok: true, status: 200, json: async () => ({ result: store.get(rest[0]) ?? null }) };
+    if (name === "SET") {
+      const [key, value, condition] = rest;
+      if (condition === "XX" && !store.has(key)) return { ok: true, status: 200, json: async () => ({ result: null }) };
+      store.set(key, value);
+      return { ok: true, status: 200, json: async () => ({ result: "OK" }) };
+    }
+    throw new Error("Unexpected Redis REST command: " + name);
+  };
+  const ledger = createUpstashPusdBroadcastLedger({
+    url: "https://redis.example.test",
+    token: "private-test-token",
+    fetchImpl,
+  });
+  const original = sampleRawTransactionHex();
+  const conflicting = original.replace("e803000000000000", "d007000000000000");
+  const originalTxid = transactionIdFromHex(original);
+  const conflictingTxid = transactionIdFromHex(conflicting);
+  assert.notEqual(conflictingTxid, originalTxid);
+
+  assert.equal((await ledger.reserve(originalTxid, original)).acquired, true);
+  await assert.rejects(
+    ledger.reserve(conflictingTxid, conflicting),
+    /input outpoint .*already reserved by a different transaction/i,
+  );
+  assert.equal((await ledger.get(originalTxid)).status, "submitting");
+  assert.equal(await ledger.get(conflictingTxid), null);
 });
 
 test("Upstash PUSD ledger preserves unknown submissions and fails closed when storage is unavailable", async () => {
@@ -299,14 +347,26 @@ test("Upstash PUSD ledger preserves unknown submissions and fails closed when st
     url: "https://redis.example.test",
     token: "private-test-token",
     fetchImpl: async (_url, init) => {
-      const [name, key, value, condition] = JSON.parse(init.body);
+      const [name, ...rest] = JSON.parse(init.body);
+      if (name === "MSETNX") {
+        const pairs = [];
+        for (let index = 0; index < rest.length; index += 2) pairs.push([rest[index], rest[index + 1]]);
+        if (pairs.some(([key]) => store.has(key))) return { ok: true, status: 200, json: async () => ({ result: 0 }) };
+        for (const [key, value] of pairs) store.set(key, value);
+        return { ok: true, status: 200, json: async () => ({ result: 1 }) };
+      }
+      if (name === "MGET") return { ok: true, status: 200, json: async () => ({ result: rest.map((key) => store.get(key) ?? null) }) };
       if (name === "SET") {
+        const [key, value, condition] = rest;
         if (condition === "NX" && store.has(key)) return { ok: true, status: 200, json: async () => ({ result: null }) };
         if (condition === "XX" && !store.has(key)) return { ok: true, status: 200, json: async () => ({ result: null }) };
         store.set(key, value);
         return { ok: true, status: 200, json: async () => ({ result: "OK" }) };
       }
-      if (name === "GET") return { ok: true, status: 200, json: async () => ({ result: store.get(key) ?? null }) };
+      if (name === "GET") {
+        const [key] = rest;
+        return { ok: true, status: 200, json: async () => ({ result: store.get(key) ?? null }) };
+      }
       throw new Error("Unexpected Redis REST command");
     },
   });
@@ -329,6 +389,7 @@ test("Upstash PUSD ledger preserves unknown submissions and fails closed when st
     fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ result: "OK" }) }),
   }), /not configured/);
   assert.equal(mainnetApiErrorStatus("PUSD durable broadcast ledger is unavailable"), 503);
+  assert.equal(mainnetApiErrorStatus("Mainnet input outpoint ab:0 is already reserved by a different transaction"), 409);
 
   const unavailable = createUpstashPusdBroadcastLedger({
     url: "https://redis.example.test",
