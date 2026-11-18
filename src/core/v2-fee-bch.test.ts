@@ -168,7 +168,7 @@ describe('V2 fee genesis outpoint selection', () => {
     txid: 'ab'.repeat(32),
     vout: 0,
     satoshis: 1n,
-    lockingBytecode: hexToBin('76a914' + '11'.repeat(20) + '88ac'),
+    lockingBytecode: '76a914' + '11'.repeat(20) + '88ac',
   } as SpendableUtxo;
 
   it('accepts any positive non-token vout-0 coin without a 3,000-sat floor', () => {
