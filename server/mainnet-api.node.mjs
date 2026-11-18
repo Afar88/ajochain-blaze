@@ -21,6 +21,7 @@ import {
   assertBchMainnetChainIdentity,
   broadcastPusdTransactionOnce,
   createUpstashPusdBroadcastLedger,
+  isPusdBroadcastLedgerConfigured,
   computeElectrumMerkleRoot,
   getVerifiedTransactionStatus,
   verifyElectrumMerkleProof,
@@ -220,6 +221,22 @@ function transactionIdFromHex(hex) {
   const second = createHash("sha256").update(first).digest();
   return Buffer.from(second).reverse().toString("hex");
 }
+
+test("PUSD health readiness reports the private durable ledger configuration explicitly", () => {
+  assert.equal(isPusdBroadcastLedgerConfigured({}), false);
+  assert.equal(isPusdBroadcastLedgerConfigured({
+    UPSTASH_REDIS_REST_URL: "http://redis.example.test",
+    UPSTASH_REDIS_REST_TOKEN: "private-token",
+  }), false);
+  assert.equal(isPusdBroadcastLedgerConfigured({
+    UPSTASH_REDIS_REST_URL: "https://redis.example.test",
+    UPSTASH_REDIS_REST_TOKEN: "private-token",
+  }), true);
+  assert.equal(isPusdBroadcastLedgerConfigured({
+    UPSTASH_REDIS_REST_URL: "https://user:pass@redis.example.test",
+    UPSTASH_REDIS_REST_TOKEN: "private-token",
+  }), false);
+});
 
 test("Upstash PUSD ledger reserves one exact transaction across concurrent requests and records accepted state", async () => {
   const store = new Map();
