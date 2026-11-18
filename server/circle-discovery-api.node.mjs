@@ -111,7 +111,7 @@ test("circle discovery registers a circle idempotently and stores member indexes
   const registerQuery = queries.find((query) => query.statement.includes("INSERT INTO ajo_blaze_circle_registry"));
   assert.equal(registerQuery.params[8], 2);
   assert.equal(JSON.parse(registerQuery.params[9]).length, 2);
-  assert.match(registerQuery.statement, /ON CONFLICT \(network, state_category\)/);
+  assert.match(registerQuery.statement, /ON CONFLICT \(circle_key\)/);
   assert.doesNotMatch(queries[0].statement, /UNIQUE \(network, state_category\)/);
   assert.equal(queries.filter((query) => query.statement.includes("CREATE TABLE")).length, 2);
 });
