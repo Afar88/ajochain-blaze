@@ -7,6 +7,8 @@ import { encodeCashAddress, hash160, hexToBin, secp256k1 } from "@bitauth/libaut
 import circleArtifactJson from "../../contracts/AjoCirclePUSDV3Mainnet.json" with { type: "json" };
 import escrowArtifactJson from "../../contracts/AjoPUSDMemberEscrowV3.json" with { type: "json" };
 import { PUSD_ASSET } from "./assets";
+import { MAINNET_PROJECT_TREASURY_ADDRESS } from "./project-treasury";
+import { createPusdMainnetCircleContracts, validatePusdMainnetCircleParams } from "./pusd-mainnet-circle";
 import { pkhToAddress } from "./bch-address";
 import { getMainnetProjectTreasuryPkh } from "./project-treasury";
 
@@ -33,6 +35,26 @@ function key(n: number) {
 
 const members = [key(1), key(2)];
 const initiator = key(8);
+
+function mainnetTokenAddress(pkh: Uint8Array) {
+  const result = encodeCashAddress({ prefix: "bitcoincash", type: "p2pkhWithTokens", payload: pkh });
+  if (typeof result === "string") throw new Error("Could not encode Mainnet token-aware test address");
+  return result.address;
+}
+
+function mainnetParams(membersForCircle = members) {
+  return {
+    version: 3 as const,
+    name: "PUSD Mainnet binding test",
+    network: "mainnet" as const,
+    members: membersForCircle.map((member) => mainnetTokenAddress(member.pkh)),
+    contribution: 10_000n,
+    maxFee: MAX_FEE,
+    initiator: pkhToAddress(initiator.pkh, "mainnet"),
+    stateCategory: STATE,
+    treasury: MAINNET_PROJECT_TREASURY_ADDRESS,
+  };
+}
 
 function tokenAddress(pkh: Uint8Array) {
   const result = encodeCashAddress({ prefix: "bchtest", type: "p2pkhWithTokens", payload: pkh });
@@ -143,7 +165,20 @@ async function deposit(
   await builder.send();
 }
 
-async function payout(provider: MockNetworkProvider, contract: Contract, escrows: Contract[], recipientIndex = 0) {
+type PayoutOverrides = {
+  treasuryPkh?: Uint8Array;
+  recipientPkh?: Uint8Array;
+  escrowInputSourceForMemberZero?: number;
+  escrowOutputTargetForMemberZero?: number;
+};
+
+async function payout(
+  provider: MockNetworkProvider,
+  contract: Contract,
+  escrows: Contract[],
+  recipientIndex = 0,
+  overrides: PayoutOverrides = {},
+) {
   const { state, receipts, escrowUtxos } = await current(contract, escrows);
   const reserveAddress = pkhToAddress(initiator.pkh, "chipnet");
   const reserve = provider.addUtxo(reserveAddress, randomUtxo({ satoshis: 25_000n }));
@@ -151,12 +186,14 @@ async function payout(provider: MockNetworkProvider, contract: Contract, escrows
   const nextRound = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16) + 1;
   const nextStateCommitment = "54" + nextRound.toString(16).padStart(2, "0") + "01";
   const circleUnlock = contract.unlock.payout();
+  const escrowInputZero = overrides.escrowInputSourceForMemberZero ?? 0;
+  const escrowInputOne = escrowInputZero === 0 ? 1 : 0;
   const builder = new TransactionBuilder({ provider })
     .addInput(state, circleUnlock)
     .addInput(receipts[0], circleUnlock)
     .addInput(receipts[1], circleUnlock)
-    .addInput(escrowUtxos[0], escrows[0].unlock.attest())
-    .addInput(escrowUtxos[1], escrows[1].unlock.attest())
+    .addInput(escrowUtxos[escrowInputZero], escrows[escrowInputZero].unlock.attest())
+    .addInput(escrowUtxos[escrowInputOne], escrows[escrowInputOne].unlock.attest())
     .addInput(reserve, initiator.signature.unlockP2PKH())
     .addOutput({
       to: contract.tokenAddress, amount: state.satoshis,
@@ -174,13 +211,16 @@ async function payout(provider: MockNetworkProvider, contract: Contract, escrows
   for (let index = 0; index < members.length; index++) {
     const oldCredit = escrowUtxos[index].token?.amount ?? 0n;
     const nextCredit = oldCredit - CONTRIBUTION + (index === recipientIndex ? reserveCredit : 0n);
+    const outputContract = index === 0
+      ? escrows[overrides.escrowOutputTargetForMemberZero ?? index]
+      : escrows[index];
     if (nextCredit > 0n) {
       builder.addOutput({
-        to: escrows[index].tokenAddress, amount: escrowUtxos[index].satoshis,
+        to: outputContract.tokenAddress, amount: escrowUtxos[index].satoshis,
         token: { category: PUSD, amount: nextCredit },
       });
     } else {
-      builder.addOutput({ to: escrows[index].address, amount: escrowUtxos[index].satoshis });
+      builder.addOutput({ to: outputContract.address, amount: escrowUtxos[index].satoshis });
     }
   }
 
@@ -189,11 +229,11 @@ async function payout(provider: MockNetworkProvider, contract: Contract, escrows
   const recipientPayout = grossPot - projectFee - reserveCredit;
   builder
     .addOutput({
-      to: tokenAddress(treasuryPkh), amount: DUST,
+      to: tokenAddress(overrides.treasuryPkh ?? treasuryPkh), amount: DUST,
       token: { category: PUSD, amount: projectFee },
     })
     .addOutput({
-      to: tokenAddress(members[recipientIndex].pkh), amount: DUST,
+      to: tokenAddress(overrides.recipientPkh ?? members[recipientIndex].pkh), amount: DUST,
       token: { category: PUSD, amount: recipientPayout },
     })
     .addOutput({ to: reserveAddress, amount: 10_000n });
@@ -232,6 +272,52 @@ async function cancel(provider: MockNetworkProvider, contract: Contract, escrows
   await builder.send();
 }
 
+describe("PUSD Mainnet adapter constructor bindings", () => {
+  it("accepts only unique Mainnet token-aware P2PKH member addresses and the shared treasury", () => {
+    const params = mainnetParams();
+    expect(() => validatePusdMainnetCircleParams(params)).not.toThrow();
+    expect(() => validatePusdMainnetCircleParams({
+      ...params,
+      members: [mainnetTokenAddress(members[0].pkh), tokenAddress(members[1].pkh)],
+    })).toThrow(/token-aware P2PKH Bitcoin Cash Mainnet/);
+    expect(() => validatePusdMainnetCircleParams({
+      ...params,
+      members: [params.members[0], params.members[0]],
+    })).toThrow(/unique Mainnet address/);
+    expect(() => validatePusdMainnetCircleParams({
+      ...params,
+      treasury: "bitcoincash:qz0w0w0w0w0w0w0w0w0w0w0w0w0w0w0w0w0w0w0w0",
+    })).toThrow(/shared Mainnet BCH\/PUSD project treasury/);
+  });
+
+  it("derives the exact V3 circle and one distinct member escrow script from the validated Mainnet constructor parameters", () => {
+    const provider = new MockNetworkProvider();
+    const params = mainnetParams(members);
+    const { contract, escrows } = createPusdMainnetCircleContracts(params, provider);
+    expect(escrows).toHaveLength(members.length);
+    expect(escrows.every((escrow) => escrow.lockingBytecode.length > 0)).toBe(true);
+    expect(escrows[0].lockingBytecode).not.toEqual(escrows[1].lockingBytecode);
+    expect(contract.lockingBytecode.length).toBeGreaterThan(0);
+
+    const reordered = createPusdMainnetCircleContracts({
+      ...params,
+      members: [params.members[1], params.members[0]],
+    }, provider);
+    expect(reordered.contract.lockingBytecode).not.toEqual(contract.lockingBytecode);
+    expect(reordered.escrows[0].lockingBytecode).not.toEqual(escrows[0].lockingBytecode);
+  });
+
+  it("pins five ordered members and five separately derived escrow scripts", () => {
+    const provider = new MockNetworkProvider();
+    const fiveMembers = [...members, key(4), key(5), key(6)];
+    const params = mainnetParams(fiveMembers);
+    const { contract, escrows } = createPusdMainnetCircleContracts(params, provider);
+    expect(escrows).toHaveLength(5);
+    expect(new Set(escrows.map((escrow) => escrow.lockingBytecode)).size).toBe(5);
+    expect(contract.lockingBytecode.length).toBeGreaterThan(0);
+  });
+});
+
 describe("AjoChain PUSD V3 Mainnet covenant (mock-chain invariants)", () => {
   it("pins the same Mainnet project-fee treasury in each newly derived circle", () => {
     const provider = new MockNetworkProvider();
@@ -265,6 +351,56 @@ describe("AjoChain PUSD V3 Mainnet covenant (mock-chain invariants)", () => {
     const { receipts, escrowUtxos } = await current(contract, escrows);
     expect(receipts[0].token!.nft!.commitment).toBe(creditCommitment(0, 0n));
     expect(escrowUtxos[0].token?.category).toBeUndefined();
+  }, 60_000);
+
+  it("rejects a payout redirected away from the fixed Mainnet treasury or scheduled member", async () => {
+    const wrongKey = key(41);
+
+    {
+      const provider = new MockNetworkProvider();
+      const { contract, escrows } = makeContracts(provider);
+      addGenesis(provider, contract, escrows);
+      await deposit(provider, contract, escrows, 0);
+      await deposit(provider, contract, escrows, 1);
+      await expect(payout(provider, contract, escrows, 0, {
+        treasuryPkh: wrongKey.pkh,
+      })).rejects.toThrow();
+    }
+
+    {
+      const provider = new MockNetworkProvider();
+      const { contract, escrows } = makeContracts(provider);
+      addGenesis(provider, contract, escrows);
+      await deposit(provider, contract, escrows, 0);
+      await deposit(provider, contract, escrows, 1);
+      await expect(payout(provider, contract, escrows, 0, {
+        recipientPkh: wrongKey.pkh,
+      })).rejects.toThrow();
+    }
+  }, 60_000);
+
+  it("rejects cross-member escrow input and output substitutions", async () => {
+    {
+      const provider = new MockNetworkProvider();
+      const { contract, escrows } = makeContracts(provider);
+      addGenesis(provider, contract, escrows);
+      await deposit(provider, contract, escrows, 0);
+      await deposit(provider, contract, escrows, 1);
+      await expect(payout(provider, contract, escrows, 0, {
+        escrowInputSourceForMemberZero: 1,
+      })).rejects.toThrow();
+    }
+
+    {
+      const provider = new MockNetworkProvider();
+      const { contract, escrows } = makeContracts(provider);
+      addGenesis(provider, contract, escrows);
+      await deposit(provider, contract, escrows, 0);
+      await deposit(provider, contract, escrows, 1);
+      await expect(payout(provider, contract, escrows, 0, {
+        escrowOutputTargetForMemberZero: 1,
+      })).rejects.toThrow();
+    }
   }, 60_000);
 
   it("pays a separate 1% PUSD fee and reserves one next contribution for the non-final recipient", async () => {

@@ -139,7 +139,8 @@ function validateDraft(draft: PusdMainnetCircleDraft) {
   return { memberKeys, initiatorPkh };
 }
 
-function circleContracts(params: PusdMainnetCircleParams, provider: NetworkProvider) {
+export function createPusdMainnetCircleContracts(params: PusdMainnetCircleParams, provider: NetworkProvider) {
+  validatePusdMainnetCircleParams(params);
   const memberPkhs = params.members.map(tokenAwareP2pkh);
   const pusdCategory = hexToBin(PUSD_ASSET.categoryId).reverse();
   const stateCategory = hexToBin(params.stateCategory).reverse();
@@ -306,7 +307,7 @@ export async function planPusdMainnetCircleGenesis(
     stateCategory: genesis.txid,
     treasury: "bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q",
   };
-  const { contract, escrows } = circleContracts(params, provider);
+  const { contract, escrows } = createPusdMainnetCircleContracts(params, provider);
   const fixedOutputValue = STATE_DUST +
     BigInt(params.members.length) * (RECEIPT_DUST + ESCROW_DUST);
 
@@ -374,7 +375,7 @@ export async function planPusdMainnetCircleGenesis(
 export async function readPusdMainnetCircle(params: PusdMainnetCircleParams): Promise<PusdMainnetCircleSnapshot> {
   validatePusdMainnetCircleParams(params);
   const provider = await getClassicProvider("mainnet");
-  const { contract, escrows } = circleContracts(params, provider);
+  const { contract, escrows } = createPusdMainnetCircleContracts(params, provider);
   const utxos = await contract.getUtxos();
   const categoryUtxos = utxos.filter((utxo) => utxo.token?.category === params.stateCategory);
   if (categoryUtxos.length !== params.members.length + 1) {

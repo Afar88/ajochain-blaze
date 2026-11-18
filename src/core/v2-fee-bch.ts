@@ -212,7 +212,7 @@ export function v2FeeArtifactForCovenant(covenant: V2FeeCovenant): Artifact {
   throw new Error('Unsupported V2 fee covenant.');
 }
 
-function contractFor(p: V2FeeCircleParams, provider: NetworkProvider): Contract {
+export function createV2FeeCircleContract(p: V2FeeCircleParams, provider: NetworkProvider): Contract {
   validate(p);
   const pkhs = p.members.map(address => addressToPkh(address, p.network));
   while (pkhs.length < 5) pkhs.push(new Uint8Array(20));
@@ -502,7 +502,7 @@ export async function planV2FeeGenesis(draft: V2FeeCircleDraft, walletAddress: s
       : a.satoshis > b.satoshis ? -1 : 1);
   const genesis = requireV2FeeGenesisUtxo(coins);
   const params: V2FeeCircleParams = { ...paramsBase, stateCategory: genesis.txid };
-  const contract = contractFor(params, provider);
+  const contract = createV2FeeCircleContract(params, provider);
   const inputs: SpendableUtxo[] = [genesis];
   let total = genesis.satoshis;
   const fee = feeEstimate(params.members.length);
@@ -529,7 +529,7 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
   if (amount <= 0n || amount > CASH_SCRIPT_INT_MAX) throw new Error('Deposit amount is outside the supported CashScript integer range');
   if (hex(addressToPkh(params.members[memberIndex], params.network)) !== hex(addressToPkh(walletAddress, params.network))) throw new Error('Connected wallet does not match this member slot.');
   const provider = await getProvider(params.network);
-  const contract = contractFor(params, provider);
+  const contract = createV2FeeCircleContract(params, provider);
   const all = await getV2FeeCircleTokenUtxos(contract);
   assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant, params.network, contract.tokenAddress);
   const state = findState(all, params.stateCategory, params.covenant, params.members.length);
@@ -580,7 +580,7 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
   validate(params);
   validateV2FeePayoutFeePayerAddress(feePayerAddress, params.network);
   const provider = await getProvider(params.network);
-  const contract = contractFor(params, provider);
+  const contract = createV2FeeCircleContract(params, provider);
   const all = await getV2FeeCircleTokenUtxos(contract);
   assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant, params.network, contract.tokenAddress);
   const state = findState(all, params.stateCategory, params.covenant, params.members.length);
@@ -689,7 +689,7 @@ export async function planV2FeeCancel(params: V2FeeCircleParams, walletAddress: 
   validate(params);
   if (hex(addressToPkh(walletAddress, params.network)) !== hex(addressToPkh(params.initiator, params.network))) throw new Error('Only the circle initiator can cancel before the first payout.');
   const provider = await getProvider(params.network);
-  const contract = contractFor(params, provider);
+  const contract = createV2FeeCircleContract(params, provider);
   const all = await getV2FeeCircleTokenUtxos(contract);
   assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant, params.network, contract.tokenAddress);
   const state = findState(all, params.stateCategory, params.covenant, params.members.length);
@@ -724,7 +724,7 @@ export async function planV2FeeCancel(params: V2FeeCircleParams, walletAddress: 
 export async function readV2FeeCircle(params: V2FeeCircleParams) {
   validate(params);
   const provider = await getProvider(params.network);
-  const contract = contractFor(params, provider);
+  const contract = createV2FeeCircleContract(params, provider);
   const utxos = await getV2FeeCircleTokenUtxos(contract);
   assertUtxoSet(utxos, params.stateCategory, params.members.length, params.covenant, params.network, contract.tokenAddress);
   const state = findState(utxos, params.stateCategory, params.covenant, params.members.length);
