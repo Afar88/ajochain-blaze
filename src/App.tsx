@@ -121,8 +121,10 @@ export default function App() {
   }, []);
 
   // Discover circle invites registered by other members. The registry is only
-  // a discovery index: every returned invite is decoded and its live covenant
+  // a discovery index: every new invite is decoded and its live covenant
   // state/receipts are re-read from Chipnet before it is saved or shown.
+  // Poll while connected so a circle created by another member appears without
+  // requiring a link, a page refresh, or a wallet reconnection.
   useEffect(() => {
     let active = true;
     if (network !== "chipnet" || walletView.state !== "connected" || !walletClient) {
@@ -131,15 +133,20 @@ export default function App() {
     const addresses = walletClient.receiveAddresses("chipnet", 50);
     if (addresses.length === 0) return () => { active = false; };
 
-    void import("./core/circle-discovery-client")
-      .then(({ discoverVerifiedCircles }) => discoverVerifiedCircles(addresses))
-      .then((discovered) => {
+    const syncDiscovery = async () => {
+      try {
+        const existing = readSavedV2MenuCircles();
+        const { discoverVerifiedCircles } = await import("./core/circle-discovery-client");
+        const discovered = await discoverVerifiedCircles(
+          addresses,
+          existing.map((circle) => circle.encoded),
+        );
         if (!active || discovered.length === 0) return;
-        const existing = readSavedV2MenuCircles().map((circle) => ({
+        const existingRecords = existing.map((circle) => ({
           encoded: circle.encoded,
           savedAt: Date.now(),
         }));
-        const merged = dedupeSavedV2FeeCircleMenuRecords([...discovered, ...existing]);
+        const merged = dedupeSavedV2FeeCircleMenuRecords([...discovered, ...existingRecords]);
         try {
           window.localStorage.setItem(V2_MENU_STORAGE_KEY, JSON.stringify(merged));
         } catch {
@@ -153,13 +160,18 @@ export default function App() {
             label: identity.name,
           }] : [];
         }));
-      })
-      .catch(() => {
+      } catch {
         // Missing backend configuration or a temporary outage must not block
         // normal wallet use or the existing share-link restoration flow.
-      });
+      }
+    };
 
-    return () => { active = false; };
+    void syncDiscovery();
+    const poll = window.setInterval(() => { void syncDiscovery(); }, 30_000);
+    return () => {
+      active = false;
+      window.clearInterval(poll);
+    };
   }, [network, walletView.state, walletView.receiveIndex, walletClient]);
 
   useEffect(() => {

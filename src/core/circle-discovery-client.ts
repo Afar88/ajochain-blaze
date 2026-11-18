@@ -39,17 +39,21 @@ export async function registerCircleForDiscovery(encoded: string, genesisTxid: s
  * checked against the requested wallet addresses, then independently read from
  * Chipnet before it can be persisted in the local menu.
  */
-export async function discoverVerifiedCircles(addresses: readonly string[]): Promise<DiscoveredCircleRecord[]> {
+export async function discoverVerifiedCircles(
+  addresses: readonly string[],
+  alreadySaved: readonly string[] = [],
+): Promise<DiscoveredCircleRecord[]> {
   const walletAddresses = [...new Set(addresses.map((address) => address.trim().toLowerCase()).filter(Boolean))];
   if (walletAddresses.length === 0) return [];
   const result = await postCircleRegistry({ action: "discover", addresses: walletAddresses });
   if (!Array.isArray(result.circles)) return [];
 
-  const verified: DiscoveredCircleRecord[] = [];
-  for (const candidate of result.circles.slice(0, 50)) {
+  const known = new Set(alreadySaved);
+  const candidates: Array<{ encoded: string; savedAt: number }> = [];
+  for (const candidate of result.circles.slice(0, 100)) {
     if (!candidate || typeof candidate !== "object") continue;
     const row = candidate as Record<string, unknown>;
-    if (typeof row.encoded !== "string" || row.encoded.length > 20_000) continue;
+    if (typeof row.encoded !== "string" || row.encoded.length > 20_000 || known.has(row.encoded)) continue;
     try {
       const params = decodeV2FeeCircle(row.encoded);
       if (params.network !== "chipnet" ||
@@ -58,15 +62,33 @@ export async function discoverVerifiedCircles(addresses: readonly string[]): Pro
           !params.members.some((member) => walletAddresses.includes(member.toLowerCase()))) {
         continue;
       }
-      await readV2FeeCircle(params);
       const created = typeof row.createdAt === "string" ? Date.parse(row.createdAt) : Number(row.savedAt);
-      verified.push({
+      candidates.push({
         encoded: row.encoded,
         savedAt: Number.isFinite(created) && created > 0 ? created : Date.now(),
       });
     } catch {
-      // Ignore malformed, stale, or non-existent on-chain candidates.
+      // Ignore malformed or non-member candidates before spending a chain read.
     }
   }
+
+  // Do not serially wait on dozens of independent chain reads. A small worker
+  // pool keeps first-load discovery responsive without flooding Chipnet nodes.
+  const verified: DiscoveredCircleRecord[] = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < candidates.length) {
+      const index = next++;
+      const candidate = candidates[index];
+      try {
+        const params = decodeV2FeeCircle(candidate.encoded);
+        await readV2FeeCircle(params);
+        verified.push(candidate);
+      } catch {
+        // Ignore stale or non-existent on-chain candidates.
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, candidates.length) }, () => worker()));
   return dedupeSavedV2FeeCircleRecords(verified);
 }
