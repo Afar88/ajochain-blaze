@@ -24,7 +24,15 @@ type StoredCircle = Omit<V2FeeCircleParams, "contribution" | "maxFee"> & {
   contribution: string;
   maxFee: string;
 };
-type MainnetSigningPlan = { wc: unknown; walletInputs: number[]; prompt: string; createdAt: number };
+type MainnetSigningPlan = {
+  wc: unknown;
+  walletInputs: number[];
+  prompt: string;
+  createdAt: number;
+  operation: "genesis" | "deposit" | "payout" | "cancel";
+  circle: V2FeeCircleParams;
+  memberIndex?: number;
+};
 
 function readActiveCircle(): V2FeeCircleParams | null {
   try {
@@ -222,6 +230,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
         wc: plan.wc, walletInputs: plan.walletInputs,
         prompt: "Verify BCH Mainnet member deposit for " + activeCircle.name,
         createdAt: Date.now(),
+        operation: "deposit", circle: activeCircle, memberIndex,
       });
       setActionPreview({
         title: "Unsigned BCH member-deposit preview",
@@ -256,6 +265,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
         wc: plan.wc, walletInputs: plan.walletInputs,
         prompt: "Verify BCH Mainnet payout for " + activeCircle.name,
         createdAt: Date.now(),
+        operation: "payout", circle: activeCircle,
       });
       setActionPreview({
         title: "Unsigned BCH payout preview",
@@ -290,6 +300,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
         wc: plan.wc, walletInputs: plan.walletInputs,
         prompt: "Verify BCH Mainnet pre-payout cancellation for " + activeCircle.name,
         createdAt: Date.now(),
+        operation: "cancel", circle: activeCircle,
       });
       setActionPreview({
         title: "Unsigned pre-payout cancellation preview",
@@ -328,13 +339,47 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
         signingPlan.walletInputs,
         signingPlan.prompt + " (local verification only; never broadcast)",
       );
-      const inputCount = verified.decoded.inputs.length;
-      const outputCount = verified.decoded.outputs.length;
+      const walletAddress = wallet.address("mainnet");
+      if (!walletAddress) throw new Error("The connected Selene wallet no longer exposes its Mainnet address.");
+      const verificationResponse = await fetch("/api/bch/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operation: signingPlan.operation,
+          circle: {
+            version: signingPlan.circle.version,
+            covenant: signingPlan.circle.covenant,
+            network: signingPlan.circle.network,
+            name: signingPlan.circle.name,
+            members: signingPlan.circle.members,
+            contribution: signingPlan.circle.contribution.toString(),
+            maxFee: signingPlan.circle.maxFee.toString(),
+            stateCategory: signingPlan.circle.stateCategory,
+            initiator: signingPlan.circle.initiator,
+            treasury: signingPlan.circle.treasury,
+          },
+          memberIndex: signingPlan.memberIndex,
+          walletAddresses: [walletAddress],
+          signedTransactionHex: verified.signedTransaction,
+        }),
+      });
+      const verification = await verificationResponse.json().catch(() => null) as
+        | { error?: string; verified?: boolean; broadcast?: boolean; txid?: string; inputCount?: number; outputCount?: number; message?: string }
+        | null;
+      if (!verificationResponse.ok) {
+        throw new Error(verification?.error || "Independent BCH Mainnet server verification failed.");
+      }
+      if (!verification || verification.verified !== true || verification.broadcast !== false) {
+        throw new Error("The Mainnet server did not return a valid verification-only result. No transaction was broadcast.");
+      }
+      const inputCount = verification.inputCount ?? verified.decoded.inputs.length;
+      const outputCount = verification.outputCount ?? verified.decoded.outputs.length;
       if (target === "genesis") setGenesisSigningPlan(null);
       else setActionSigningPlan(null);
       setNotice(
-        "Selene signed the BCH Mainnet review transaction and AjoChain passed exact input/output comparison, 0x61 sighash checks and BCH 2026 VM verification (" +
-        inputCount + " inputs, " + outputCount + " outputs). The signed bytes were discarded. Nothing was broadcast and no circle state changed.",
+        "Independent BCH Mainnet verification passed (" + inputCount + " inputs, " + outputCount +
+        " outputs, txid " + (verification.txid || "verified") +
+        "). Selene intent, exact V3 covenant, confirmed provider-quorum UTXOs and BCH 2026 VM checks passed. The signed bytes were discarded. Nothing was broadcast and no circle state changed.",
       );
     } catch (cause) {
       setError(errorMessage(cause));
@@ -383,6 +428,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
         wc: plan.wc, walletInputs: plan.walletInputs,
         prompt: "Verify BCH Mainnet circle genesis for " + name.trim(),
         createdAt: Date.now(),
+        operation: "genesis", circle: plan.params,
       });
       setActiveCircle(plan.params);
       persistActiveCircle(plan.params);

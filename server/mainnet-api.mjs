@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { Contract } from "cashscript";
+import v3AutoReserveArtifact from "../contracts/AjoCircleV3AutoReserve.json" with { type: "json" };
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
@@ -1320,6 +1322,417 @@ const rateLimit = new Map();
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 60;
 
+
+const BCH_MAINNET_PROJECT_TREASURY_ADDRESS = "bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q";
+const BCH_MAINNET_PROJECT_TREASURY_SCRIPT = "76a91417c8d3de33e0e229101f756dc5f189b123c1c83c88ac";
+const BCH_MAINNET_CIRCLE_STATE_DUST = 1_000n;
+const BCH_MAINNET_CIRCLE_RECEIPT_DUST = 1_000n;
+const BCH_MAINNET_CIRCLE_CHANGE_DUST = 546n;
+const BCH_MAINNET_CASH_SCRIPT_INT_MAX = 0x7fffffffffffffffn;
+
+function requireMainnetP2pkhScript(address, label) {
+  const script = cashAddressToLockingBytecode(address);
+  if (!/^76a914[0-9a-f]{40}88ac$/.test(script)) {
+    throw new Error(label + " must be a Bitcoin Cash Mainnet P2PKH address.");
+  }
+  return script;
+}
+
+function validateBchMainnetCircleForVerification(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value) ||
+      value.version !== 2 || value.network !== "mainnet" ||
+      value.covenant !== "fee-v3-auto-reserve-mainnet" ||
+      typeof value.name !== "string" || !value.name.trim() || value.name.length > 60 ||
+      !Array.isArray(value.members) || value.members.length < 2 || value.members.length > 5 ||
+      !/^[0-9a-f]{64}$/i.test(String(value.stateCategory ?? ""))) {
+    throw new Error("A valid BCH Mainnet V3 circle context is required.");
+  }
+  const contribution = parsePositiveBigInt(value.contribution, "Circle contribution");
+  const maxFee = parsePositiveBigInt(value.maxFee, "Circle maximum fee");
+  if (contribution < 200_000n || contribution > BCH_MAINNET_CASH_SCRIPT_INT_MAX ||
+      maxFee < 1_000n || maxFee > BCH_MAINNET_CASH_SCRIPT_INT_MAX) {
+    throw new Error("BCH Mainnet circle contribution or maximum fee is outside the V3 covenant limits.");
+  }
+  const members = value.members.map((address, index) =>
+    requireMainnetP2pkhScript(address, "Circle member " + (index + 1)),
+  );
+  if (new Set(members).size !== members.length) {
+    throw new Error("BCH Mainnet circle member addresses must be unique.");
+  }
+  const initiatorScript = requireMainnetP2pkhScript(value.initiator, "Circle initiator");
+  if (value.treasury !== BCH_MAINNET_PROJECT_TREASURY_ADDRESS) {
+    throw new Error("BCH Mainnet circle fee treasury does not match the immutable AjoChain treasury.");
+  }
+  const treasuryScript = requireMainnetP2pkhScript(value.treasury, "Project treasury");
+  if (treasuryScript !== BCH_MAINNET_PROJECT_TREASURY_SCRIPT) {
+    throw new Error("BCH Mainnet project treasury locking bytecode does not match the reviewed constant.");
+  }
+  const pot = BigInt(members.length) * contribution;
+  const projectFee = pot / 100n;
+  if (projectFee < BCH_MAINNET_CIRCLE_CHANGE_DUST ||
+      maxFee > pot - projectFee - BCH_MAINNET_CIRCLE_CHANGE_DUST) {
+    throw new Error("BCH Mainnet circle economics do not leave dust-safe fee and payout outputs.");
+  }
+  return {
+    name: value.name.trim(),
+    members,
+    memberAddresses: value.members.slice(),
+    memberCount: members.length,
+    contribution,
+    maxFee,
+    stateCategory: String(value.stateCategory).toLowerCase(),
+    initiatorScript,
+    treasuryScript,
+  };
+}
+
+/**
+ * Derive the Mainnet V3 covenant script on the server from the compiled source
+ * artifact and the same constructor bindings used by the client. The provider
+ * is deliberately mocked: this function performs no network access.
+ */
+export function createBchMainnetV3ContractContext(circleValue) {
+  const circle = validateBchMainnetCircleForVerification(circleValue);
+  const memberPkhBytes = circle.members.map((script) => hexToBin(script.slice(6, 46)));
+  while (memberPkhBytes.length < 5) memberPkhBytes.push(new Uint8Array(20));
+  const treasuryPkhBytes = hexToBin(BCH_MAINNET_PROJECT_TREASURY_SCRIPT.slice(6, 46));
+  const initiatorPkhBytes = hexToBin(circle.initiatorScript.slice(6, 46));
+  const provider = {
+    network: "mainnet",
+    getUtxos: async () => { throw new Error("Local BCH Mainnet contract derivation must not access network providers."); },
+    getBlockHeight: async () => { throw new Error("Local BCH Mainnet contract derivation must not access network providers."); },
+    getRawTransaction: async () => { throw new Error("Local BCH Mainnet contract derivation must not access network providers."); },
+    sendRawTransaction: async () => { throw new Error("Local BCH Mainnet contract derivation must never broadcast."); },
+  };
+  const contract = new Contract(v3AutoReserveArtifact, [
+    memberPkhBytes[0], memberPkhBytes[1], memberPkhBytes[2],
+    memberPkhBytes[3], memberPkhBytes[4],
+    BigInt(circle.memberCount),
+    circle.contribution,
+    circle.maxFee,
+    hexToBin(circle.stateCategory).reverse(),
+    initiatorPkhBytes,
+    treasuryPkhBytes,
+  ], { provider, contractType: "p2sh32" });
+  const contractLockingBytecode = String(contract.lockingBytecode).toLowerCase();
+  if (!/^aa20[0-9a-f]{64}87$/.test(contractLockingBytecode)) {
+    throw new Error("Server-derived BCH Mainnet V3 contract did not produce a valid P2SH32 locking script.");
+  }
+  if (cashAddressToLockingBytecode(contract.tokenAddress) !== contractLockingBytecode) {
+    throw new Error("Server-derived BCH Mainnet V3 contract address and locking script disagree.");
+  }
+  return {
+    ...circle,
+    contractLockingBytecode,
+    contractAddress: contract.tokenAddress,
+  };
+}
+
+function bchTokenCategoryHex(token) {
+  return token?.category ? binToHex(token.category).toLowerCase() : null;
+}
+
+function bchNftCommitmentHex(token) {
+  return token?.nft?.commitment ? binToHex(token.nft.commitment).toLowerCase() : null;
+}
+
+function assertBchMainnetCircleTokenOutput(output, context, capability, commitment, index) {
+  const script = binToHex(output.lockingBytecode).toLowerCase();
+  const token = output.token;
+  if (script !== context.contractLockingBytecode || !token ||
+      bchTokenCategoryHex(token) !== context.stateCategory ||
+      token.amount !== 0n || !token.nft ||
+      token.nft.capability !== capability ||
+      bchNftCommitmentHex(token) !== commitment) {
+    throw new Error("BCH Mainnet transaction output " + index + " does not match the expected V3 contract NFT.");
+  }
+  if (output.valueSatoshis < getDustThreshold(output)) {
+    throw new Error("BCH Mainnet transaction output " + index + " is below the CashTokens dust threshold.");
+  }
+}
+
+function assertBchMainnetPlainOutput(output, expectedScript, index) {
+  const script = binToHex(output.lockingBytecode).toLowerCase();
+  if (script !== expectedScript || output.token) {
+    throw new Error("BCH Mainnet transaction output " + index + " is not the expected token-free recipient or wallet change.");
+  }
+  if (output.valueSatoshis < getDustThreshold(output)) {
+    throw new Error("BCH Mainnet transaction output " + index + " is below the BCH dust threshold.");
+  }
+}
+
+function bchMainnetNftCommitment(output, label) {
+  const commitment = bchNftCommitmentHex(output?.token);
+  if (!commitment) throw new Error(label + " is missing its CashTokens NFT commitment.");
+  return commitment;
+}
+
+function assertBchMainnetReceiptIndex(output, expectedIndex, label) {
+  const commitment = bchMainnetNftCommitment(output, label);
+  if (!/^520[0-4][0-9a-f]{16}$/.test(commitment) ||
+      Number.parseInt(commitment.slice(2, 4), 16) !== expectedIndex) {
+    throw new Error(label + " is not the registered member receipt at index " + expectedIndex + ".");
+  }
+}
+
+export function assertBchMainnetStateCommitment(output, expectedRound, expectedPaid, label) {
+  const commitment = bchMainnetNftCommitment(output, label);
+  if (!/^54(?:0[0-5])(?:00|01)$/.test(commitment) ||
+      Number.parseInt(commitment.slice(2, 4), 16) !== expectedRound ||
+      Number.parseInt(commitment.slice(4, 6), 16) !== expectedPaid) {
+    throw new Error(label + " does not contain the expected V3 round and payout marker.");
+  }
+}
+
+/**
+ * Independently verify a Selene-signed BCH Mainnet V3 transaction.
+ * This endpoint only verifies; it never reserves, relays, or broadcasts.
+ */
+export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
+  const operation = body?.operation;
+  if (!["genesis", "deposit", "payout", "cancel"].includes(operation)) {
+    throw new Error("Unsupported BCH Mainnet circle verification operation.");
+  }
+  const context = createBchMainnetV3ContractContext(body.circle);
+  const walletScripts = normalizeWalletAddresses(body.walletAddresses);
+  if (walletScripts.length !== 1 ||
+      walletScripts.some((script) => !/^76a914[0-9a-f]{40}88ac$/.test(script))) {
+    throw new Error("BCH Mainnet verification requires exactly one connected wallet-derived P2PKH address.");
+  }
+  if (operation === "genesis" && walletScripts[0] !== context.initiatorScript) {
+    throw new Error("BCH Mainnet V3 genesis must be reviewed by the registered connected initiator wallet.");
+  }
+  if (!isHex(body.signedTransactionHex)) {
+    throw new Error("Signed BCH Mainnet transaction must be complete hexadecimal bytes.");
+  }
+  const signedBytes = hexToBin(body.signedTransactionHex);
+  const transaction = decodeTransactionBCH(signedBytes);
+  if (typeof transaction === "string") {
+    throw new Error("Signed BCH Mainnet transaction failed CashTokens-aware decoding: " + transaction);
+  }
+  if (transaction.inputs.length === 0 || transaction.outputs.length === 0) {
+    throw new Error("Signed BCH Mainnet transaction must contain inputs and outputs.");
+  }
+  if (transaction.inputs.length > 100 || transaction.outputs.length > 100) {
+    throw new Error("Signed BCH Mainnet transaction exceeds the permitted input or output count.");
+  }
+
+  const txid = hashTransaction(signedBytes).toLowerCase();
+  const previousByTxid = new Map();
+  const sourceOutputs = [];
+  const inputScripts = [];
+  const inputOutpoints = new Set();
+  let inputSatoshis = 0n;
+
+  for (const [index, input] of transaction.inputs.entries()) {
+    const previousTxid = reverseHex(binToHex(input.outpointTransactionHash));
+    const outpoint = previousTxid + ":" + input.outpointIndex;
+    if (inputOutpoints.has(outpoint)) {
+      throw new Error("Signed BCH Mainnet transaction contains a duplicate input outpoint.");
+    }
+    inputOutpoints.add(outpoint);
+    let previous = previousByTxid.get(previousTxid);
+    if (!previous) {
+      previous = await fetchQuorumPreviousTransaction(sessions, previousTxid);
+      previousByTxid.set(previousTxid, previous);
+    }
+    const sourceOutput = previous.decoded.outputs[input.outpointIndex];
+    if (!sourceOutput) throw new Error("BCH Mainnet input " + index + " references a missing previous output.");
+    const script = binToHex(sourceOutput.lockingBytecode).toLowerCase();
+    if (script !== context.contractLockingBytecode && !walletScripts.includes(script)) {
+      throw new Error("BCH Mainnet input " + index + " is neither the expected V3 contract nor a connected-wallet P2PKH input.");
+    }
+    if (script === context.contractLockingBytecode) {
+      if (!sourceOutput.token ||
+          bchTokenCategoryHex(sourceOutput.token) !== context.stateCategory ||
+          sourceOutput.token.amount !== 0n || !sourceOutput.token.nft) {
+        throw new Error("BCH Mainnet covenant input " + index + " is not a state or receipt NFT for this circle.");
+      }
+    } else {
+      if (sourceOutput.token) {
+        throw new Error("BCH Mainnet wallet funding inputs must be token-free BCH UTXOs.");
+      }
+      assertRequiredPusdSighash(input.unlockingBytecode, index);
+    }
+    inputScripts.push(script);
+    sourceOutputs.push(sourceOutput);
+    inputSatoshis += sourceOutput.valueSatoshis;
+  }
+
+  const currentUtxoSnapshots = await getUnspentSnapshots(sessions, [...new Set(inputScripts)]);
+  const currentUtxos = new Map(currentUtxoSnapshots[0].map((utxo) => [
+    utxo.txid + ":" + utxo.vout,
+    utxo,
+  ]));
+  for (const [index, input] of transaction.inputs.entries()) {
+    const previousTxid = reverseHex(binToHex(input.outpointTransactionHash));
+    const outpoint = previousTxid + ":" + input.outpointIndex;
+    const current = currentUtxos.get(outpoint);
+    if (!current || current.height <= 0 ||
+        BigInt(current.satoshis) !== sourceOutputs[index].valueSatoshis) {
+      throw new Error("BCH Mainnet input " + outpoint + " is not confirmed and unspent in every configured Electrum provider.");
+    }
+  }
+
+  const memberCount = context.memberCount;
+  const contractInputCount = operation === "genesis" ? 0 : operation === "deposit" ? 2 : memberCount + 1;
+  for (let index = 0; index < sourceOutputs.length; index += 1) {
+    const isContractInput = inputScripts[index] === context.contractLockingBytecode;
+    if (isContractInput !== (index < contractInputCount)) {
+      throw new Error("BCH Mainnet transaction input order does not match the selected V3 lifecycle operation.");
+    }
+  }
+
+  if (operation === "genesis") {
+    const firstInput = transaction.inputs[0];
+    const firstInputTxid = reverseHex(binToHex(firstInput.outpointTransactionHash));
+    if (firstInputTxid !== context.stateCategory || firstInput.outpointIndex !== 0) {
+      throw new Error("BCH Mainnet V3 genesis category must be derived from the first non-token input at vout 0.");
+    }
+    if (transaction.outputs.length !== memberCount + 2) {
+      throw new Error("BCH Mainnet V3 genesis must contain exactly one state NFT, one receipt per member, and wallet change.");
+    }
+    if (sourceOutputs.some((output) => output.token)) {
+      throw new Error("BCH Mainnet V3 genesis inputs must be non-token BCH UTXOs.");
+    }
+    assertBchMainnetCircleTokenOutput(
+      transaction.outputs[0], context, "minting", "540000", 0,
+    );
+    if (transaction.outputs[0].valueSatoshis !== BCH_MAINNET_CIRCLE_STATE_DUST) {
+      throw new Error("BCH Mainnet V3 genesis state reserve must be exactly 1,000 satoshis.");
+    }
+    for (let index = 0; index < memberCount; index += 1) {
+      const commitment = "52" + index.toString(16).padStart(2, "0") + "00".repeat(8);
+      assertBchMainnetCircleTokenOutput(
+        transaction.outputs[index + 1], context, "none", commitment, index + 1,
+      );
+      if (transaction.outputs[index + 1].valueSatoshis !== BCH_MAINNET_CIRCLE_RECEIPT_DUST) {
+        throw new Error("BCH Mainnet V3 genesis member receipt reserve must be exactly 1,000 satoshis.");
+      }
+    }
+    if (inputScripts.some((script) => script !== context.initiatorScript)) {
+      throw new Error("Every BCH Mainnet V3 genesis funding input must belong to the registered initiator wallet.");
+    }
+    assertBchMainnetPlainOutput(
+      transaction.outputs[memberCount + 1],
+      context.initiatorScript,
+      memberCount + 1,
+    );
+  } else if (operation === "deposit") {
+    const memberIndex = body.memberIndex;
+    if (!Number.isSafeInteger(memberIndex) || memberIndex < 0 || memberIndex >= memberCount ||
+        transaction.inputs.length !== 3 || transaction.outputs.length !== 3) {
+      throw new Error("BCH Mainnet V3 member deposit must have a valid member index and exactly three inputs and outputs.");
+    }
+    if (sourceOutputs[0].token.nft.capability !== "minting") {
+      throw new Error("BCH Mainnet V3 deposit input 0 must be the minting state NFT.");
+    }
+    assertBchMainnetReceiptIndex(sourceOutputs[1], memberIndex, "BCH Mainnet deposit input 1");
+    if (inputScripts[2] !== context.members[memberIndex] || inputScripts[2] !== walletScripts[0]) {
+      throw new Error("BCH Mainnet deposit funding input must belong to both the registered member and the connected wallet.");
+    }
+    if (bchTokenCategoryHex(transaction.outputs[0].token) !== context.stateCategory ||
+        transaction.outputs[0].token?.nft?.capability !== "minting" ||
+        bchTokenCategoryHex(transaction.outputs[1].token) !== context.stateCategory ||
+        transaction.outputs[1].token?.nft?.capability !== "none") {
+      throw new Error("BCH Mainnet deposit must preserve the state NFT and member receipt in the V3 covenant.");
+    }
+    if (binToHex(transaction.outputs[0].lockingBytecode).toLowerCase() !== context.contractLockingBytecode ||
+        binToHex(transaction.outputs[1].lockingBytecode).toLowerCase() !== context.contractLockingBytecode) {
+      throw new Error("BCH Mainnet deposit token outputs must return to the exact V3 contract.");
+    }
+    assertBchMainnetPlainOutput(transaction.outputs[2], inputScripts[2], 2);
+  } else if (operation === "payout") {
+    if (transaction.inputs.length !== memberCount + 2 ||
+        transaction.outputs.length !== memberCount + 4) {
+      throw new Error("BCH Mainnet V3 payout must have the exact ordered state, receipt, fee-input and output layout.");
+    }
+    if (sourceOutputs[0].token.nft.capability !== "minting") {
+      throw new Error("BCH Mainnet V3 payout input 0 must be the minting state NFT.");
+    }
+    const stateCommitment = bchMainnetNftCommitment(sourceOutputs[0], "BCH Mainnet payout state");
+    if (!/^54(?:0[0-5])(?:00|01)$/.test(stateCommitment)) {
+      throw new Error("BCH Mainnet payout state commitment is malformed.");
+    }
+    const round = Number.parseInt(stateCommitment.slice(2, 4), 16);
+    if (round >= memberCount) throw new Error("BCH Mainnet V3 payout state is already complete.");
+    for (let index = 0; index < memberCount; index += 1) {
+      assertBchMainnetReceiptIndex(sourceOutputs[index + 1], index, "BCH Mainnet payout receipt input " + (index + 1));
+    }
+    const feeInputScript = inputScripts[memberCount + 1];
+    if (feeInputScript !== walletScripts[0]) {
+      throw new Error("BCH Mainnet payout fee input must belong to the connected fee-paying wallet.");
+    }
+    const pot = BigInt(memberCount) * context.contribution;
+    const projectFee = pot / 100n;
+    const reserve = round + 1 < memberCount ? context.contribution : 0n;
+    const recipientPayout = pot - projectFee - reserve;
+    for (let index = 0; index <= memberCount; index += 1) {
+      if (binToHex(transaction.outputs[index].lockingBytecode).toLowerCase() !== context.contractLockingBytecode ||
+          !transaction.outputs[index].token) {
+        throw new Error("BCH Mainnet V3 payout contract outputs must preserve the state NFT and ordered member receipts.");
+      }
+    }
+    assertBchMainnetPlainOutput(transaction.outputs[memberCount + 1], context.treasuryScript, memberCount + 1);
+    assertBchMainnetPlainOutput(transaction.outputs[memberCount + 2], context.members[round], memberCount + 2);
+    assertBchMainnetPlainOutput(transaction.outputs[memberCount + 3], feeInputScript, memberCount + 3);
+    if (transaction.outputs[memberCount + 1].valueSatoshis !== projectFee ||
+        transaction.outputs[memberCount + 2].valueSatoshis !== recipientPayout) {
+      throw new Error("BCH Mainnet V3 payout treasury fee or scheduled member amount does not match the immutable circle rules.");
+    }
+  } else {
+    if (transaction.inputs.length !== memberCount + 2 ||
+        transaction.outputs.length !== memberCount + 1 ||
+        inputScripts[memberCount + 1] !== context.initiatorScript ||
+        walletScripts[0] !== context.initiatorScript) {
+      throw new Error("BCH Mainnet V3 cancellation must include every ordered receipt and the registered initiator fee input.");
+    }
+    assertBchMainnetStateCommitment(sourceOutputs[0], 0, 0, "BCH Mainnet cancellation state");
+    for (let index = 0; index < memberCount; index += 1) {
+      assertBchMainnetReceiptIndex(sourceOutputs[index + 1], index, "BCH Mainnet cancellation receipt input " + (index + 1));
+      assertBchMainnetPlainOutput(transaction.outputs[index], context.members[index], index);
+    }
+    assertBchMainnetPlainOutput(transaction.outputs[memberCount], context.initiatorScript, memberCount);
+  }
+
+  let outputSatoshis = 0n;
+  for (const [index, output] of transaction.outputs.entries()) {
+    outputSatoshis += output.valueSatoshis;
+    if (output.valueSatoshis < getDustThreshold(output)) {
+      throw new Error("BCH Mainnet transaction output " + index + " is below the consensus dust threshold.");
+    }
+    if (output.token && (
+      bchTokenCategoryHex(output.token) !== context.stateCategory ||
+      binToHex(output.lockingBytecode).toLowerCase() !== context.contractLockingBytecode
+    )) {
+      throw new Error("BCH Mainnet transaction contains a CashToken output outside this exact V3 circle.");
+    }
+  }
+  const minerFee = inputSatoshis - outputSatoshis;
+  if (minerFee <= 0n || minerFee > context.maxFee) {
+    throw new Error("BCH Mainnet transaction miner fee is outside this circle's approved maximum.");
+  }
+  const vmResult = createVirtualMachineBch2026().verify({ transaction, sourceOutputs });
+  if (vmResult !== true) {
+    throw new Error("Signed BCH Mainnet V3 transaction failed BCH 2026 virtual-machine verification: " + vmResult);
+  }
+  return {
+    network: "mainnet",
+    operation,
+    txid,
+    contractAddress: context.contractAddress,
+    feeSatoshis: minerFee.toString(),
+    inputCount: transaction.inputs.length,
+    outputCount: transaction.outputs.length,
+    tipHeight: tip.height,
+    tipHash: tip.hash,
+    confirmedInputs: transaction.inputs.length,
+    verified: true,
+    broadcast: false,
+    message: "Selene signature, exact V3 contract bindings, confirmed UTXOs, Electrum quorum and BCH 2026 VM checks passed. No transaction was broadcast.",
+  };
+}
+
 function setCors(request, response) {
   const origin = request.headers.origin;
   if (!origin) return true;
@@ -1445,6 +1858,16 @@ export function createMainnetApiServer() {
         await withElectrumSessions(async (sessions) => {
           const tip = await getTipQuorum(sessions);
           const result = await getVerifiedTransactionStatus(sessions, tip, txid);
+          sendJson(response, 200, result);
+        });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/bch/verify") {
+        const body = await readJson(request);
+        await withElectrumSessions(async (sessions) => {
+          const tip = await getTipQuorum(sessions);
+          const result = await verifyBchMainnetCircleTransaction(sessions, tip, body);
           sendJson(response, 200, result);
         });
         return;
