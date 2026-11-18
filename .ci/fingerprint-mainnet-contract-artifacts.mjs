@@ -42,19 +42,26 @@ for (const target of targets) {
   } catch {
     throw new Error("Compiled CashScript artifact is not valid JSON: " + target.artifact);
   }
-  const bytecode = typeof artifact.bytecode === "string"
-    ? artifact.bytecode.replace(/^0x/i, "").toLowerCase()
-    : "";
-  if (!/^(?:[0-9a-f]{2})+$/.test(bytecode)) {
-    throw new Error("Compiled CashScript artifact has missing or malformed bytecode: " + target.artifact);
+  // CashScript stores compiled bytecode in the artifact as ASM, not hex.
+  // Fingerprint that exact ASM string; also fingerprint the canonical artifact
+  // fields while excluding updatedAt, which is a build-time timestamp.
+  const bytecodeAsm = typeof artifact.bytecode === "string" ? artifact.bytecode.trim() : "";
+  if (!bytecodeAsm) {
+    throw new Error("Compiled CashScript artifact has missing ASM bytecode: " + target.artifact);
   }
   const abi = Array.isArray(artifact.abi) ? artifact.abi : [];
   const constructorInputs = Array.isArray(artifact.constructorInputs)
     ? artifact.constructorInputs
-    : Array.isArray(artifact.constructor?.inputs)
-      ? artifact.constructor.inputs
-      : [];
+    : [];
 
+  const stableArtifact = {
+    contractName: artifact.contractName ?? null,
+    constructorInputs,
+    abi,
+    bytecode: bytecodeAsm,
+    compiler: artifact.compiler ?? null,
+    source: artifact.source ?? null,
+  };
   const record = {
     name: target.name,
     contractName: typeof artifact.contractName === "string" ? artifact.contractName : "unknown",
@@ -62,8 +69,9 @@ for (const target of targets) {
     sourceSha256: sha256(sourceBytes),
     artifactPath: target.artifact,
     artifactJsonSha256: sha256(artifactBytes),
-    compiledBytecodeSha256: sha256(Buffer.from(bytecode, "hex")),
-    compiledBytecodeBytes: bytecode.length / 2,
+    stableArtifactSha256: sha256(Buffer.from(JSON.stringify(stableArtifact), "utf8")),
+    compiledBytecodeAsmSha256: sha256(Buffer.from(bytecodeAsm, "utf8")),
+    compiledBytecodeAsmLength: bytecodeAsm.length,
     constructorInputCount: constructorInputs.length,
     abiFunctionCount: abi.length,
     compiler: artifact.compiler ?? null,
