@@ -9,7 +9,7 @@ function encode(value: Record<string, unknown>) {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
   let binary = "";
   bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
-  return btoa(binary).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/g, "");
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/g, "");
 }
 
 const circle = {
