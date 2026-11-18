@@ -47,6 +47,25 @@ function requestMock(body, ip = "127.0.0.1") {
   return { method: "POST", headers: { "x-forwarded-for": ip }, body };
 }
 
+test("Blaze discovery never falls back to the formal app's generic DATABASE_URL", async () => {
+  const previousBlazeUrl = process.env.BLAZE_CIRCLE_DISCOVERY_DATABASE_URL;
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  try {
+    delete process.env.BLAZE_CIRCLE_DISCOVERY_DATABASE_URL;
+    process.env.DATABASE_URL = "postgresql://formal-ajo.example.invalid/formal_ajo";
+    const handler = createCircleDiscoveryHandler();
+    const response = responseMock();
+    await handler(requestMock({ action: "discover", addresses: [makeAddress(11)] }), response);
+    assert.equal(response.statusCode, 503);
+    assert.match(JSON.parse(response.body).error, /separate AjoChain Blaze circle database/);
+  } finally {
+    if (previousBlazeUrl === undefined) delete process.env.BLAZE_CIRCLE_DISCOVERY_DATABASE_URL;
+    else process.env.BLAZE_CIRCLE_DISCOVERY_DATABASE_URL = previousBlazeUrl;
+    if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previousDatabaseUrl;
+  }
+});
+
 test("circle invite validation accepts a valid Chipnet V3 circle", () => {
   const decoded = decodeInvite(makeInvite());
   assert.equal(decoded.params.network, "chipnet");
