@@ -72,3 +72,20 @@ export function dedupeSavedV2FeeCircleRecords(records: unknown): SavedV2FeeCircl
   }
   return unique.slice(0, 100);
 }
+
+/**
+ * Keep one menu shortcut per circle name. The newest saved record wins when
+ * separately generated contracts share the same name; no saved record is
+ * deleted, so the menu stays uncluttered without rewriting local storage.
+ */
+export function dedupeSavedV2FeeCircleMenuRecords(records: unknown): SavedV2FeeCircleRecord[] {
+  const seenNames = new Set<string>();
+  return dedupeSavedV2FeeCircleRecords(records).filter((entry) => {
+    const identity = getV2FeeCircleRecordIdentity(entry.encoded);
+    if (!identity) return false;
+    const nameKey = identity.name.trim().replace(/\s+/g, " ").toLowerCase();
+    if (seenNames.has(nameKey)) return false;
+    seenNames.add(nameKey);
+    return true;
+  });
+}

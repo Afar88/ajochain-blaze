@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  dedupeSavedV2FeeCircleMenuRecords,
   dedupeSavedV2FeeCircleRecords,
   getV2FeeCircleRecordIdentity,
 } from "./v2-fee-circle-records";
@@ -8,7 +9,7 @@ function encode(value: Record<string, unknown>) {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
   let binary = "";
   bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/g, "");
 }
 
 const circle = {
@@ -45,6 +46,15 @@ describe("V2 saved-circle identity", () => {
       { encoded: second, savedAt: 200 },
     ]);
     expect(result).toHaveLength(2);
+  });
+
+  it("shows only the newest shortcut when separate circles share a name", () => {
+    const older = encode(circle);
+    const newer = encode({ ...circle, name: "  OUR   AJO  ", stateCategory: "cd".repeat(32) });
+    expect(dedupeSavedV2FeeCircleMenuRecords([
+      { encoded: older, savedAt: 100 },
+      { encoded: newer, savedAt: 200 },
+    ])).toEqual([{ encoded: newer, savedAt: 200 }]);
   });
 
   it("uses constructor arguments as part of the contract identity", () => {
