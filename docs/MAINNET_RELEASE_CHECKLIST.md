@@ -33,7 +33,7 @@ CI now emits the exact source SHA-256, compiled artifact JSON SHA-256 and compil
 - [ ] Test each payout position: recipient reserve equals all remaining installments; already-paid members retain their full remaining reserve; unpaid members only need the current installment; final recipient reserve is zero.
 - [ ] Reconcile every receipt commitment and the state UTXO value after every payout, including duplicate observations, reorgs, missing receipts and conflicting outputs.
 - [ ] Verify exact recipient net payout, immutable 1% treasury output, reserve backing and separately funded miner fee in the actual signed transaction.
-- [ ] The `fee-v3-auto-reserve-mainnet` adapter uses the Mainnet quorum reader, Mainnet address validation, and the exact shared BCH/PUSD treasury. The Mainnet workspace now has a read-only server preflight for signed genesis, deposit, payout and cancellation transactions: it independently derives the V3 script from the compiled artifact, checks confirmed Electrum-quorum UTXOs, exact lifecycle layout and BCH 2026 VM execution. It never reserves, relays or broadcasts. Independently audit the exact compiled artifact and constructor binding, then complete real two-wallet device tests and the separate reviewed submission path before release.
+- [ ] The `fee-v3-auto-reserve-mainnet` adapter uses the Mainnet quorum reader, Mainnet address validation, and the exact shared BCH/PUSD treasury. PR #59 adds a read-only server preflight for signed genesis, deposit, payout and cancellation transactions: it independently derives the V3 script from the compiled artifact, checks confirmed Electrum-quorum UTXOs, exact lifecycle layout and BCH 2026 VM execution. The preflight never reserves, relays or broadcasts. Independently audit the exact compiled artifact and constructor binding, then complete real two-wallet device tests and the separate reviewed submission path before release.
 - [ ] Complete the same external security review, current-consensus VM validation, independent wallet signing and confirmation testing required for all real-value BCH circles.
 
 ## PUSD transfers
@@ -68,7 +68,7 @@ CI now emits the exact source SHA-256, compiled artifact JSON SHA-256 and compil
 
 - BCH Mainnet circle signing/broadcast is locked by `BCH_MAINNET_OPERATIONS_ENABLED = false`.
 - PUSD Mainnet spending is locked by `PUSD_MAINNET_SPENDING_ENABLED = false` in the client and `MAINNET_BROADCAST_ENABLED = false` in the API. Runtime environment variables cannot override the API lock.
-- V2 full-cycle escrow remains Chipnet-only. BCH V3 now has an unsigned Mainnet genesis-preview adapter, but deposits, payouts, cancellation signing and every Mainnet broadcast remain disabled pending full review.
+- V2 full-cycle escrow remains Chipnet-only. BCH V3 now supports a read-only server preflight for signed lifecycle plans, but it does not yet have an approved production transaction submission/relay path. All Mainnet broadcasts remain disabled pending audit, provider-independence evidence, device testing and operational release controls.
 - PUSD circle/escrow contracts are prototypes and are not an active product flow.
 
 Do not remove a hard stop until the corresponding section has evidence, independent approval, and a release commit that has passed the complete test suite. Do not mark the product “Mainnet ready” while any required item remains unchecked.
