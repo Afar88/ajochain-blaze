@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import pusdBroadcastHandler from "../api/pusd/broadcast.mjs";
+import pusdUnspentHandler from "../api/pusd/unspent.mjs";
+import transactionStatusHandler from "../api/transaction/status.mjs";
 import {
   assertPreviousTransactionsAgree,
   assertPusdTokenOutputCarrier,
@@ -485,4 +488,67 @@ test("transaction status stays unknown if a provider cannot return the exact raw
   const result = await getVerifiedTransactionStatus(sessions, tip, txid);
   assert.equal(result.status, "unknown");
   assert.match(result.reason, /Not every provider returned/);
+});
+
+
+function invokeServerlessRoute(handler, request) {
+  return new Promise((resolve, reject) => {
+    const response = {
+      statusCode: null,
+      headers: {},
+      body: "",
+      writeHead(statusCode, headers = {}) {
+        this.statusCode = statusCode;
+        this.headers = headers;
+        return this;
+      },
+      end(body = "") {
+        this.body = String(body);
+        resolve(this);
+      },
+    };
+    Promise.resolve(handler(request, response)).catch(reject);
+  });
+}
+
+const mockApiRequest = (method, url) => ({
+  method,
+  url,
+  headers: {},
+  socket: { remoteAddress: "127.0.0.1" },
+});
+
+test("nested transaction-status Vercel route reaches shared API validation", async () => {
+  const response = await invokeServerlessRoute(
+    transactionStatusHandler,
+    mockApiRequest("GET", "/api/transaction/status?txid=not-a-txid"),
+  );
+  assert.equal(response.statusCode, 400);
+  assert.match(JSON.parse(response.body).error, /64 hexadecimal characters/);
+});
+
+test("nested PUSD unspent route reaches the shared API handler", async () => {
+  const response = await invokeServerlessRoute(
+    pusdUnspentHandler,
+    mockApiRequest("GET", "/api/pusd/unspent"),
+  );
+  assert.equal(response.statusCode, 404);
+  assert.deepEqual(JSON.parse(response.body), { error: "Not found." });
+});
+
+test("nested PUSD broadcast Vercel route remains hard-locked despite env override", async () => {
+  const original = process.env.ENABLE_MAINNET_BROADCAST;
+  process.env.ENABLE_MAINNET_BROADCAST = "true";
+  try {
+    const response = await invokeServerlessRoute(
+      pusdBroadcastHandler,
+      mockApiRequest("POST", "/api/pusd/broadcast"),
+    );
+    assert.equal(response.statusCode, 403);
+    assert.equal(MAINNET_BROADCAST_ENABLED, false);
+    assert.match(JSON.parse(response.body).error, /Mainnet broadcast is disabled/);
+  } finally {
+    if (original === undefined) delete process.env.ENABLE_MAINNET_BROADCAST;
+    else process.env.ENABLE_MAINNET_BROADCAST = original;
+  }
 });
