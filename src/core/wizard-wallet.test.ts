@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { decodeCashAddress } from "@bitauth/libauth";
 import {
   wizardRelayStatusMessage,
   buildWizardSignRequest,
@@ -45,7 +46,12 @@ describe("WizardConnect live receive-address derivation", () => {
     const mainnet = deriveWizardConnectReceiveAddress("hdwalletv1", getPubkey, "mainnet", 0);
     expect(chipnet).toMatch(/^bchtest:/);
     expect(mainnet).toMatch(/^bitcoincash:/);
-    expect(chipnet?.split(":")[1]).toBe(mainnet?.split(":")[1]);
+    const chipnetDecoded = decodeCashAddress(chipnet!);
+    const mainnetDecoded = decodeCashAddress(mainnet!);
+    expect(typeof chipnetDecoded).not.toBe("string");
+    expect(typeof mainnetDecoded).not.toBe("string");
+    if (typeof chipnetDecoded === "string" || typeof mainnetDecoded === "string") return;
+    expect(Array.from(chipnetDecoded.payload)).toEqual(Array.from(mainnetDecoded.payload));
   });
 
   it("does not return an address from another protocol or a missing session xpub", () => {
