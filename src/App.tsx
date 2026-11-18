@@ -133,7 +133,12 @@ export default function App() {
     if (walletView.state !== "connected" || !walletClient) {
       return () => { active = false; };
     }
-    const addresses = walletClient.receiveAddresses("chipnet", 51);
+    // Scan the first 50 receive indexes and always include the currently
+    // selected receive address, even when the wallet index is above that range.
+    const addresses = [...new Set([
+      ...walletClient.receiveAddresses("chipnet", 50),
+      walletClient.address("chipnet"),
+    ].filter((address): address is string => Boolean(address)))];
     if (addresses.length === 0) return () => { active = false; };
 
     const syncDiscovery = async () => {
