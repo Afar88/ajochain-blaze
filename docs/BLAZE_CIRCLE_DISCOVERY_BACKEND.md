@@ -39,8 +39,9 @@ BCH receive addresses are public, and a caller who already knows a member
 address can query for matching public invite data. Do not place secrets or
 private personal information in circle names or invite metadata.
 
-The client derives up to 50 Chipnet receive addresses from the connected
-WizardConnect session, even when the workspace opens on Mainnet. It decodes
+The client derives the first 50 Chipnet receive addresses plus the currently
+selected receive address (up to 51 total) from the connected WizardConnect
+session, even when the workspace opens on Mainnet. It decodes
 each returned candidate and calls `readV2FeeCircle` to independently verify
 the current contract state and member receipts before saving it in the local
 menu. Invalid, stale, or non-member candidates are ignored.
