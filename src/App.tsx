@@ -15,7 +15,34 @@ const PusdMainnetCircleWorkspace = lazy(() => import("./components/PusdMainnetCi
 const BchMainnetCircleWorkspace = lazy(() => import("./components/BchMainnetCircleWorkspace"));
 const ActivityRecords = lazy(() => import("./components/ActivityRecords"));
 
-type Page = "overview" | "circles" | "assets" | "activity";
+type Page = "overview" | "create-circle" | "circle-detail" | "assets" | "activity";
+type MenuCircle = { encoded: string; name: string };
+
+const V2_MENU_STORAGE_KEY = "ajochain-blaze:v2-fee-circles:v1";
+function readSavedV2MenuCircles(): MenuCircle[] {
+  try {
+    const stored: unknown = JSON.parse(window.localStorage.getItem(V2_MENU_STORAGE_KEY) || "[]");
+    if (!Array.isArray(stored)) return [];
+    const result: MenuCircle[] = [];
+    for (const entry of stored) {
+      if (!entry || typeof entry.encoded !== "string") continue;
+      try {
+        const normalized = entry.encoded.replace(/-/g, "+").replace(/_/g, "/");
+        const binary = atob(normalized + "=".repeat((4 - normalized.length % 4) % 4));
+        const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+        const decoded = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
+        if (decoded.version === 2 && typeof decoded.name === "string" && decoded.name.trim()) {
+          result.push({ encoded: entry.encoded, name: decoded.name.trim() });
+        }
+      } catch {
+        // Ignore malformed local entries; never let one damaged invite hide other circles.
+      }
+    }
+    return result.slice(0, 100);
+  } catch {
+    return [];
+  }
+}
 type ThemePreference = "system" | "light" | "dark";
 type WalletClient = typeof import("./core/wizard-wallet").wallet;
 type WalletView = {
@@ -39,7 +66,8 @@ type PusdView = {
 
 const pageLabels: Record<Page, string> = {
   overview: "Overview",
-  circles: "My circles",
+  "create-circle": "Create a circle",
+  "circle-detail": "My circle",
   assets: "Assets",
   activity: "Activity",
 };
@@ -50,6 +78,8 @@ export default function App() {
   const [circleWorkspace, setCircleWorkspace] = useState<CircleWorkspaceId>(() => getDefaultCircleWorkspace(getDefaultNetwork(import.meta.env.PROD)));
   const [classicInviteRevision, setClassicInviteRevision] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuCircles, setMenuCircles] = useState<MenuCircle[]>(readSavedV2MenuCircles);
+  const [selectedMenuCircle, setSelectedMenuCircle] = useState<string | null>(null);
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => {
     if (typeof window === "undefined") return "system";
     try {
@@ -81,7 +111,15 @@ export default function App() {
 
   const walletAddress = walletClient?.address(network) ?? null;
   const connected = walletView.state === "connected";
-  const menuLabel = pageLabels[page];
+  const menuLabel = page === "circle-detail"
+    ? menuCircles.find((circle) => circle.encoded === selectedMenuCircle)?.name ?? "My circle"
+    : pageLabels[page];
+
+  useEffect(() => {
+    const refreshSavedCircles = () => setMenuCircles(readSavedV2MenuCircles());
+    window.addEventListener("storage", refreshSavedCircles);
+    return () => window.removeEventListener("storage", refreshSavedCircles);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -101,7 +139,7 @@ export default function App() {
           setClassicInviteRevision((revision) => revision + 1);
           setNetwork(params.network);
           setCircleWorkspace("bch-classic");
-          setPage("circles");
+          setPage("create-circle");
           setMenuOpen(false);
         } catch {
           // Do not silently switch workspaces for a malformed or unsupported link.
@@ -354,9 +392,29 @@ export default function App() {
                 <button className={page === "overview" ? "dropdown-item active" : "dropdown-item"} onClick={() => navigate("overview")}>
                   <Home size={17} /><span>Overview</span>{page === "overview" && <Check size={15} />}
                 </button>
-                <button className={page === "circles" ? "dropdown-item active" : "dropdown-item"} onClick={() => navigate("circles")}>
-                  <Users size={17} /><span>My circles</span>{page === "circles" && <Check size={15} />}
+                <button className={page === "create-circle" ? "dropdown-item active" : "dropdown-item"} onClick={() => navigate("create-circle")}>
+                  <Users size={17} /><span>Create a circle</span>{page === "create-circle" && <Check size={15} />}
                 </button>
+                {menuCircles.length > 0 && (
+                  <>
+                    <div className="dropdown-label circle-menu-label">YOUR CIRCLES</div>
+                    {menuCircles.map((circle) => (
+                      <button
+                        key={circle.encoded}
+                        className={page === "circle-detail" && selectedMenuCircle === circle.encoded ? "dropdown-item active" : "dropdown-item"}
+                        onClick={() => {
+                          setSelectedMenuCircle(circle.encoded);
+                          setNetwork("chipnet");
+                          setCircleWorkspace("bch-fair-round");
+                          navigate("circle-detail");
+                        }}
+                      >
+                        <Users size={16} /><span>{circle.name}</span>
+                        {page === "circle-detail" && selectedMenuCircle === circle.encoded && <Check size={15} />}
+                      </button>
+                    ))}
+                  </>
+                )}
                 <button className={page === "assets" ? "dropdown-item active" : "dropdown-item"} onClick={() => navigate("assets")}>
                   <Coins size={17} /><span>Assets & balances</span>{page === "assets" && <Check size={15} />}
                 </button>
@@ -409,9 +467,6 @@ export default function App() {
                 <span><b>{connected ? walletView.walletName ?? "Wallet connected" : "Connect wallet"}</b><small>{connected ? shortAddress(walletAddress) : walletView.state === "reconnecting" ? "Restoring Selene session…" : "WizardConnect · Selene"}</small></span>
                 <ArrowRight size={16} />
               </button>
-              <button type="button" className="dropdown-create-button" onClick={() => navigate("circles")}>
-                <Users size={16} /> Open circle tools <ArrowRight size={15} />
-              </button>
             </section>
           </>
         )}
@@ -424,8 +479,8 @@ export default function App() {
               <div className="welcome-kicker"><span /> SAVINGS, WITH SHARED RESPONSIBILITY</div>
               <h1>Build together.<br /><em>Stay accountable.</em></h1>
               <p>Run a rotating savings circle with transparent member credit, clear payout rules and a fee shown before anyone joins.</p>
-              <button className="primary-button hero-cta" type="button" onClick={() => navigate("circles")}>
-                Open circle tools <ArrowRight size={16} />
+              <button className="primary-button hero-cta" type="button" onClick={() => navigate("create-circle")}>
+                Create a circle <ArrowRight size={16} />
               </button>
             </section>
 
@@ -455,12 +510,12 @@ export default function App() {
           </>
         )}
 
-        {page === "circles" && (
+        {page === "create-circle" && (
           <section className="page-section">
             <div className="page-intro">
               <span className="section-kicker">YOUR SAVINGS GROUPS</span>
-              <h1>{network === "mainnet" ? "Mainnet circles" : "Chipnet circles"}</h1>
-              <p>{network === "mainnet" ? "Only Bitcoin Cash Mainnet circles are shown here: native BCH or PUSD. Mainnet creation, signing and payouts remain locked until the release checks are complete." : "Only Chipnet test circles are shown here. Use test BCH to try the fair-round member-credit model or open a Classic V1 circle for compatibility testing."}</p>
+              <h1>Create a circle</h1>
+              <p>{network === "mainnet" ? "Choose a circle type to preview its setup. Mainnet creation, signing and payouts remain locked until the release checks are complete." : "Choose the Chipnet circle model you want to create. Each saved circle will appear as its own named menu item."}</p>
             </div>
             <section className="circle-choice-guide" aria-label="Choose a circle type">
               <div className="circle-choice-heading">
@@ -507,9 +562,35 @@ export default function App() {
                 {circleWorkspace === "bch-classic" && <div className="circle-workspace-panel"><ClassicBchWorkspace key={classicInviteRevision} network={network} walletConnected={connected} /></div>}
               </>}
               {network === "chipnet" && <>
-                <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-fair-round"}><V2FeeBchWorkspace network={network} walletConnected={connected} /></div>
+                <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-fair-round"}>
+                  <V2FeeBchWorkspace
+                    network={network}
+                    walletConnected={connected}
+                    view="create"
+                    onCircleSaved={() => setMenuCircles(readSavedV2MenuCircles())}
+                  />
+                </div>
                 <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-classic"}><ClassicBchWorkspace key={classicInviteRevision} network={network} walletConnected={connected} /></div>
               </>}
+            </Suspense>
+          </section>
+        )}
+
+        {page === "circle-detail" && selectedMenuCircle && (
+          <section className="page-section">
+            <div className="page-intro">
+              <span className="section-kicker">YOUR SAVINGS CIRCLE</span>
+              <h1>{menuCircles.find((circle) => circle.encoded === selectedMenuCircle)?.name ?? "My circle"}</h1>
+              <p>This circle has its own place in the menu. Review member credits, contribution status, payout readiness and cancellation options here.</p>
+            </div>
+            <Suspense fallback={<div className="workspace-loading"><span className="loading-orb" />Loading your circle…</div>}>
+              <V2FeeBchWorkspace
+                key={selectedMenuCircle}
+                network={network}
+                walletConnected={connected}
+                view="circle"
+                selectedCircle={selectedMenuCircle}
+              />
             </Suspense>
           </section>
         )}

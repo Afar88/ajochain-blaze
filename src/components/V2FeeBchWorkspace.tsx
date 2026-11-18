@@ -81,11 +81,19 @@ function errorText(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-type Props = { network: NetworkId; walletConnected: boolean };
+type Props = {
+  network: NetworkId;
+  walletConnected: boolean;
+  view?: "create" | "circle";
+  selectedCircle?: string | null;
+  onCircleSaved?: () => void;
+};
 
-export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
+export default function V2FeeBchWorkspace({
+  network, walletConnected, view = "create", selectedCircle = null, onCircleSaved,
+}: Props) {
   const [saved, setSaved] = useState<SavedCircle[]>(readSaved);
-  const [selected, setSelected] = useState<string | null>(() => readSaved()[0]?.encoded ?? null);
+  const [selected, setSelected] = useState<string | null>(() => selectedCircle ?? readSaved()[0]?.encoded ?? null);
   const [name, setName] = useState("My Ajo Circle");
   const [amount, setAmount] = useState("0.002");
   const [maxFee, setMaxFee] = useState("10000");
@@ -109,6 +117,7 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     setSaved(next);
     setSelected(encoded);
+    onCircleSaved?.();
   };
 
   const refresh = async (params = active) => {
@@ -124,6 +133,14 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
       setError(errorText(cause));
     } finally { setBusy(false); }
   };
+
+  useEffect(() => {
+    if (selectedCircle) {
+      setSelected(selectedCircle);
+      setError("");
+      setNotice("");
+    }
+  }, [selectedCircle]);
 
   useEffect(() => {
     if (!active) { setSnapshot(null); return; }
@@ -358,8 +375,8 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
       <div className="section-heading workspace-heading">
         <div>
           <span className="section-kicker">MEMBER CREDIT · FEE COVENANT</span>
-          <h2 id="v2-fee-title">Fair-round BCH circle</h2>
-          <p>Members fund the current round. When a member receives a payout, exactly one next contribution is withheld and carried forward in that member’s own on-chain receipt.</p>
+          <h2 id="v2-fee-title">{view === "create" ? "Fair-round BCH circle" : active?.name ?? "Your circle"}</h2>
+          <p>{view === "create" ? "Members fund the current round. When a member receives a payout, exactly one next contribution is withheld and carried forward in that member’s own on-chain receipt." : "Track this circle’s own member credits, contribution status, payout readiness and available actions."}</p>
         </div>
         <span className="classic-network">Chipnet · automatic future reserve</span>
       </div>
@@ -368,6 +385,7 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
         <span>Experimental and unaudited. Chipnet only. Every payout except the final payout reserves exactly one next contribution for the recipient. It covers the following round; after it is consumed, that member must fund later installments again. No Mainnet signing or broadcasting is enabled.</span>
       </div>
 
+      {view === "create" && (<>
       <div className="circle-workspace-grid">
         <div className="circle-panel circle-create-panel">
           <div className="circle-panel-heading">
@@ -394,35 +412,14 @@ export default function V2FeeBchWorkspace({ network, walletConnected }: Props) {
           <small className="field-hint">Add 1–4 other unique Chipnet addresses in payout order (2–5 members total). Each member funds the current round; a non-final recipient carries one next contribution forward.</small>
         </div>
       </div>
+      <form className="classic-restore-form circle-restore-form" onSubmit={restore}>
+        <label>Join an existing circle with its invite link<input value={restoreInput} onChange={(event) => setRestoreInput(event.target.value)} placeholder="Paste circle invite URL" /></label>
+        <button type="submit" className="secondary-button" disabled={!restoreInput.trim()}>Restore circle</button>
+      </form>
+      <p className="field-hint circle-menu-hint">After you create or restore a circle, it appears as its own named item in the three-dot menu under <b>Your circles</b>.</p>
+      </>)}
 
-      <section className="circle-list-section" aria-labelledby="saved-fee-circles-title">
-        <div className="circle-list-heading">
-          <div>
-            <span className="section-kicker">YOUR GROUPS</span>
-            <h3 id="saved-fee-circles-title">Created circles</h3>
-            <p>Select a circle to view member payments, balances and available actions. Circles are saved on this device; invite links let other members restore the same circle.</p>
-          </div>
-          <span className="circle-count">{saved.length} saved</span>
-        </div>
-        {saved.length ? <div className="classic-saved-list">
-          {saved.map((entry) => {
-            let params: V2FeeCircleParams | null = null;
-            try { params = decodeCircle(entry.encoded); } catch { /* ignore damaged item */ }
-            if (!params) return null;
-            return <button key={entry.encoded} type="button" className={selected === entry.encoded ? "classic-saved-item selected" : "classic-saved-item"} onClick={() => { setSelected(entry.encoded); setError(""); setNotice(""); }}>
-              <b>{params.name}</b>
-              <span>Chipnet · {params.members.length} members · {formatBch(params.contribution)} each</span>
-              <small>Saved {new Date(entry.savedAt).toLocaleDateString()}</small>
-            </button>;
-          })}
-        </div> : <p className="classic-empty">No circles created or restored on this device yet.</p>}
-        <form className="classic-restore-form" onSubmit={restore}>
-          <label>Join or restore a circle with its invite link<input value={restoreInput} onChange={(event) => setRestoreInput(event.target.value)} placeholder="Paste circle invite URL" /></label>
-          <button type="submit" className="secondary-button">Restore circle</button>
-        </form>
-      </section>
-
-      {active && <div className="classic-active-circle">
+      {view === "circle" && active && <div className="classic-active-circle">
         <div className="section-heading">
           <div><span className="section-kicker">SELECTED CIRCLE · CHIPNET</span><h3>{active.name}</h3></div>
           <button type="button" className="secondary-button" onClick={() => void copyInvite()}><Copy size={14} /> Copy invite</button>

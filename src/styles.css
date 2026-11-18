@@ -162,7 +162,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   background: #fff; color: #5e7064; text-align: left; font: 650 12px system-ui; cursor: pointer;
 }
 .dropdown-item:hover, .dropdown-item.active { color: #214633; background: #f1f7eb; border-color: #e1ebd8; }
-.dropdown-item svg:last-child { margin-left: auto; color: #5f8d4f; }
+.dropdown-item > svg:last-child:not(:first-child) { margin-left: auto; color: #5f8d4f; }
+.dropdown-item > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.circle-menu-label { margin-top: 5px; padding-top: 7px; border-top: 1px solid #edf1eb; }
 .dropdown-divider { height: 1px; background: #edf1eb; width: 100%; }
 .dropdown-label { color: #88958c; font-size: 9px; font-weight: 800; letter-spacing: 1.2px; padding: 0 2px; }
 .network-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
