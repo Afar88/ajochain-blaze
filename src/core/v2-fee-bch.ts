@@ -412,6 +412,19 @@ function findReceipt(utxos: SpendableUtxo[], category: string, index: number) {
   return matches[0];
 }
 
+/**
+ * CashToken state/receipt NFTs are created at the token-aware CashAddress.
+ * CashScript Contract.getUtxos() queries contract.address (the non-token
+ * address), so it cannot be used to discover these stateful CashToken UTXOs.
+ */
+export async function getV2FeeCircleTokenUtxos(
+  provider: NetworkProvider,
+  tokenAddress: string,
+): Promise<SpendableUtxo[]> {
+  if (!tokenAddress) throw new Error("V2 fee circle has no token-aware contract address.");
+  return provider.getUtxos(tokenAddress);
+}
+
 export function describeV2FeeTokenSetMismatch(
   utxos: SpendableUtxo[],
   category: string,
@@ -512,8 +525,8 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
   if (hex(addressToPkh(params.members[memberIndex], params.network)) !== hex(addressToPkh(walletAddress, params.network))) throw new Error('Connected wallet does not match this member slot.');
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
-  const all = await contract.getUtxos();
-  assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant, params.network, contract.address);
+  const all = await getV2FeeCircleTokenUtxos(provider, contract.tokenAddress);
+  assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant, params.network, contract.tokenAddress);
   const state = findState(all, params.stateCategory, params.covenant, params.members.length);
   const currentRound = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
   assertV2FeeDepositRoundOpen(params.covenant, currentRound, params.members.length);
@@ -563,8 +576,8 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
   validateV2FeePayoutFeePayerAddress(feePayerAddress, params.network);
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
-  const all = await contract.getUtxos();
-  assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant, params.network, contract.address);
+  const all = await getV2FeeCircleTokenUtxos(provider, contract.tokenAddress);
+  assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant, params.network, contract.tokenAddress);
   const state = findState(all, params.stateCategory, params.covenant, params.members.length);
   const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
   const hasPaid = state.token!.nft!.commitment.slice(4) === "01";
@@ -672,8 +685,8 @@ export async function planV2FeeCancel(params: V2FeeCircleParams, walletAddress: 
   if (hex(addressToPkh(walletAddress, params.network)) !== hex(addressToPkh(params.initiator, params.network))) throw new Error('Only the circle initiator can cancel before the first payout.');
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
-  const all = await contract.getUtxos();
-  assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant, params.network, contract.address);
+  const all = await getV2FeeCircleTokenUtxos(provider, contract.tokenAddress);
+  assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant, params.network, contract.tokenAddress);
   const state = findState(all, params.stateCategory, params.covenant, params.members.length);
   const stateCommitment = state.token!.nft!.commitment;
   const round = Number.parseInt(stateCommitment.slice(2, 4), 16);
@@ -707,8 +720,8 @@ export async function readV2FeeCircle(params: V2FeeCircleParams) {
   validate(params);
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
-  const utxos = await contract.getUtxos();
-  assertUtxoSet(utxos, params.stateCategory, params.members.length, params.covenant, params.network, contract.address);
+  const utxos = await getV2FeeCircleTokenUtxos(provider, contract.tokenAddress);
+  assertUtxoSet(utxos, params.stateCategory, params.members.length, params.covenant, params.network, contract.tokenAddress);
   const state = findState(utxos, params.stateCategory, params.covenant, params.members.length);
   const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
   const hasPaid = state.token!.nft!.commitment.slice(4) === '01';
