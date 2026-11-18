@@ -389,6 +389,7 @@ test("Upstash PUSD ledger preserves unknown submissions and fails closed when st
     fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ result: "OK" }) }),
   }), /not configured/);
   assert.equal(mainnetApiErrorStatus("PUSD durable broadcast ledger is unavailable"), 503);
+  assert.equal(mainnetApiErrorStatus("Mainnet input outpoint ab:0 is already reserved by a different transaction"), 409);
 
   const unavailable = createUpstashPusdBroadcastLedger({
     url: "https://redis.example.test",
