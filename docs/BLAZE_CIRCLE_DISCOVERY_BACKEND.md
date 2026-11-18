@@ -14,10 +14,12 @@ or another application's database.
 
 ## What it stores
 
-The backend stores only a discovery index for confirmed Chipnet V3 circles:
-the encoded public invite parameters, state category, genesis transaction ID,
-circle name, initiator/treasury addresses, and indexed member receive
-addresses.
+The backend stores only a discovery index for Chipnet V3 circles:
+the encoded public invite parameters, state category, optional genesis
+transaction ID, circle name, initiator/treasury addresses, and indexed member
+receive addresses. It does not treat registry rows as proof that a circle is
+live; connected clients verify every candidate against Chipnet before showing
+it.
 
 It is not a ledger. It does not store balances, calculate contributions, unlock
 payouts, sign transactions, or broadcast transactions. Contract state and
@@ -31,6 +33,11 @@ member receipts remain authoritative on Chipnet.
 - `POST /api/circles` with `{ action: "discover", addresses: [...] }`
   returns candidate invites indexed for the supplied public Chipnet receive
   addresses.
+
+Discovery is address-indexed convenience, not cryptographic access control:
+BCH receive addresses are public, and a caller who already knows a member
+address can query for matching public invite data. Do not place secrets or
+private personal information in circle names or invite metadata.
 
 The client derives up to 50 Chipnet receive addresses from the connected
 WizardConnect session, even when the workspace opens on Mainnet. It decodes
