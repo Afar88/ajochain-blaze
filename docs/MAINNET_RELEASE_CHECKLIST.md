@@ -68,7 +68,7 @@ CI now emits the exact source SHA-256, compiled artifact JSON SHA-256 and compil
 
 - BCH Mainnet circle signing/broadcast is locked by `BCH_MAINNET_OPERATIONS_ENABLED = false`.
 - PUSD Mainnet spending is locked by `PUSD_MAINNET_SPENDING_ENABLED = false` in the client and `MAINNET_BROADCAST_ENABLED = false` in the API. Runtime environment variables cannot override the API lock.
-- V2 full-cycle escrow remains Chipnet-only. BCH V3 now has an unsigned Mainnet genesis-preview adapter, but deposits, payouts, cancellation signing and every Mainnet broadcast remain disabled pending full review.
+- V2 full-cycle escrow remains Chipnet-only. BCH V3 now has a read-only server verifier for Selene-signed genesis, deposit, payout and cancellation transactions. The server independently derives the covenant and checks confirmed provider-quorum inputs, lifecycle outputs and BCH 2026 VM execution. This is not a submission path: BCH Mainnet broadcast remains disabled, and no verified transaction is relayed.
 - PUSD circle/escrow contracts are prototypes and are not an active product flow.
 
 Do not remove a hard stop until the corresponding section has evidence, independent approval, and a release commit that has passed the complete test suite. Do not mark the product “Mainnet ready” while any required item remains unchecked.
