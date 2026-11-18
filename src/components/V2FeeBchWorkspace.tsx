@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Copy, RefreshCw, ShieldCheck } from "lucide-react";
 import { parseAssetAmount } from "../core/assets";
-import { classicAddressToPkh, getClassicProvider } from "../core/classic-bch";
+import { CashTokensGenesisUtxoMissingError, classicAddressToPkh, getClassicProvider, planClassicGenesisSetup } from "../core/classic-bch";
 import { formatBch, type NetworkId } from "../core/network";
 import { wallet } from "../core/wizard-wallet";
 import { dedupeSavedV2FeeCircleRecords } from "../core/v2-fee-circle-records";
@@ -225,7 +225,132 @@ export default function V2FeeBchWorkspace({
         treasury: treasury.trim(),
       };
       if (!/^\d+$/.test(maxFee.trim())) throw new Error("Maximum miner fee must be a whole number of satoshis.");
-      const plan = await planV2FeeGenesis(draft, initiator);
+      const pendingKey = "ajochain:classic-genesis-setup:v1:chipnet:" + initiator.toLowerCase();
+      let pendingSetup: { status: string; txid?: string; createdAt?: number } | null = null;
+      try {
+        const rawPending = window.localStorage.getItem(pendingKey);
+        if (rawPending) {
+          const parsed = JSON.parse(rawPending) as { status?: unknown; txid?: unknown; createdAt?: unknown };
+          if (parsed.status === "broadcast" && typeof parsed.txid === "string" && /^[0-9a-f]{64}$/i.test(parsed.txid)) {
+            pendingSetup = { status: "broadcast", txid: parsed.txid, createdAt: Number(parsed.createdAt) || undefined };
+          } else if (parsed.status === "unknown" || parsed.status === "signing") {
+            pendingSetup = { status: parsed.status };
+          } else {
+            throw new Error("A previous CashTokens setup attempt is still recorded for this wallet. Check Selene and the Chipnet transaction history before trying again; AjoChain will not create a duplicate setup transaction.");
+          }
+        }
+      } catch (cause) {
+        if (cause instanceof Error && cause.message.startsWith("A previous CashTokens")) throw cause;
+        throw new Error("AjoChain could not safely read its pending setup record. No new transaction was prepared.");
+      }
+
+      let plan: Awaited<ReturnType<typeof planV2FeeGenesis>>;
+      try {
+        plan = await planV2FeeGenesis(draft, initiator);
+      } catch (cause) {
+        if (!(cause instanceof CashTokensGenesisUtxoMissingError)) throw cause;
+
+        if (pendingSetup?.status === "unknown" || pendingSetup?.status === "signing") {
+          throw new Error(
+            pendingSetup.status === "unknown"
+              ? "AjoChain could not confirm whether the previous setup transaction reached Chipnet. Check Selene and the Chipnet wallet history before retrying; duplicate setup transactions are blocked."
+              : "A previous CashTokens setup attempt was interrupted before its broadcast result was saved. Check Selene and the Chipnet wallet history before retrying; AjoChain will not create a duplicate setup transaction.",
+          );
+        } else if (pendingSetup?.txid) {
+          const provider = await getClassicProvider("chipnet");
+          const currentUtxos = await provider.getUtxos(initiator);
+          const pendingOutput = currentUtxos.find((utxo) =>
+            utxo.txid.toLowerCase() === pendingSetup!.txid!.toLowerCase() &&
+            utxo.vout === 0 && !utxo.token && utxo.satoshis > 0n
+          );
+          if (!pendingOutput) {
+            throw new Error(
+              "AjoChain already broadcast your setup transaction (" + pendingSetup.txid +
+              "), but its output-0 coin is not yet visible as spendable in the wallet. " +
+              "Do not send another setup transaction. Refresh and retry after Chipnet indexes that output.",
+            );
+          }
+          plan = await planV2FeeGenesis(draft, initiator);
+        } else {
+          const setup = await planClassicGenesisSetup(initiator);
+          if (!window.confirm(
+            "Step 1 of 2 · Prepare the CashTokens genesis coin on Chipnet?\n\n" +
+            "AjoChain will send " + setup.outputSatoshis.toString() + " sats to your wallet as output 0. " +
+            "The remaining BCH returns to your wallet as change, minus an estimated " + setup.fee.toString() +
+            "-sat miner fee, with " + setup.changeSatoshis.toString() + " sats returned as wallet change.\n\n" +
+            "This does not create the circle NFT yet. After output 0 appears in your wallet, a second " +
+            "Selene approval will create the circle. No new deposit is requested.",
+          )) return;
+
+          try {
+            window.localStorage.setItem(pendingKey, JSON.stringify({
+              status: "signing",
+              createdAt: Date.now(),
+            }));
+          } catch {
+            throw new Error("Browser storage is unavailable. AjoChain cannot safely track a pending setup transaction, so nothing was signed or broadcast.");
+          }
+
+          let signedSetup: Awaited<ReturnType<typeof wallet.signAndVerify>>;
+          try {
+            signedSetup = await wallet.signAndVerify(
+              setup.wc,
+              setup.walletInputs,
+              "Prepare CashTokens genesis output for AjoChain",
+            );
+          } catch (cause) {
+            try { window.localStorage.removeItem(pendingKey); } catch { /* best effort */ }
+            throw cause;
+          }
+
+          let setupTxid: string;
+          try {
+            setupTxid = await setup.provider.sendRawTransaction(signedSetup.signedTransaction);
+          } catch (cause) {
+            try {
+              window.localStorage.setItem(pendingKey, JSON.stringify({
+                status: "unknown",
+                createdAt: Date.now(),
+              }));
+            } catch { /* keep the earlier signing reservation if possible */ }
+            throw new Error(
+              "The setup transaction was signed, but Chipnet did not confirm its submission. " +
+              "AjoChain has blocked automatic retries to avoid a duplicate. Check your wallet history first. " +
+              errorText(cause),
+            );
+          }
+
+          try {
+            window.localStorage.setItem(pendingKey, JSON.stringify({
+              status: "broadcast",
+              txid: setupTxid,
+              createdAt: Date.now(),
+            }));
+          } catch {
+            setNotice(
+              "Setup transaction broadcast: " + setupTxid +
+              ". The browser could not update its pending record. Do not submit another setup transaction; check this transaction in Chipnet and refresh the wallet before continuing.",
+            );
+            return;
+          }
+
+          const refreshedUtxos = await setup.provider.getUtxos(initiator);
+          const setupOutputVisible = refreshedUtxos.some((utxo) =>
+            utxo.txid.toLowerCase() === setupTxid.toLowerCase() &&
+            utxo.vout === 0 && !utxo.token && utxo.satoshis > 0n
+          );
+          if (!setupOutputVisible) {
+            setNotice(
+              "Setup transaction broadcast: " + setupTxid +
+              ". The new vout-0 coin is not visible yet, so the circle has not been created. " +
+              "Refresh and submit this same form again when the wallet reports the output. AjoChain will not create a duplicate setup transaction.",
+            );
+            return;
+          }
+          plan = await planV2FeeGenesis(draft, initiator);
+        }
+      }
+
       const grossPot = BigInt(members.length) * draft.contribution;
       const projectFee = grossPot / 100n;
       if (!window.confirm(
@@ -245,6 +370,7 @@ export default function V2FeeBchWorkspace({
       const provider = await getClassicProvider("chipnet");
       const txid = await provider.sendRawTransaction(signed.signedTransaction);
       persist(plan.params);
+      try { window.localStorage.removeItem(pendingKey); } catch { /* best effort */ }
       setNotice("V2 fee circle genesis broadcast on Chipnet. Transaction: " + txid);
     } catch (cause) { setError(errorText(cause)); }
     finally { setBusy(false); }
