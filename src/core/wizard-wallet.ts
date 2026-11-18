@@ -7,6 +7,28 @@ import { binToHex, createVirtualMachineBch2026, decodeTransactionBCH, encodeTran
 import { sourceOutputToRelay, transactionToHex } from '@wizardconnect/core/hdwalletv1-serialize';
 import { pkhToAddress, type Net } from './bch-address';
 
+export const WIZARDCONNECT_RECEIVE_CHILD_INDEX = 0;
+export const DEFAULT_RECEIVE_ADDRESS_SEARCH_LIMIT = 50;
+
+/**
+ * Derive a BCH receive address from the active WizardConnect hdwalletv1
+ * receive xpub. Never return a cached address or an address from another
+ * protocol/session: 0 is the documented WizardConnect "receive" child path.
+ */
+export function deriveWizardConnectReceiveAddress(
+  protocol: string | null,
+  getPubkey: ((childIndex: number, addressIndex: bigint) => Uint8Array | undefined) | null,
+  network: Net,
+  addressIndex: number,
+): string | null {
+  if (protocol !== "hdwalletv1" || !getPubkey ||
+      !Number.isSafeInteger(addressIndex) || addressIndex < 0) return null;
+  const publicKey = getPubkey(WIZARDCONNECT_RECEIVE_CHILD_INDEX, BigInt(addressIndex));
+  if (!(publicKey instanceof Uint8Array) || publicKey.length !== 33 ||
+      (publicKey[0] !== 0x02 && publicKey[0] !== 0x03)) return null;
+  return pkhToAddress(hash160(publicKey), network);
+}
+
 export type WalletState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnecting' | 'disconnected';
 
 type Listener = () => void;
@@ -22,23 +44,7 @@ export function wizardRelayStatusMessage(status: string, detail?: string): strin
 
 const PATHS_STORAGE_KEY = 'ajochain:wizardconnect-paths:v1';
 const RECEIVE_INDEX_STORAGE_KEY = 'ajochain:wizardconnect-receive-index:v1';
-const ADDRESS_STORAGE_KEY = 'ajochain:wizardconnect-addresses:v1';
 
-function loadCachedAddress(network: Net): string | null {
-  try {
-    const cached = JSON.parse(localStorage.getItem(ADDRESS_STORAGE_KEY) || '{}');
-    const address = cached?.[network];
-    return typeof address === 'string' && address.length > 10 ? address : null;
-  } catch { return null; }
-}
-
-function saveCachedAddress(network: Net, address: string) {
-  try {
-    const cached = JSON.parse(localStorage.getItem(ADDRESS_STORAGE_KEY) || '{}');
-    cached[network] = address;
-    localStorage.setItem(ADDRESS_STORAGE_KEY, JSON.stringify(cached));
-  } catch { /* cached public address is a display fallback only */ }
-}
 
 function restorePublicPaths(mgr: DappConnectionManager) {
   try {
@@ -629,28 +635,35 @@ class WizardWallet {
     }
   }
 
-  /** WizardConnect receive address at the currently selected BIP32 address index. */
+  /** Derive the active Selene receive address from its live WizardConnect xpub. */
   address(network: Net): string | null {
-    const pk = this.mgr?.getPubkey(0, BigInt(this.receiveIndex));
-    if (pk) {
-      const address = pkhToAddress(hash160(pk), network);
-      saveCachedAddress(network, address);
-      return address;
-    }
-    // Keep the last verified public address visible while the mobile relay
-    // reconnects. This is display-only and does not imply an active session.
-    return loadCachedAddress(network);
+    if (this.state !== "connected" || !this.mgr) return null;
+    return deriveWizardConnectReceiveAddress(
+      this.mgr.protocol,
+      (childIndex, index) => this.mgr?.getPubkey(childIndex, index),
+      network,
+      this.receiveIndex,
+    );
   }
 
-  /** Match a Selene receive address against the xpub supplied by WizardConnect. */
-  matchReceiveAddress(address: string, network: Net, maxIndex = 50): number | null {
-    if (this.state !== 'connected' || !this.mgr) throw new Error('Connect your Selene wallet first');
+  /** Match a Selene receive address against the live WizardConnect receive xpub. */
+  matchReceiveAddress(address: string, network: Net, maxIndex = DEFAULT_RECEIVE_ADDRESS_SEARCH_LIMIT): number | null {
+    if (this.state !== "connected" || !this.mgr || this.mgr.protocol !== "hdwalletv1") {
+      throw new Error("Connect Selene through WizardConnect before matching a receive address.");
+    }
     const target = address.trim().toLowerCase();
     if (!target) return null;
+    if (!Number.isSafeInteger(maxIndex) || maxIndex < 0 || maxIndex > 10000) {
+      throw new Error("Receive-address search limit must be between 0 and 10,000.");
+    }
     for (let i = 0; i <= maxIndex; i++) {
-      const pk = this.mgr.getPubkey(0, BigInt(i));
-      if (!pk) return null;
-      if (pkhToAddress(hash160(pk), network).toLowerCase() === target) {
+      const derivedAddress = deriveWizardConnectReceiveAddress(
+        this.mgr.protocol,
+        (childIndex, index) => this.mgr?.getPubkey(childIndex, index),
+        network,
+        i,
+      );
+      if (derivedAddress?.toLowerCase() === target) {
         this.receiveIndex = i;
         try { localStorage.setItem(RECEIVE_INDEX_STORAGE_KEY, String(i)); } catch { /* best effort */ }
         this.emit();
