@@ -1,8 +1,8 @@
 # AjoChain BLAZE — BCH + PUSD Mainnet pathway audit
 
 **Audit date:** 18 November 2026  
-**Reviewed commit:** `0c13b22179f595a5da1699823f38a3e12c3e624d`  
-**Production deployment:** `dpl_3E9ZDVPbfMXg3BFdCrBjyo8ya3us`  
+**Reviewed commit:** `5c65b2bb03e7a4c9802bb716945578479356cc48`  
+**Production deployment:** `dpl_6rvqJnCye9L67nf6hEQoKJPRarAE`  
 **Production URL:** https://ajochain-blaze.vercel.app  
 **Submission target:** 20 November 2026
 
@@ -16,16 +16,19 @@ Do not describe BCH or PUSD Mainnet deposits, payouts, cancellation refunds or t
 
 ## Production verification
 
-The following were verified after PR #46 merged:
+The following were verified on the current Mainnet planning deployment:
 
-- `main` points to `0c13b22179f595a5da1699823f38a3e12c3e624d`.
-- Vercel deployment `dpl_3E9ZDVPbfMXg3BFdCrBjyo8ya3us` reached `READY` and has the `ajochain-blaze.vercel.app` alias.
-- The production home page returned HTTP 200.
-- `GET /api/health` returned HTTP 200, reported Mainnet `ready`, two configured providers responding, tip height 977,891, and `broadcastEnabled: false`.
-- `GET /api/fees` returned HTTP 200 with two fee providers responding and a 1,001 sat/kB quote at the same tip.
-- The merged PR's typecheck, unit tests, production build and targeted BCH 2026 VMB CI job passed.
+- `main` points to `5c65b2bb03e7a4c9802bb716945578479356cc48` (PR #49).
+- Vercel production deployment `dpl_6rvqJnCye9L67nf6hEQoKJPRarAE` reached `READY` and carries the `ajochain-blaze.vercel.app` alias.
+- The production home page returned HTTP 200 in the PR #48 deployment check.
+- `GET /api/health` returned HTTP 200, reported Mainnet `ready`, two configured providers responding, and `broadcastEnabled: false`.
+- `GET /api/fees` returned HTTP 200 with two fee providers responding.
+- The PUSD UTXO route returned HTTP 200 with the canonical PUSD category and an empty result for the generic test address used in the check. This does not indicate anything about the user's wallet balance.
+- The transaction-status route returned a structured `unknown` result for a deliberately invalid/nonexistent test txid; that is expected and must not be treated as a confirmed failure or a reason to retry a spend.
+- PR #49 adds automated adapter tests for nested Vercel route dispatch: transaction status reaches input validation, PUSD unspent reaches the shared method handler, and PUSD broadcast remains HTTP 403 even when `ENABLE_MAINNET_BROADCAST=true`.
+- GitHub Actions CI run #586 passed: typecheck, unit tests, production build and targeted BCH 2026 VMB checks.
 
-These checks confirm deployment and read-quorum availability. They do not prove provider-operator independence, contract safety or transaction broadcast capability.
+The nested API route smoke tests were performed after PR #48; PR #49 then added automated regression coverage and was deployed to production. These checks confirm deployment, route dispatch and read-quorum availability. They do not prove provider-operator independence, contract safety or transaction broadcast capability.
 
 ## What is open now
 
@@ -104,7 +107,7 @@ Verify and document the operators, fault domains and chain-trust assumptions. Ad
 
 Run the two asset workstreams in parallel and release them together only when both have passed the same release checkpoint:
 
-1. **BCH artifact:** create a separately versioned Mainnet V3 source/artifact; pin source, compiled hash and constructor arguments; run adversarial and accounting-invariant tests.
+1. **BCH artifact:** independently audit the exact shared network-neutral V3 artifact, compiled hash and Mainnet constructor bindings; create a distinct Mainnet artifact only if the review identifies chain-dependent behavior; run adversarial and accounting-invariant tests.
 2. **PUSD artifact:** finish independent review of the PUSD circle and escrow artifacts, exact category/decimals policy, genesis output map and all token/escrow transitions.
 3. **Wallet path:** connect both Mainnet planners to WizardConnect signing. Decode the exact returned bytes; compare every input, prevout, output, token commitment, fee and change against the approved plan; run the BCH 2026 VM.
 4. **Broadcast and recovery:** implement a BCH broadcaster and finish the PUSD broadcaster path with durable idempotency, one-shot submission, unknown-result resolution, conflict/replacement handling and confirmation/reorg recovery.
@@ -121,4 +124,4 @@ Until then, keep all three hard locks closed:
 
 ## Current release statement
 
-> AjoChain BLAZE has a live dual-asset Mainnet planning experience for BCH and ParyonUSD, backed by a working read-only Mainnet provider API. BCH Chipnet remains the test-network circle lifecycle. Mainnet workspaces support chain inspection and unsigned transaction planning; real-value signing and broadcasting remain closed pending artifact separation, independent security review, live wallet testing and operational release evidence.
+> AjoChain BLAZE has a live dual-asset Mainnet planning experience for BCH and ParyonUSD, backed by a working read-only Mainnet provider API. BCH Chipnet remains the test-network circle lifecycle. Mainnet workspaces support chain inspection and unsigned transaction planning; real-value signing and broadcasting remain closed pending independent review of the shared BCH artifact and constructor bindings, independent PUSD contract review, live wallet testing and operational release evidence.
