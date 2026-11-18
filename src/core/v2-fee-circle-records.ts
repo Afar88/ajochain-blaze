@@ -83,7 +83,7 @@ export function dedupeSavedV2FeeCircleMenuRecords(records: unknown): SavedV2FeeC
   return dedupeSavedV2FeeCircleRecords(records).filter((entry) => {
     const identity = getV2FeeCircleRecordIdentity(entry.encoded);
     if (!identity) return false;
-    const nameKey = identity.name.trim().replace(/\\s+/g, " ").toLowerCase();
+    const nameKey = identity.name.trim().replace(/\s+/g, " ").toLowerCase();
     if (seenNames.has(nameKey)) return false;
     seenNames.add(nameKey);
     return true;
