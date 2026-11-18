@@ -15,7 +15,7 @@ import autoReserveArtifactJson from '../../contracts/AjoCircleV3AutoReserve.json
 import legacyArtifactJson from '../../contracts/AjoCircleV2Fee.legacy.json' with { type: 'json' };
 import legacyEscrowArtifactJson from '../../contracts/AjoCircleV2FeeEscrow.legacy.json' with { type: 'json' };
 import legacyAutoReserveArtifactJson from '../../contracts/AjoCircleV3AutoReserve.legacy.json' with { type: 'json' };
-import { classicAddressToPkh, getClassicProvider, type ClassicNetwork } from "./classic-bch";
+import { CashTokensGenesisUtxoMissingError, classicAddressToPkh, getClassicProvider, type ClassicNetwork } from "./classic-bch";
 import { selectCashTokensGenesisUtxo } from "./cash-token-genesis";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "./project-treasury";
 import { MAX_CIRCLE_MEMBERS, MIN_CIRCLE_MEMBERS } from "./member-ledger";
@@ -477,6 +477,19 @@ function pickFunding(utxos: SpendableUtxo[], required: bigint) {
   return coin;
 }
 
+/**
+ * Require the protocol's clean non-token vout-0 input and expose a typed
+ * recovery condition so the workspace can offer the existing wallet-approved
+ * Chipnet setup transaction instead of stopping with a generic error.
+ */
+export function requireV2FeeGenesisUtxo(
+  utxos: readonly SpendableUtxo[],
+): SpendableUtxo {
+  const genesis = selectCashTokensGenesisUtxo(utxos);
+  if (!genesis) throw new CashTokensGenesisUtxoMissingError();
+  return genesis;
+}
+
 /** Genesis creates a new 0x54 state NFT and one immutable receipt per member. */
 export async function planV2FeeGenesis(draft: V2FeeCircleDraft, walletAddress: string) {
   const paramsBase = { ...draft, initiator: walletAddress };
@@ -487,14 +500,7 @@ export async function planV2FeeGenesis(draft: V2FeeCircleDraft, walletAddress: s
     .sort((a, b) => a.satoshis === b.satoshis
       ? a.txid.localeCompare(b.txid) || a.vout - b.vout
       : a.satoshis > b.satoshis ? -1 : 1);
-  const genesis = selectCashTokensGenesisUtxo(coins);
-  if (!genesis) {
-    throw new Error(
-      'CashTokens category creation requires a non-token wallet UTXO at output index 0. ' +
-      'There is no 3,000-satoshi minimum for that coin. If your wallet has no eligible output-0 coin, ' +
-      'a setup transaction can create one using existing BCH; do not add funds until the wallet UTXOs are checked.'
-    );
-  }
+  const genesis = requireV2FeeGenesisUtxo(coins);
   const params: V2FeeCircleParams = { ...paramsBase, stateCategory: genesis.txid };
   const contract = contractFor(params, provider);
   const inputs: SpendableUtxo[] = [genesis];
