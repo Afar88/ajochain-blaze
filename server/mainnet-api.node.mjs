@@ -8,6 +8,7 @@ import pusdSubmissionHandler from "../api/pusd/submission.mjs";
 import transactionStatusHandler from "../api/transaction/status.mjs";
 import {
   assertPreviousTransactionsAgree,
+  assertBchMainnetStateCommitment,
   createBchMainnetV3ContractContext,
   verifyBchMainnetCircleTransaction,
   assertPusdTokenOutputCarrier,
@@ -62,6 +63,20 @@ const bchMainnetVerificationCircle = {
   initiator: createMainnetTestAddress(11),
   treasury: "bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q",
 };
+
+
+test("BCH Mainnet V3 verifier parses exact three-byte state NFT commitments", () => {
+  const outputFor = (commitment) => ({
+    token: { nft: { commitment: Buffer.from(commitment, "hex") } },
+  });
+  assert.doesNotThrow(() => assertBchMainnetStateCommitment(outputFor("540000"), 0, 0, "genesis state"));
+  assert.doesNotThrow(() => assertBchMainnetStateCommitment(outputFor("540101"), 1, 1, "round two state"));
+  assert.doesNotThrow(() => assertBchMainnetStateCommitment(outputFor("540401"), 4, 1, "last payout state"));
+  assert.doesNotThrow(() => assertBchMainnetStateCommitment(outputFor("540501"), 5, 1, "terminal state"));
+  assert.throws(() => assertBchMainnetStateCommitment(outputFor("540500"), 5, 1, "bad terminal state"), /expected V3 round and payout marker/i);
+  assert.throws(() => assertBchMainnetStateCommitment(outputFor("540600"), 6, 0, "out-of-range state"), /expected V3 round and payout marker/i);
+  assert.throws(() => assertBchMainnetStateCommitment(outputFor("5401"), 1, 0, "truncated state"), /expected V3 round and payout marker/i);
+});
 
 test("BCH Mainnet server derives the exact V3 covenant script from immutable constructor bindings", () => {
   const context = createBchMainnetV3ContractContext(bchMainnetVerificationCircle);
