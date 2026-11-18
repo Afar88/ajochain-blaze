@@ -2,7 +2,7 @@
 
 **Prepared:** 2026-11-17  
 **Release status:** NOT APPROVED for real-value Mainnet activity  
-**Working review target:** [PR #17](https://github.com/Afar88/ajochain-blaze/pull/17)
+**Working review target:** current `main` commit containing merged [PR #59](https://github.com/Afar88/ajochain-blaze/pull/59); reviewer must record the exact immutable commit SHA and artifact fingerprints at review start.
 
 This brief is an audit handoff, not an audit report or approval. The reviewer must record and review an immutable Git commit SHA and the exact compiled artifacts supplied for that SHA. Do not audit a moving branch name and do not infer that CI success is security approval.
 
@@ -24,12 +24,12 @@ Review the complete transaction path, not only individual contract functions:
 3. **Wallet signing and signed-byte verification**
    - `src/core/wizard-wallet.ts`, including `buildWizardSignRequest`, `verifySignedTransaction`, wallet input coverage, required `0x61` P2PKH sighash and BCH 2026 VM validation.
    - Review receive/change derivation, wallet session/network identity, input prevout provenance and exact semantic equality between planned and signed transaction.
-   - Review the gap between the generic wallet verifier and the Mainnet circle workspace. Circle signing is not yet wired into the Mainnet workspace and must remain disabled until reviewed.
+   - Review the Mainnet BCH V3 circle workspace and the read-only server verifier added in PR #59. Signed genesis, deposit, payout and cancellation plans can be submitted for verification, but the server does not reserve, relay or broadcast them. The production submission path and all Mainnet spend controls remain disabled.
 
 4. **Mainnet read and PUSD API path**
    - `src/core/mainnet-quorum-provider.ts`, `server/mainnet-api.mjs`, and `server/mainnet-api.node.mjs`.
    - BCH genesis and both BCH-specific fork checkpoints, tip freshness/agreement, UTXO snapshot agreement, raw previous-transaction authentication, address/script binding, token category/NFT policy, carrier dust and immediate pre-broadcast unspent checks.
-   - The latest PUSD relay path broadcasts only once to one provider and, after an ambiguous response, queries the exact txid across providers. An unresolved result is reported as UNKNOWN and is not automatically relayed again. This is not confirmation tracking.
+   - The PUSD relay implementation is present behind the hard-coded false Mainnet broadcast gate. Its code path is designed to submit once to one provider and resolve ambiguous responses by querying the exact txid across providers; this must be reviewed and tested in an isolated environment before any release. It is not confirmation tracking.
 
 5. **Transaction lifecycle and operations**
    - Review an idempotent durable submission design, mempool conflict and unknown-result handling, confirmation proofs, reorg reconciliation, monitoring, incident response, emergency stop and rollback.
@@ -64,6 +64,6 @@ The reviewer should independently reproduce the relevant tests and add adversari
 
 ## Release gate
 
-Do not enable Mainnet signing, broadcasting or PUSD spending until the external review is complete, every critical/high finding is resolved, exact artifacts and constructor bindings are approved, independent-wallet lifecycle tests pass, provider operators are verified, PUSD decimals are authoritatively confirmed, and the release owner signs off on the exact deployed commit.
+Do not enable Mainnet broadcasting or PUSD spending until the external review is complete, every critical/high finding is resolved, exact artifacts and constructor bindings are approved, independent-wallet lifecycle tests pass, provider operators are verified, PUSD decimals are authoritatively confirmed, and the release owner signs off on the exact deployed commit.
 
 **Do not send real BCH or PUSD to the current prototype contracts.**
