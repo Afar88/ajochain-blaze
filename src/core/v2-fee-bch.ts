@@ -418,11 +418,10 @@ function findReceipt(utxos: SpendableUtxo[], category: string, index: number) {
  * address), so it cannot be used to discover these stateful CashToken UTXOs.
  */
 export async function getV2FeeCircleTokenUtxos(
-  provider: NetworkProvider,
-  tokenAddress: string,
+  contract: Contract,
 ): Promise<SpendableUtxo[]> {
-  if (!tokenAddress) throw new Error("V2 fee circle has no token-aware contract address.");
-  return provider.getUtxos(tokenAddress);
+  if (!contract.tokenAddress) throw new Error("V2 fee circle has no token-aware contract address.");
+  return contract.provider.getUtxos(contract.tokenAddress);
 }
 
 export function describeV2FeeTokenSetMismatch(
@@ -525,7 +524,7 @@ export async function planV2FeeDeposit(params: V2FeeCircleParams, memberIndex: n
   if (hex(addressToPkh(params.members[memberIndex], params.network)) !== hex(addressToPkh(walletAddress, params.network))) throw new Error('Connected wallet does not match this member slot.');
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
-  const all = await getV2FeeCircleTokenUtxos(provider, contract.tokenAddress);
+  const all = await getV2FeeCircleTokenUtxos(contract);
   assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant, params.network, contract.tokenAddress);
   const state = findState(all, params.stateCategory, params.covenant, params.members.length);
   const currentRound = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
@@ -576,7 +575,7 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
   validateV2FeePayoutFeePayerAddress(feePayerAddress, params.network);
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
-  const all = await getV2FeeCircleTokenUtxos(provider, contract.tokenAddress);
+  const all = await getV2FeeCircleTokenUtxos(contract);
   assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant, params.network, contract.tokenAddress);
   const state = findState(all, params.stateCategory, params.covenant, params.members.length);
   const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
@@ -685,7 +684,7 @@ export async function planV2FeeCancel(params: V2FeeCircleParams, walletAddress: 
   if (hex(addressToPkh(walletAddress, params.network)) !== hex(addressToPkh(params.initiator, params.network))) throw new Error('Only the circle initiator can cancel before the first payout.');
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
-  const all = await getV2FeeCircleTokenUtxos(provider, contract.tokenAddress);
+  const all = await getV2FeeCircleTokenUtxos(contract);
   assertUtxoSet(all, params.stateCategory, params.members.length, params.covenant, params.network, contract.tokenAddress);
   const state = findState(all, params.stateCategory, params.covenant, params.members.length);
   const stateCommitment = state.token!.nft!.commitment;
@@ -720,7 +719,7 @@ export async function readV2FeeCircle(params: V2FeeCircleParams) {
   validate(params);
   const provider = await getProvider(params.network);
   const contract = contractFor(params, provider);
-  const utxos = await getV2FeeCircleTokenUtxos(provider, contract.tokenAddress);
+  const utxos = await getV2FeeCircleTokenUtxos(contract);
   assertUtxoSet(utxos, params.stateCategory, params.members.length, params.covenant, params.network, contract.tokenAddress);
   const state = findState(utxos, params.stateCategory, params.covenant, params.members.length);
   const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
