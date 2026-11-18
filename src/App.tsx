@@ -482,7 +482,7 @@ export default function App() {
               <h1>Build together.<br /><em>Stay accountable.</em></h1>
               <p>Run a rotating savings circle with transparent member credit, clear payout rules and a fee shown before anyone joins.</p>
               <button className="primary-button hero-cta" type="button" onClick={() => navigate("create-circle")}>
-                Open circle tools <ArrowRight size={16} />
+                Create a circle <ArrowRight size={16} />
               </button>
             </section>
 
@@ -516,8 +516,8 @@ export default function App() {
           <section className="page-section">
             <div className="page-intro">
               <span className="section-kicker">YOUR SAVINGS GROUPS</span>
-              <h1>{network === "mainnet" ? "Mainnet circles" : "Chipnet circles"}</h1>
-              <p>{network === "mainnet" ? "Only Bitcoin Cash Mainnet circles are shown here: native BCH or PUSD. Mainnet creation, signing and payouts remain locked until the release checks are complete." : "Only Chipnet test circles are shown here. Use test BCH to try the fair-round member-credit model or open a Classic V1 circle for compatibility testing."}</p>
+              <h1>Create a circle</h1>
+              <p>{network === "mainnet" ? "Choose a circle type to preview its setup. Mainnet creation, signing and payouts remain locked until the release checks are complete." : "Choose the Chipnet circle model you want to create. Each saved circle will appear as its own named menu item."}</p>
             </div>
             <section className="circle-choice-guide" aria-label="Choose a circle type">
               <div className="circle-choice-heading">
