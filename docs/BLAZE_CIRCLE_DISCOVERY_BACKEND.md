@@ -25,9 +25,9 @@ member receipts remain authoritative on Chipnet.
 
 ## API
 
-- `POST /api/circles` with `{ action: "register", encoded, genesisTxid }`
-  registers a circle after the creator's wallet-approved genesis transaction
-  is accepted by Chipnet.
+- `POST /api/circles` with `{ action: "register", encoded, genesisTxid? }`
+  registers a circle. New creations include the exact accepted Chipnet genesis
+  transaction ID; verified backfills of older local circles may omit it.
 - `POST /api/circles` with `{ action: "discover", addresses: [...] }`
   returns candidate invites indexed for the supplied public Chipnet receive
   addresses.
