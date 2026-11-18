@@ -9,7 +9,10 @@ import { formatAssetAmount, parseAssetAmount, PUSD_ASSET } from "./core/assets";
 import type { PusdTransferPlan } from "./core/pusd-transaction-builder";
 import type { AuthenticatedPusdUtxo } from "./core/pusd-utxo";
 import { PUSD_MAINNET_SPENDING_ENABLED } from "./core/pusd-mainnet-guard";
-import { dedupeSavedV2FeeCircleRecords, getV2FeeCircleRecordIdentity } from "./core/v2-fee-circle-records";
+import {
+  dedupeSavedV2FeeCircleMenuRecords,
+  getV2FeeCircleRecordIdentity,
+} from "./core/v2-fee-circle-records";
 const ClassicBchWorkspace = lazy(() => import("./components/ClassicBchWorkspace"));
 const V2FeeBchWorkspace = lazy(() => import("./components/V2FeeBchWorkspace"));
 const PusdMainnetCircleWorkspace = lazy(() => import("./components/PusdMainnetCircleWorkspace"));
@@ -17,32 +20,26 @@ const BchMainnetCircleWorkspace = lazy(() => import("./components/BchMainnetCirc
 const ActivityRecords = lazy(() => import("./components/ActivityRecords"));
 
 type Page = "overview" | "create-circle" | "circle-detail" | "assets" | "activity";
-type MenuCircle = { encoded: string; name: string; label: string; stateCategory: string };
+type MenuCircle = { encoded: string; name: string; label: string };
 
 const V2_MENU_STORAGE_KEY = "ajochain-blaze:v2-fee-circles:v1";
 function readSavedV2MenuCircles(): MenuCircle[] {
   try {
     const stored: unknown = JSON.parse(window.localStorage.getItem(V2_MENU_STORAGE_KEY) || "[]");
-    const unique = dedupeSavedV2FeeCircleRecords(stored);
+    const unique = dedupeSavedV2FeeCircleMenuRecords(stored);
     const records = unique.flatMap((entry) => {
       const identity = getV2FeeCircleRecordIdentity(entry.encoded);
-      return identity ? [{ ...entry, name: identity.name, stateCategory: identity.stateCategory }] : [];
+      return identity ? [{ ...entry, name: identity.name }] : [];
     });
-    const nameCounts = new Map<string, number>();
-    records.forEach((record) => nameCounts.set(record.name, (nameCounts.get(record.name) ?? 0) + 1));
     return records.map((record) => ({
       encoded: record.encoded,
       name: record.name,
-      stateCategory: record.stateCategory,
-      label: (nameCounts.get(record.name) ?? 0) > 1
-        ? record.name + " · " + record.stateCategory.slice(-6)
-        : record.name,
+      label: record.name,
     }));
   } catch {
     return [];
   }
 }
-
 type ThemePreference = "system" | "light" | "dark";
 type WalletClient = typeof import("./core/wizard-wallet").wallet;
 type WalletView = {
