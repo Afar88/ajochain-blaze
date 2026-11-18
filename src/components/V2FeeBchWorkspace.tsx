@@ -244,19 +244,21 @@ export default function V2FeeBchWorkspace({
         throw new Error("AjoChain could not safely read its pending setup record. No new transaction was prepared.");
       }
 
+      if (pendingSetup?.status === "unknown" || pendingSetup?.status === "signing") {
+        throw new Error(
+          pendingSetup.status === "unknown"
+            ? "AjoChain could not confirm whether the previous setup transaction reached Chipnet. Check Selene and the Chipnet wallet history before retrying; duplicate setup transactions are blocked."
+            : "A previous CashTokens setup attempt was interrupted before its broadcast result was saved. Check Selene and the Chipnet wallet history before retrying; AjoChain will not create a duplicate setup transaction.",
+        );
+      }
+
       let plan: Awaited<ReturnType<typeof planV2FeeGenesis>>;
       try {
         plan = await planV2FeeGenesis(draft, initiator);
       } catch (cause) {
         if (!(cause instanceof CashTokensGenesisUtxoMissingError)) throw cause;
 
-        if (pendingSetup?.status === "unknown" || pendingSetup?.status === "signing") {
-          throw new Error(
-            pendingSetup.status === "unknown"
-              ? "AjoChain could not confirm whether the previous setup transaction reached Chipnet. Check Selene and the Chipnet wallet history before retrying; duplicate setup transactions are blocked."
-              : "A previous CashTokens setup attempt was interrupted before its broadcast result was saved. Check Selene and the Chipnet wallet history before retrying; AjoChain will not create a duplicate setup transaction.",
-          );
-        } else if (pendingSetup?.txid) {
+        if (pendingSetup?.txid) {
           const provider = await getClassicProvider("chipnet");
           const currentUtxos = await provider.getUtxos(initiator);
           const pendingOutput = currentUtxos.find((utxo) =>
