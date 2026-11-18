@@ -59,6 +59,8 @@ jobs:
           '
       - name: Typecheck
         run: npm run typecheck
+      - name: Fingerprint exact Mainnet covenant artifacts
+        run: node .ci/fingerprint-mainnet-contract-artifacts.mjs
       - name: Unit tests
         run: npm test
       - name: Production build
