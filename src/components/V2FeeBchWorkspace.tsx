@@ -373,7 +373,7 @@ export default function V2FeeBchWorkspace({
       const txid = await provider.sendRawTransaction(signed.signedTransaction);
       persist(plan.params);
       try { window.localStorage.removeItem(pendingKey); } catch { /* best effort */ }
-      setNotice("V2 fee circle genesis broadcast on Chipnet. Transaction: " + txid);
+      setNotice("V2 fee circle submitted to Chipnet and saved on this device. Share the invite link with members. Transaction: " + txid);
     } catch (cause) { setError(errorText(cause)); }
     finally { setBusy(false); }
   };
