@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { Contract, MockNetworkProvider } from "cashscript";
+import { Contract } from "cashscript";
 import v3AutoReserveArtifact from "../contracts/AjoCircleV3AutoReserve.json" with { type: "json" };
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
@@ -1397,6 +1397,13 @@ export function createBchMainnetV3ContractContext(circleValue) {
   while (memberPkhBytes.length < 5) memberPkhBytes.push(new Uint8Array(20));
   const treasuryPkhBytes = hexToBin(BCH_MAINNET_PROJECT_TREASURY_SCRIPT.slice(6, 46));
   const initiatorPkhBytes = hexToBin(circle.initiatorScript.slice(6, 46));
+  const provider = {
+    network: "mainnet",
+    getUtxos: async () => { throw new Error("Local BCH Mainnet contract derivation must not access network providers."); },
+    getBlockHeight: async () => { throw new Error("Local BCH Mainnet contract derivation must not access network providers."); },
+    getRawTransaction: async () => { throw new Error("Local BCH Mainnet contract derivation must not access network providers."); },
+    sendRawTransaction: async () => { throw new Error("Local BCH Mainnet contract derivation must never broadcast."); },
+  };
   const contract = new Contract(v3AutoReserveArtifact, [
     memberPkhBytes[0], memberPkhBytes[1], memberPkhBytes[2],
     memberPkhBytes[3], memberPkhBytes[4],
@@ -1406,7 +1413,7 @@ export function createBchMainnetV3ContractContext(circleValue) {
     hexToBin(circle.stateCategory).reverse(),
     initiatorPkhBytes,
     treasuryPkhBytes,
-  ], { provider: new MockNetworkProvider(), contractType: "p2sh32" });
+  ], { provider, contractType: "p2sh32" });
   const contractLockingBytecode = String(contract.lockingBytecode).toLowerCase();
   if (!/^aa20[0-9a-f]{64}87$/.test(contractLockingBytecode)) {
     throw new Error("Server-derived BCH Mainnet V3 contract did not produce a valid P2SH32 locking script.");
