@@ -268,12 +268,17 @@ test("Upstash PUSD ledger reserves one exact transaction across concurrent reque
   const signed = sampleRawTransactionHex();
   const txid = transactionIdFromHex(signed);
 
-  const first = await ledger.reserve(txid, signed);
-  assert.equal(first.acquired, true);
+  const reservations = await Promise.all([
+    ledger.reserve(txid, signed),
+    ledger.reserve(txid, signed),
+  ]);
+  assert.equal(reservations.filter((result) => result.acquired).length, 1);
+  assert.equal(reservations.filter((result) => !result.acquired).length, 1);
+  const first = reservations.find((result) => result.acquired);
+  const duplicate = reservations.find((result) => !result.acquired);
+  assert.ok(first);
+  assert.ok(duplicate);
   assert.equal(first.record.status, "submitting");
-
-  const duplicate = await ledger.reserve(txid, signed);
-  assert.equal(duplicate.acquired, false);
   assert.equal(duplicate.record.status, "submitting");
 
   const accepted = await ledger.complete(txid, signed, "accepted");
@@ -324,6 +329,13 @@ test("Upstash PUSD ledger preserves unknown submissions and fails closed when st
     fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ result: "OK" }) }),
   }), /not configured/);
   assert.equal(mainnetApiErrorStatus("PUSD durable broadcast ledger is unavailable"), 503);
+
+  const unavailable = createUpstashPusdBroadcastLedger({
+    url: "https://redis.example.test",
+    token: "private-test-token",
+    fetchImpl: async () => { throw new Error("simulated network outage"); },
+  });
+  await assert.rejects(unavailable.reserve(txid, signed), /ledger is unavailable/);
 });
 
 test("PUSD broadcaster uses one relay and reports the provider's exact txid", async () => {
@@ -632,6 +644,26 @@ test("nested transaction-status Vercel route reaches shared API validation", asy
   );
   assert.equal(response.statusCode, 400);
   assert.match(JSON.parse(response.body).error, /64 hexadecimal characters/);
+});
+
+test("PUSD submission-status route returns 503 when private ledger credentials are missing", async () => {
+  const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const originalToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  try {
+    const response = await invokeServerlessRoute(
+      pusdSubmissionHandler,
+      mockApiRequest("GET", "/api/pusd/submission?txid=" + "ab".repeat(32)),
+    );
+    assert.equal(response.statusCode, 503);
+    assert.match(JSON.parse(response.body).error, /ledger is not configured/);
+  } finally {
+    if (originalUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+    else process.env.UPSTASH_REDIS_REST_URL = originalUrl;
+    if (originalToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    else process.env.UPSTASH_REDIS_REST_TOKEN = originalToken;
+  }
 });
 
 test("nested PUSD submission-status Vercel route validates the transaction ID before ledger access", async () => {
