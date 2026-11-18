@@ -1370,6 +1370,7 @@ export function createUpstashMainnetRateLimiter(options = {}) {
   const now = options.now ?? Date.now;
   const maxRequests = options.maxRequests ?? RATE_LIMIT_MAX;
   const windowMs = options.windowMs ?? RATE_LIMIT_WINDOW_MS;
+  const useForwardedIp = options.useForwardedIp ?? (process.env.VERCEL === "1");
   if (typeof restUrl !== "string" || !restUrl.trim() ||
       typeof token !== "string" || !token.trim()) {
     throw new Error("Shared Mainnet rate limiter is not configured. Set private UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN server-side.");
@@ -1391,7 +1392,7 @@ export function createUpstashMainnetRateLimiter(options = {}) {
 
   return {
     async consume(request) {
-      const forwarded = process.env.VERCEL === "1"
+      const forwarded = useForwardedIp
         ? (request.headers["x-vercel-forwarded-for"] ??
           request.headers["x-forwarded-for"] ??
           request.headers["x-real-ip"])
