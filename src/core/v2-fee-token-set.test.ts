@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { SpendableUtxo } from "cashscript";
-import { describeV2FeeTokenSetMismatch } from "./v2-fee-bch";
+import type { Contract, SpendableUtxo } from "cashscript";
+import { vi } from "vitest";
+import { describeV2FeeTokenSetMismatch, getV2FeeCircleTokenUtxos } from "./v2-fee-bch";
 
 const CATEGORY = "ab".repeat(32);
 const ADDRESS = "bchtest:pqexamplecontractaddress";
@@ -33,5 +34,26 @@ describe("V2 circle token-set diagnostics", () => {
     expect(message).toContain(CATEGORY);
     expect(message).toContain(otherCategory);
     expect(message).toContain("Do not recreate the circle");
+  });
+});
+
+describe("V2 circle CashToken UTXO lookup", () => {
+  it("queries the token-aware contract address, not the ordinary BCH address", async () => {
+    const tokenAddress = "bchtest:zqtokenawarecontract";
+    const ordinaryAddress = "bchtest:pqordinarycontract";
+    const getUtxos = vi.fn(async (address: string) => {
+      return address === tokenAddress ? [utxo(CATEGORY)] : [];
+    });
+    const contract = {
+      address: ordinaryAddress,
+      tokenAddress,
+      provider: { getUtxos },
+    } as unknown as Contract;
+
+    const result = await getV2FeeCircleTokenUtxos(contract);
+    expect(getUtxos).toHaveBeenCalledTimes(1);
+    expect(getUtxos).toHaveBeenCalledWith(tokenAddress);
+    expect(getUtxos).not.toHaveBeenCalledWith(ordinaryAddress);
+    expect(result).toHaveLength(1);
   });
 });
