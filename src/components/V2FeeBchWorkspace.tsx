@@ -93,7 +93,7 @@ export default function V2FeeBchWorkspace({
   network, walletConnected, view = "create", selectedCircle = null, onCircleSaved,
 }: Props) {
   const [saved, setSaved] = useState<SavedCircle[]>(readSaved);
-  const [selected, setSelected] = useState<string | null>(() => readSaved()[0]?.encoded ?? null);
+  const [selected, setSelected] = useState<string | null>(() => selectedCircle ?? readSaved()[0]?.encoded ?? null);
   const [name, setName] = useState("My Ajo Circle");
   const [amount, setAmount] = useState("0.002");
   const [maxFee, setMaxFee] = useState("10000");
@@ -385,7 +385,7 @@ export default function V2FeeBchWorkspace({
         <span>Experimental and unaudited. Chipnet only. Every payout except the final payout reserves exactly one next contribution for the recipient. It covers the following round; after it is consumed, that member must fund later installments again. No Mainnet signing or broadcasting is enabled.</span>
       </div>
 
-      {view === "create" && <div className="circle-workspace-grid">
+      {view === "create" && (<>\n      <div className="circle-workspace-grid">
         <div className="circle-panel circle-create-panel">
           <div className="circle-panel-heading">
             <span className="section-kicker">NEW GROUP</span>
@@ -411,8 +411,13 @@ export default function V2FeeBchWorkspace({
           <small className="field-hint">Add 1–4 other unique Chipnet addresses in payout order (2–5 members total). Each member funds the current round; a non-final recipient carries one next contribution forward.</small>
         </div>
       </div>
-        <p className="field-hint circle-menu-hint">After you create or restore a circle, it appears as its own named item in the three-dot menu under <b>Your circles</b>.</p>
-      </div>}
+      </div>
+      <form className="classic-restore-form circle-restore-form" onSubmit={restore}>
+        <label>Join an existing circle with its invite link<input value={restoreInput} onChange={(event) => setRestoreInput(event.target.value)} placeholder="Paste circle invite URL" /></label>
+        <button type="submit" className="secondary-button" disabled={!restoreInput.trim()}>Restore circle</button>
+      </form>
+      <p className="field-hint circle-menu-hint">After you create or restore a circle, it appears as its own named item in the three-dot menu under <b>Your circles</b>.</p>
+      </>)}
 
       {view === "circle" && active && <div className="classic-active-circle">
         <div className="section-heading">
