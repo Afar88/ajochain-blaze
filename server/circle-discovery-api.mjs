@@ -193,6 +193,27 @@ export function createCircleDiscoveryHandler({ getSql } = {}) {
       return send(400, { error: "A JSON object is required." });
     }
 
+    let registration = null;
+    let addresses = null;
+    if (body.action === "register") {
+      try {
+        registration = decodeInvite(body.encoded);
+      } catch (error) {
+        return send(400, { error: error.message });
+      }
+      if (typeof body.genesisTxid !== "string" || !/^[0-9a-f]{64}$/i.test(body.genesisTxid)) {
+        return send(400, { error: "A confirmed Chipnet genesis transaction ID is required." });
+      }
+    } else if (body.action === "discover") {
+      try {
+        addresses = normaliseDiscoveryAddresses(body.addresses);
+      } catch (error) {
+        return send(400, { error: error.message });
+      }
+    } else {
+      return send(400, { error: "Action must be either register or discover." });
+    }
+
     try {
       const sql = await resolveSql();
       if (!schemaPromise) {
@@ -204,10 +225,7 @@ export function createCircleDiscoveryHandler({ getSql } = {}) {
       await schemaPromise;
 
       if (body.action === "register") {
-        const { params, name, stateCategory, initiatorAddress, treasuryAddress, members } = decodeInvite(body.encoded);
-        if (typeof body.genesisTxid !== "string" || !/^[0-9a-f]{64}$/i.test(body.genesisTxid)) {
-          return send(400, { error: "A confirmed Chipnet genesis transaction ID is required." });
-        }
+        const { params, name, stateCategory, initiatorAddress, treasuryAddress, members } = registration;
         const key = circleKey("chipnet", stateCategory);
         const result = await sql.query(`
           WITH circle AS (
@@ -244,9 +262,6 @@ export function createCircleDiscoveryHandler({ getSql } = {}) {
       }
 
       if (body.action === "discover") {
-        let addresses;
-        try { addresses = normaliseDiscoveryAddresses(body.addresses); }
-        catch (error) { return send(400, { error: error.message }); }
         const result = await sql.query(`
           SELECT c.encoded_invite AS encoded,
                  c.circle_name AS name,
@@ -262,7 +277,6 @@ export function createCircleDiscoveryHandler({ getSql } = {}) {
         return send(200, { circles: result });
       }
 
-      return send(400, { error: "Action must be either register or discover." });
     } catch (error) {
       if (error instanceof CircleDiscoveryConfigurationError) {
         return send(503, { error: error.message });
