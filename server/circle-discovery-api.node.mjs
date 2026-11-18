@@ -191,6 +191,36 @@ test("circle discovery only returns circles matched to supplied member addresses
   assert.equal(JSON.parse(response.body).circles.length, 1);
 });
 
+test("circle discovery accepts the first 50 receive indexes plus the selected wallet address", async () => {
+  const addresses = Array.from({ length: 51 }, (_, index) => makeAddress(index + 1));
+  let selectedCount = 0;
+  const sql = {
+    async query(statement, params) {
+      if (statement.includes("SELECT c.encoded_invite")) {
+        selectedCount = params[0].length;
+        return [];
+      }
+      return [];
+    },
+  };
+  const handler = createCircleDiscoveryHandler({ getSql: async () => sql });
+  const response = responseMock();
+  await handler(requestMock({ action: "discover", addresses }), response);
+  assert.equal(response.statusCode, 200);
+  assert.equal(selectedCount, 51);
+});
+
+test("circle discovery rejects more than 51 receive addresses before database access", async () => {
+  let queried = false;
+  const sql = { async query() { queried = true; return []; } };
+  const handler = createCircleDiscoveryHandler({ getSql: async () => sql });
+  const response = responseMock();
+  const addresses = Array.from({ length: 52 }, (_, index) => makeAddress(index + 1));
+  await handler(requestMock({ action: "discover", addresses }), response);
+  assert.equal(response.statusCode, 400);
+  assert.equal(queried, false);
+});
+
 test("circle discovery rejects malformed addresses before querying records", async () => {
   let queried = false;
   const sql = { async query() { queried = true; return []; } };
