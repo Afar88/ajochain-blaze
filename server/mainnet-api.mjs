@@ -1462,7 +1462,7 @@ function bchMainnetNftCommitment(output, label) {
 
 function assertBchMainnetReceiptIndex(output, expectedIndex, label) {
   const commitment = bchMainnetNftCommitment(output, label);
-  if (!/^52[0-4][0-9a-f]([0-9a-f]{16})$/.test(commitment) ||
+  if (!/^520[0-4][0-9a-f]{16}$/.test(commitment) ||
       Number.parseInt(commitment.slice(2, 4), 16) !== expectedIndex) {
     throw new Error(label + " is not the registered member receipt at index " + expectedIndex + ".");
   }
