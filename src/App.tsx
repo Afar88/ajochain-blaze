@@ -695,9 +695,9 @@ export default function App() {
             </div>
             {connected ? (
               <div className="wallet-detail-body">
-                <div className="wallet-address-card"><span>{NETWORKS[network].label}</span><code>{walletAddress ?? "Address not available yet"}</code><small>Receive index {walletView.receiveIndex} · public address only</small></div>
-                <label className="field-label" htmlFor="selene-address">Match the receive address shown in Selene</label>
-                <input id="selene-address" className="form-control" value={seleneAddress} onChange={(event) => setSeleneAddress(event.target.value)} placeholder="Paste Selene receive address" autoComplete="off" />
+                <div className="wallet-address-card"><span>{NETWORKS[network].label}</span><code>{walletAddress ?? "Address not available yet"}</code><small>Live WizardConnect receive key · address index {walletView.receiveIndex} · public address only</small></div>
+                <label className="field-label" htmlFor="selene-address">Verify against the receive address shown in Selene</label>
+                <input id="selene-address" className="form-control" value={seleneAddress} onChange={(event) => setSeleneAddress(event.target.value)} placeholder="Paste Selene receive address to verify derivation" autoComplete="off" />
                 <button className="primary-button" onClick={() => {
                   try {
                     const index = walletClient?.matchReceiveAddress(seleneAddress, network, 50) ?? null;
