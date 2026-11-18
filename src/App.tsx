@@ -139,12 +139,15 @@ export default function App() {
     const syncDiscovery = async () => {
       try {
         const existing = readSavedV2MenuCircles();
-        const { discoverVerifiedCircles } = await import("./core/circle-discovery-client");
-        const discovered = await discoverVerifiedCircles(
-          addresses,
-          existing.map((circle) => circle.encoded),
-        );
-        if (!active || discovered.length === 0) return;
+        const { discoverVerifiedCircles, registerSavedCirclesForDiscovery } =
+          await import("./core/circle-discovery-client");
+        const savedInvites = existing.map((circle) => circle.encoded);
+        const discovered = await discoverVerifiedCircles(addresses, savedInvites);
+        // Recover circles created before the dedicated database was attached.
+        // The helper checks member ownership from the connected receive branch
+        // and verifies each live Chipnet state/receipt before registration.
+        await registerSavedCirclesForDiscovery(addresses, savedInvites);
+        if (!active) return;
         const existingRecords = existing.map((circle) => ({
           encoded: circle.encoded,
           savedAt: Date.now(),
