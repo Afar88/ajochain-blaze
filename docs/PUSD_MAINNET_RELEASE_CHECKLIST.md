@@ -24,6 +24,16 @@ The issuer-maintained [ParyonUSD withdrawal contract source](https://github.com/
 - [ ] Recheck each input's unspent status through the configured quorum immediately before broadcast.
 - [ ] Reject NFT-bearing PUSD outputs until an explicit and separately audited NFT policy exists.
 
+## Durable broadcast idempotency
+
+- [ ] Provision a dedicated private Upstash Redis database (or an independently reviewed equivalent) for BLAZE; do not reuse the legacy AjoChain/Neon store.
+- [ ] Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` only in the BLAZE Vercel server environment. Never expose the write token to the browser.
+- [ ] Verify the exact signed-transaction ID/digest can be reserved only once across concurrent serverless instances and that `submitting`, `accepted`, `already-known`, and `unknown` states persist across cold starts.
+- [ ] Verify that a missing/unavailable ledger or an ambiguous prior submission blocks a second relay; reconcile the exact transaction through the read-only status endpoints before manual recovery.
+- [ ] Define retention, archival and incident-recovery procedures for durable submission records before enabling any PUSD broadcast.
+
+The server now contains a fail-closed Upstash Redis REST adapter and a read-only `GET /api/pusd/submission?txid=<64-hex-txid>` endpoint. The adapter is not active until dedicated private credentials are provisioned. The Mainnet broadcast kill-switch remains hard-coded false.
+
 ## Transaction construction and verification
 
 - [ ] Independently review deterministic token selection, recipient output, PUSD change, BCH carrier/dust and fee calculation.
