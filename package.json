@@ -21,8 +21,7 @@
     "qrcode": "^1.5.4",
     "cashscript": "^0.14.0",
     "@electrum-cash/network": "^4.4.8",
-    "@electrum-cash/web-socket": "^4.2.0",
-    "@neondatabase/serverless": "^1.0.2"
+    "@electrum-cash/web-socket": "^4.2.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

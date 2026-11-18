@@ -1,83 +1,21 @@
-# AjoChain Blaze Circle Discovery Backend
+# Blaze Chipnet circle discovery: security gate
 
-## Separation boundary
+**Shared discovery, registration, and backfill are disabled.** Share the existing Chipnet circle invite link to add a circle on another device. The local circle menu and invite restoration do not depend on the discovery route.
 
-This service belongs only to the `Afar88/ajochain-blaze` repository and the
-`ajochain-blaze` Vercel project. It must use a dedicated Neon database and a
-dedicated Vercel environment variable named
-`BLAZE_CIRCLE_DISCOVERY_DATABASE_URL`.
+## Why it is disabled
 
-The runtime deliberately does **not** fall back to `DATABASE_URL`,
-`POSTGRES_URL`, or any other generic database variable. This prevents the
-Blaze discovery API from silently connecting to the formal AjoChain database
-or another application's database.
+The original PR #63 server trusted receive addresses supplied by the browser. Address validation and client-side on-chain checks did not authorize registry lookups. Registration accepted a syntactically valid invite and did not verify on Chipnet that the category, transaction and covenant belonged together. The in-memory request limit also was not shared across serverless instances.
 
-## What it stores
+The [WizardConnect hdwalletv1 protocol](https://docs.riftenlabs.com/wizardconnect/protocol/#hdwalletv1-protocol) provides public derivation paths and transaction signing. It does not define an arbitrary-message ownership proof. Blaze's `signAndVerify` validates a BCH transaction against the prepared intent and its previous outputs; it is not an authentication method. A session, xpub, receive address, or public historical signature does not prove ownership to the server. Do not use a real, dummy, or disguised transaction as a login prompt.
 
-The backend stores only a discovery index for Chipnet V3 circles:
-the encoded public invite parameters, state category, optional genesis
-transaction ID, circle name, initiator/treasury addresses, and indexed member
-receive addresses. It does not treat registry rows as proof that a circle is
-live; connected clients verify every candidate against Chipnet before showing
-it.
+The browser no longer polls or sends receive addresses or saved invites to the registry. `/api/circles` rejects all POSTs before reading request data and has no database client. Adding an environment variable cannot enable it.
 
-It is not a ledger. It does not store balances, calculate contributions, unlock
-payouts, sign transactions, or broadcast transactions. Contract state and
-member receipts remain authoritative on Chipnet.
+## Required before restoring the registry
 
-## API
+1. Confirm a supported Selene/WizardConnect **non-spending** proof in a real wallet. Verify the proof for each exact Chipnet P2PKH key being queried; one verified receive key cannot authorize arbitrary sibling addresses from a browser-supplied list. Do not upload xpubs. Display the domain and purpose in the wallet prompt.
+2. Issue short-lived, random challenges bound to the service origin, Chipnet, the requested scope and the claimed address. Verify the exact signed challenge server-side; atomically consume it once across all instances. If issuing a session for polling, bind it to verified addresses and permissions, expire it, and discard it on account/session changes. Query only the server-verified scope.
+3. Require an authenticated member and independent server-side chain verification before indexing an invite. Verify the guarded Chipnet V3 constructor bindings, category-creating input and actual transaction bytes, exact state/receipt outputs and current covenant state. Never accept a supplied txid as evidence by itself. Backfill must meet the same checks, resolving missing references from trusted chain data or staying unindexed. Use a canonical on-chain identity and separate untrusted display metadata from that identity.
+4. Enforce shared limits on challenge issuance, verification, discovery and registration before expensive work. Bound request and response sizes, fail closed if shared controls are unavailable, avoid logging addresses/invites, and return only the minimum metadata needed to restore a matching circle. An invite link is not encrypted and should not contain confidential names or other personal information.
+5. Confirm the Vercel project is `ajochain-blaze` and provision a dedicated Blaze Neon project before wiring the sensitive `BLAZE_CIRCLE_DISCOVERY_DATABASE_URL` in the approved environment. Never fall back to `DATABASE_URL`, or use formal AjoChain or Paraguas resources. Exercise denied lookups, invalid registrations, replay and concurrency in automated tests and verify two independently controlled Chipnet wallets before turning discovery on.
 
-- `POST /api/circles` with `{ action: "register", encoded, genesisTxid? }`
-  registers a circle. New creations include the exact accepted Chipnet genesis
-  transaction ID; verified backfills of older local circles may omit it.
-- `POST /api/circles` with `{ action: "discover", addresses: [...] }`
-  returns candidate invites indexed for the supplied public Chipnet receive
-  addresses.
-
-Discovery is address-indexed convenience, not cryptographic access control:
-BCH receive addresses are public, and a caller who already knows a member
-address can query for matching public invite data. Do not place secrets or
-private personal information in circle names or invite metadata.
-
-The client derives the first 50 Chipnet receive addresses plus the currently
-selected receive address (up to 51 total) from the connected WizardConnect
-session, even when the workspace opens on Mainnet. It decodes
-each returned candidate and calls `readV2FeeCircle` to independently verify
-the current contract state and member receipts before saving it in the local
-menu. Invalid, stale, or non-member candidates are ignored.
-
-When the dedicated database becomes available, a connected member can also
-backfill circles already saved in that browser. The client confirms that the
-connected wallet's derived receive branch matches a registered member and
-re-reads the live Chipnet state and receipts before registering the invite.
-For historical records, the genesis transaction ID remains null rather than
-being guessed; a later creation registration may enrich the row with the exact
-transaction ID.
-
-**Discovery visibility:** this endpoint matches the public receive addresses
-supplied by the client; it does not prove cryptographic wallet ownership. Anyone
-who already knows a member's public Chipnet address can query its indexed
-circles. Do not put confidential names or private personal details in circle
-metadata. A future signed-challenge flow is required before treating discovery
-as private member-only access.
-
-Invites continue to work as a recovery and sharing mechanism when the registry
-is unavailable.
-
-## Dedicated database setup
-
-1. Provision a **new Neon project/resource for AjoChain Blaze**, not the
-   existing `ajochain-legacy` Neon store and not the Paraguas store.
-2. Create a separate production connection string for the new Blaze resource.
-3. Add it to the `ajochain-blaze` Vercel project as the sensitive environment
-   variable `BLAZE_CIRCLE_DISCOVERY_DATABASE_URL` for Production, Preview,
-   and Development.
-4. Redeploy the Blaze project. The API creates only its own
-   `ajo_blaze_circle_registry` and `ajo_blaze_circle_members` tables on first
-   use.
-
-The Neon account is managed through Vercel Marketplace. The separate database
-resource must be provisioned and attached there before shared discovery is
-available in deployed environments. Until the dedicated variable is present,
-the API fails closed with HTTP 503; local invite links and chain operations
-continue to work normally.
+This gate does not enable Mainnet signing, spending, or broadcast. Existing Mainnet release checklists still apply.
