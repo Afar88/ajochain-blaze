@@ -404,6 +404,7 @@ export default function App() {
                         className={page === "circle-detail" && selectedMenuCircle === circle.encoded ? "dropdown-item active" : "dropdown-item"}
                         onClick={() => {
                           setSelectedMenuCircle(circle.encoded);
+                          setNetwork("chipnet");
                           setCircleWorkspace("bch-fair-round");
                           navigate("circle-detail");
                         }}
