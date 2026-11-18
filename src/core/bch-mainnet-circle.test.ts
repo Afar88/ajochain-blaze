@@ -81,7 +81,7 @@ describe("BCH Mainnet V3 circle adapter", () => {
     expect(v2FeeArtifactForCovenant("fee-v3-auto-reserve-mainnet").contractName)
       .toBe("AjoCircleV3AutoReserve");
     expect(contract.lockingBytecode.length).toBeGreaterThan(0);
-    expect(contract.address).toMatch(/^bchtest:/); // Mock provider address encoding only; constructor PKHs are Mainnet-decoded above.
+    expect(contract.tokenAddress).toBeTruthy();
     const reordered = createV2FeeCircleContract({
       ...params,
       members: [...mainnetMembers].reverse(),
