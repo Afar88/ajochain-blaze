@@ -30,7 +30,7 @@ function canonicalChipnetP2pkhAddress(address) {
   };
 }
 
-function decodeInvite(encoded) {
+export function decodeInvite(encoded) {
   if (typeof encoded !== "string" || encoded.length < 8 || encoded.length > 20_000 ||
       !/^[A-Za-z0-9_-]+$/.test(encoded)) {
     throw new Error("The circle invite is missing or malformed.");
