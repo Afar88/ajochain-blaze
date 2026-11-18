@@ -7,6 +7,8 @@ import { encodeCashAddress, hash160, hexToBin, secp256k1 } from "@bitauth/libaut
 import circleArtifactJson from "../../contracts/AjoCirclePUSDV3Mainnet.json" with { type: "json" };
 import escrowArtifactJson from "../../contracts/AjoPUSDMemberEscrowV3.json" with { type: "json" };
 import { PUSD_ASSET } from "./assets";
+import { MAINNET_PROJECT_TREASURY_ADDRESS } from "./project-treasury";
+import { createPusdMainnetCircleContracts, validatePusdMainnetCircleParams } from "./pusd-mainnet-circle";
 import { pkhToAddress } from "./bch-address";
 import { getMainnetProjectTreasuryPkh } from "./project-treasury";
 
@@ -33,6 +35,26 @@ function key(n: number) {
 
 const members = [key(1), key(2)];
 const initiator = key(8);
+
+function mainnetTokenAddress(pkh: Uint8Array) {
+  const result = encodeCashAddress({ prefix: "bitcoincash", type: "p2pkhWithTokens", payload: pkh });
+  if (typeof result === "string") throw new Error("Could not encode Mainnet token-aware test address");
+  return result.address;
+}
+
+function mainnetParams(membersForCircle = members) {
+  return {
+    version: 3 as const,
+    name: "PUSD Mainnet binding test",
+    network: "mainnet" as const,
+    members: membersForCircle.map((member) => mainnetTokenAddress(member.pkh)),
+    contribution: 10_000n,
+    maxFee: MAX_FEE,
+    initiator: pkhToAddress(initiator.pkh, "mainnet"),
+    stateCategory: STATE,
+    treasury: MAINNET_PROJECT_TREASURY_ADDRESS,
+  };
+}
 
 function tokenAddress(pkh: Uint8Array) {
   const result = encodeCashAddress({ prefix: "bchtest", type: "p2pkhWithTokens", payload: pkh });
@@ -231,6 +253,52 @@ async function cancel(provider: MockNetworkProvider, contract: Contract, escrows
   builder.addOutput({ to: feeAddress, amount: 10_000n });
   await builder.send();
 }
+
+describe("PUSD Mainnet adapter constructor bindings", () => {
+  it("accepts only unique Mainnet token-aware P2PKH member addresses and the shared treasury", () => {
+    const params = mainnetParams();
+    expect(() => validatePusdMainnetCircleParams(params)).not.toThrow();
+    expect(() => validatePusdMainnetCircleParams({
+      ...params,
+      members: [mainnetTokenAddress(members[0].pkh), tokenAddress(members[1].pkh)],
+    })).toThrow(/token-aware P2PKH Bitcoin Cash Mainnet/);
+    expect(() => validatePusdMainnetCircleParams({
+      ...params,
+      members: [params.members[0], params.members[0]],
+    })).toThrow(/unique Mainnet address/);
+    expect(() => validatePusdMainnetCircleParams({
+      ...params,
+      treasury: "bitcoincash:qz0w0w0w0w0w0w0w0w0w0w0w0w0w0w0w0w0w0w0w0",
+    })).toThrow(/shared Mainnet BCH\/PUSD project treasury/);
+  });
+
+  it("derives the exact V3 circle and one distinct member escrow script from the validated Mainnet constructor parameters", () => {
+    const provider = new MockNetworkProvider();
+    const params = mainnetParams(members);
+    const { contract, escrows } = createPusdMainnetCircleContracts(params, provider);
+    expect(escrows).toHaveLength(members.length);
+    expect(escrows.every((escrow) => escrow.lockingBytecode.length > 0)).toBe(true);
+    expect(escrows[0].lockingBytecode).not.toEqual(escrows[1].lockingBytecode);
+    expect(contract.lockingBytecode.length).toBeGreaterThan(0);
+
+    const reordered = createPusdMainnetCircleContracts({
+      ...params,
+      members: [params.members[1], params.members[0]],
+    }, provider);
+    expect(reordered.contract.lockingBytecode).not.toEqual(contract.lockingBytecode);
+    expect(reordered.escrows[0].lockingBytecode).not.toEqual(escrows[0].lockingBytecode);
+  });
+
+  it("pins five ordered members and five separately derived escrow scripts", () => {
+    const provider = new MockNetworkProvider();
+    const fiveMembers = [...members, key(4), key(5), key(6)];
+    const params = mainnetParams(fiveMembers);
+    const { contract, escrows } = createPusdMainnetCircleContracts(params, provider);
+    expect(escrows).toHaveLength(5);
+    expect(new Set(escrows.map((escrow) => binToHex(escrow.lockingBytecode))).size).toBe(5);
+    expect(contract.lockingBytecode.length).toBeGreaterThan(0);
+  });
+});
 
 describe("AjoChain PUSD V3 Mainnet covenant (mock-chain invariants)", () => {
   it("pins the same Mainnet project-fee treasury in each newly derived circle", () => {
