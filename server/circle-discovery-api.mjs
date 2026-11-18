@@ -83,9 +83,10 @@ function normaliseDiscoveryAddresses(addresses) {
   return [...new Set(normalised.map((entry) => entry.address))];
 }
 
-function circleKey(network, stateCategory) {
+function circleKey(network, stateCategory, encodedInvite) {
+  const inviteHash = createHash("sha256").update(encodedInvite).digest("hex");
   return createHash("sha256")
-    .update(network + ":" + stateCategory.toLowerCase())
+    .update(network + ":" + stateCategory.toLowerCase() + ":" + inviteHash)
     .digest("hex");
 }
 
@@ -122,9 +123,7 @@ async function ensureSchema(sql) {
       genesis_txid char(64),
       member_count smallint NOT NULL CHECK (member_count BETWEEN 2 AND 5),
       created_at timestamptz NOT NULL DEFAULT now(),
-      last_seen_at timestamptz NOT NULL DEFAULT now(),
-      UNIQUE (network, state_category),
-      UNIQUE (network, genesis_txid)
+      last_seen_at timestamptz NOT NULL DEFAULT now()
     )
   `, []);
   // Existing records created by an earlier release may lack a transaction ID.
@@ -236,7 +235,7 @@ export function createCircleDiscoveryHandler({ getSql } = {}) {
 
       if (body.action === "register") {
         const { params, name, stateCategory, initiatorAddress, treasuryAddress, members } = registration;
-        const key = circleKey("chipnet", stateCategory);
+        const key = circleKey("chipnet", stateCategory, body.encoded);
         const result = await sql.query(`
           WITH circle AS (
             INSERT INTO ajo_blaze_circle_registry (
@@ -244,7 +243,7 @@ export function createCircleDiscoveryHandler({ getSql } = {}) {
               covenant, initiator_address, treasury_address, genesis_txid, member_count
             )
             VALUES ($1, 'chipnet', $2, $3, $4, $5, $6, $7, $8, $9)
-            ON CONFLICT (network, state_category) DO UPDATE
+            ON CONFLICT (circle_key) DO UPDATE
               SET genesis_txid = COALESCE(ajo_blaze_circle_registry.genesis_txid, EXCLUDED.genesis_txid),
                   last_seen_at = now()
               WHERE ajo_blaze_circle_registry.encoded_invite = EXCLUDED.encoded_invite
