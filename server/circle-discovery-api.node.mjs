@@ -95,6 +95,36 @@ test("circle discovery registers a circle idempotently and stores member indexes
   assert.equal(queries.filter((query) => query.statement.includes("CREATE TABLE")).length, 2);
 });
 
+test("circle discovery can backfill an already-created circle without inventing a genesis txid", async () => {
+  const encoded = makeInvite();
+  const queries = [];
+  const sql = {
+    async query(statement, params) {
+      queries.push({ statement, params });
+      if (statement.includes("INSERT INTO ajo_blaze_circle_registry")) return [{ circle_key: params[0] }];
+      return [];
+    },
+  };
+  const handler = createCircleDiscoveryHandler({ getSql: async () => sql });
+  const response = responseMock();
+  await handler(requestMock({ action: "register", encoded }), response);
+  assert.equal(response.statusCode, 201);
+  const registerQuery = queries.find((query) => query.statement.includes("INSERT INTO ajo_blaze_circle_registry"));
+  assert.equal(registerQuery.params[7], null);
+  assert.match(registerQuery.statement, /COALESCE\(ajo_blaze_circle_registry\.genesis_txid, EXCLUDED\.genesis_txid\)/);
+  assert.ok(queries.some((query) => query.statement.includes("ALTER TABLE ajo_blaze_circle_registry")));
+});
+
+test("circle discovery rejects a malformed optional genesis txid before database access", async () => {
+  let queried = false;
+  const sql = { async query() { queried = true; return []; } };
+  const handler = createCircleDiscoveryHandler({ getSql: async () => sql });
+  const response = responseMock();
+  await handler(requestMock({ action: "register", encoded: makeInvite(), genesisTxid: "not-a-txid" }), response);
+  assert.equal(response.statusCode, 400);
+  assert.equal(queried, false);
+});
+
 test("circle discovery only returns circles matched to supplied member addresses", async () => {
   const encoded = makeInvite();
   const memberAddress = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")).members[0].toLowerCase();
