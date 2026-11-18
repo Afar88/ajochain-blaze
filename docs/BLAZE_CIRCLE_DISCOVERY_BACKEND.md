@@ -53,6 +53,13 @@ For historical records, the genesis transaction ID remains null rather than
 being guessed; a later creation registration may enrich the row with the exact
 transaction ID.
 
+**Discovery visibility:** this endpoint matches the public receive addresses
+supplied by the client; it does not prove cryptographic wallet ownership. Anyone
+who already knows a member's public Chipnet address can query its indexed
+circles. Do not put confidential names or private personal details in circle
+metadata. A future signed-challenge flow is required before treating discovery
+as private member-only access.
+
 Invites continue to work as a recovery and sharing mechanism when the registry
 is unavailable.
 
