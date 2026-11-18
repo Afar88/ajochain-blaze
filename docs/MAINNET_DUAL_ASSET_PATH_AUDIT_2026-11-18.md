@@ -1,8 +1,8 @@
 # AjoChain BLAZE — BCH + PUSD Mainnet pathway audit
 
 **Audit date:** 18 November 2026  
-**Reviewed commit:** `5c65b2bb03e7a4c9802bb716945578479356cc48`  
-**Production deployment:** `dpl_6rvqJnCye9L67nf6hEQoKJPRarAE`  
+**Reviewed commit:** `ed1100a06481d8eeed2f65dad91d8bdbf59c8f8d`  
+**Production deployment:** `dpl_H1qk78kMSrJUwZGRYxWpPJi9mxN7`  
 **Production URL:** https://ajochain-blaze.vercel.app  
 **Submission target:** 20 November 2026
 
