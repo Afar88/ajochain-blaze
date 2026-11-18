@@ -385,7 +385,8 @@ export default function V2FeeBchWorkspace({
         <span>Experimental and unaudited. Chipnet only. Every payout except the final payout reserves exactly one next contribution for the recipient. It covers the following round; after it is consumed, that member must fund later installments again. No Mainnet signing or broadcasting is enabled.</span>
       </div>
 
-      {view === "create" && (<>\n      <div className="circle-workspace-grid">
+      {view === "create" && (<>
+      <div className="circle-workspace-grid">
         <div className="circle-panel circle-create-panel">
           <div className="circle-panel-heading">
             <span className="section-kicker">NEW GROUP</span>
