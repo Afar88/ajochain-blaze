@@ -520,6 +520,11 @@ export default function App() {
   const gatherWalletCoins = async () => {
     const gatherNetwork = network;
     if (!walletClient || walletClient.state !== "connected" || !walletAddress) return;
+    const destinationAddress = walletClient.address(gatherNetwork);
+    if (!destinationAddress) {
+      setGatherMessage("The connected Selene receive address is not available for this network.");
+      return;
+    }
     if (gatherNetwork === "mainnet" && !walletClient.isReceiveAddressConfirmed("mainnet")) {
       setGatherMessage("Sync the Mainnet receive address currently shown in Selene under Wallet Details before gathering real BCH.");
       return;
@@ -550,7 +555,7 @@ export default function App() {
       const plan = await planWalletConsolidation(
         provider,
         walletAddresses,
-        walletAddress,
+        destinationAddress,
         pendingSetupOutpoints,
         gatherNetwork,
       );
@@ -558,11 +563,21 @@ export default function App() {
       const realFundsWarning = gatherNetwork === "mainnet"
         ? "\n\nThis uses real BCH. The only output returns to your connected wallet address. CashTokens and pending circle setup coins are not moved."
         : "\n\nCashTokens and pending circle setup coins are not moved.";
+      if (gatherNetwork === "mainnet" &&
+          (!walletClient.isReceiveAddressConfirmed("mainnet") ||
+           walletClient.address("mainnet") !== destinationAddress)) {
+        throw new Error("Selene's confirmed Mainnet address or connection changed during the coin scan. Sync the address and retry.");
+      }
       if (!window.confirm(
         "Gather " + plan.inputCount + " " + networkLabel + " BCH coin(s) into one coin at " + plan.destination + "?\n\n" +
         "Total " + plan.totalSatoshis.toString() + " sats, estimated miner fee " + plan.fee.toString() + " sats." +
         realFundsWarning,
       )) { setGatherMessage(""); return; }
+      if (gatherNetwork === "mainnet" &&
+          (!walletClient.isReceiveAddressConfirmed("mainnet") ||
+           walletClient.address("mainnet") !== destinationAddress)) {
+        throw new Error("Selene's confirmed Mainnet address changed before signing. Sync the address and prepare a fresh gather.");
+      }
       const signed = await walletClient.signAndVerify(
         plan.wc,
         plan.walletInputs,
@@ -570,6 +585,10 @@ export default function App() {
         plan.inputPaths,
       );
       if (gatherNetwork === "mainnet") {
+        if (!walletClient.isReceiveAddressConfirmed("mainnet") ||
+            walletClient.address("mainnet") !== destinationAddress) {
+          throw new Error("Selene's confirmed Mainnet address or connection changed after signing. The signed bytes were not broadcast; sync the address and retry.");
+        }
         const response = await fetch("/api/bch/gather", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
