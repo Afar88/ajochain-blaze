@@ -1,8 +1,9 @@
 # AjoChain Blaze Mainnet external review brief
 
-**Prepared:** 2026-11-17  
+**Prepared:** 2026-11-19  
 **Release status:** NOT APPROVED for real-value Mainnet activity  
-**Working review target:** [PR #17](https://github.com/Afar88/ajochain-blaze/pull/17)
+**Review target:** immutable source commit `1276d1c4ea78d6972c918a4719b8ce31a05bb966`  
+**Production deployment:** `dpl_2iz7QtES2qCbigkdVSX5unZqiycD` (`READY`, `ajochain-blaze.vercel.app`)
 
 This brief is an audit handoff, not an audit report or approval. The reviewer must record and review an immutable Git commit SHA and the exact compiled artifacts supplied for that SHA. Do not audit a moving branch name and do not infer that CI success is security approval.
 
@@ -24,12 +25,12 @@ Review the complete transaction path, not only individual contract functions:
 3. **Wallet signing and signed-byte verification**
    - `src/core/wizard-wallet.ts`, including `buildWizardSignRequest`, `verifySignedTransaction`, wallet input coverage, required `0x61` P2PKH sighash and BCH 2026 VM validation.
    - Review receive/change derivation, wallet session/network identity, input prevout provenance and exact semantic equality between planned and signed transaction.
-   - Review the gap between the generic wallet verifier and the Mainnet circle workspace. Circle signing is not yet wired into the Mainnet workspace and must remain disabled until reviewed.
+   - Review the BCH and PUSD Mainnet workspaces' explicit verification-only Selene signature flows, exact signed-byte validation, and discard behavior. BCH `/api/bch/verify` and PUSD `/api/pusd/circle/verify` are verification-only; their separate value-spend routes must remain hard-locked until reviewed and approved.
 
 4. **Mainnet read and PUSD API path**
    - `src/core/mainnet-quorum-provider.ts`, `server/mainnet-api.mjs`, and `server/mainnet-api.node.mjs`.
    - BCH genesis and both BCH-specific fork checkpoints, tip freshness/agreement, UTXO snapshot agreement, raw previous-transaction authentication, address/script binding, token category/NFT policy, carrier dust and immediate pre-broadcast unspent checks.
-   - The latest PUSD relay path broadcasts only once to one provider and, after an ambiguous response, queries the exact txid across providers. An unresolved result is reported as UNKNOWN and is not automatically relayed again. This is not confirmation tracking.
+   - The PUSD send implementation contains one-shot relay and ambiguous-result reconciliation code, but its API route is hard-disabled. The BCH circle broadcast and wallet-gather routes are also hard-disabled. Review these dormant spend paths, their idempotency and confirmation/reorg limitations, and ensure no runtime setting can enable them.
 
 5. **Transaction lifecycle and operations**
    - Review an idempotent durable submission design, mempool conflict and unknown-result handling, confirmation proofs, reorg reconciliation, monitoring, incident response, emergency stop and rollback.
@@ -44,7 +45,7 @@ Review the complete transaction path, not only individual contract functions:
 - PUSD display precision is currently assumed to be 2 decimals in code. This has not yet been confirmed from an issuer-controlled source; do not approve user-facing amount conversion until verified.
 - PUSD member deposits cannot exceed that member's remaining contribution for the current round; excess tokens must remain with the member.
 - PUSD payout charges a separate 1% PUSD project fee, reserves one next contribution for a non-final recipient, and makes no future reserve for the final recipient.
-- Mainnet signing and broadcasting are compile-time disabled. No review action should enable them.
+- Mainnet value-spend and broadcast routes are hard-disabled. Verification-only wallet signature requests are separate: signed bytes are locally/server verified, then discarded without reservation, relay or broadcast. No review action should enable a spend route.
 
 ## Existing automated evidence
 
