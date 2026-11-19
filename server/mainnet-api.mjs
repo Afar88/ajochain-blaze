@@ -20,12 +20,10 @@ import {
 const PUSD_CATEGORY = "2469acc5afa4b10cb5b5c04afb89c3a3ffd61c5da9c01e26d00951cae2a02544";
 // Hard release gate: runtime environment variables must never activate real-value broadcasts.
 export const MAINNET_BROADCAST_ENABLED = false;
-// Separate gate for BCH Mainnet circle transactions (create, pay, payout, cancel).
-export const BCH_MAINNET_CIRCLE_BROADCAST_ENABLED = true;
-// Wallet-only BCH consolidation is a separately guarded Mainnet operation.
-// Every spend still requires a Selene signature, quorum verification and
-// the shared durable input-reservation ledger before a one-time relay.
-export const BCH_MAINNET_GATHER_BROADCAST_ENABLED = true;
+// BCH Mainnet circle relay stays closed until independent review and release approval.
+export const BCH_MAINNET_CIRCLE_BROADCAST_ENABLED = false;
+// Wallet-only BCH consolidation is also a real-value Mainnet spend and stays closed.
+export const BCH_MAINNET_GATHER_BROADCAST_ENABLED = false;
 export const MAINNET_GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f";
 export const BCH_MAINNET_FORK_CHECKPOINT_HEIGHT = 478_559;
 export const BCH_MAINNET_FORK_CHECKPOINT_HASH =
@@ -2657,9 +2655,8 @@ export async function broadcastBchMainnetGatherTransaction(
   sessions,
   tip,
   body,
-  enabled = BCH_MAINNET_GATHER_BROADCAST_ENABLED,
 ) {
-  if (enabled !== true) {
+  if (!BCH_MAINNET_GATHER_BROADCAST_ENABLED) {
     throw new Error("BCH Mainnet wallet gathering is disabled until its release gate is approved.");
   }
   const verification = await verifyBchMainnetGatherTransaction(sessions, tip, body);
@@ -2707,9 +2704,8 @@ export async function broadcastBchMainnetCircleTransaction(
   sessions,
   tip,
   body,
-  enabled = BCH_MAINNET_CIRCLE_BROADCAST_ENABLED,
 ) {
-  if (enabled !== true) {
+  if (!BCH_MAINNET_CIRCLE_BROADCAST_ENABLED) {
     throw new Error("BCH Mainnet circle broadcast is disabled until the release is approved.");
   }
   const verification = await verifyBchMainnetCircleTransaction(sessions, tip, body);
@@ -2835,6 +2831,7 @@ export function createMainnetApiServer() {
             tipHeight: tip.height,
             tipHash: tip.hash,
             broadcastEnabled: MAINNET_BROADCAST_ENABLED,
+            bchCircleBroadcastEnabled: BCH_MAINNET_CIRCLE_BROADCAST_ENABLED,
             bchGatherBroadcastEnabled: BCH_MAINNET_GATHER_BROADCAST_ENABLED,
             mainnetReleaseApproved: false,
             pusdDurableSubmissionLedgerConfigured: isPusdBroadcastLedgerConfigured(),
