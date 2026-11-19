@@ -113,13 +113,13 @@ The repository includes a Vercel catch-all API adapter at api/[...path].mjs. The
 
 ## 7. What is and is not enabled
 
-- **BCH Chipnet V3:** the guarded new-circle prototype and on-chain discovery are test-network functionality.
-- **BCH Mainnet:** read-only inspection and unsigned previews; circle signing/broadcast is not approved.
+- **BCH Chipnet V3:** the guarded V3 workspace and on-chain discovery are available for test-network use.
+- **BCH Mainnet V3:** on-chain discovery and a dedicated V3 signing/broadcast path are implemented. Classic BCH operations remain separately guarded.
 - **PUSD Mainnet V3:** lifecycle previews and the read-only POST /api/pusd/circle/verify endpoint are engineering functionality. The verifier checks signed transaction bytes; it does not relay or broadcast them.
 - **PUSD Mainnet spending:** hard-disabled in the application. A green build, a successful verification response or a Vercel deployment does not unlock it.
-- **Shared registry:** disabled. New Chipnet V3 discovery reads the chain; local saved drafts and invite data are not proof of membership or payment.
+- **Shared registry:** not used. Chipnet and Mainnet V3 discovery read BCH transaction history and covenant state; local saved drafts and invite data are not proof of membership or payment.
 
-Do not deploy prototype covenants or send real BCH/PUSD to prototype scripts. Do not change Mainnet kill-switch constants or add an environment variable intended to enable spending.
+Do not deploy prototype covenants or send real PUSD to prototype scripts. Do not bypass or alter the separate BCH Classic or PUSD Mainnet gates.
 
 ## 8. Troubleshooting
 
