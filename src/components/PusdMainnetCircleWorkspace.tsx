@@ -15,6 +15,7 @@ import {
   type PusdMainnetCircleParams,
   type PusdMainnetCircleSnapshot,
 } from "../core/pusd-mainnet-circle";
+import { verifyPusdMainnetCircleSignedTransaction } from "../core/pusd-api";
 import { wallet } from "../core/wizard-wallet";
 import type { NetworkId } from "../core/network-config";
 
@@ -33,7 +34,16 @@ type StoredCircle = Omit<PusdMainnetCircleParams, "contribution" | "maxFee"> & {
   contribution: string;
   maxFee: string;
 };
-type MainnetSigningPlan = { wc: unknown; walletInputs: number[]; prompt: string; createdAt: number };
+type MainnetSigningPlan = {
+  wc: unknown;
+  walletInputs: number[];
+  prompt: string;
+  createdAt: number;
+  operation: "genesis" | "deposit" | "payout" | "cancel";
+  circle: PusdMainnetCircleParams;
+  memberIndex?: number;
+  amount?: string;
+};
 
 function readActiveCircle(): PusdMainnetCircleParams | null {
   try {
@@ -211,8 +221,10 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
       }, initiatorAddress);
       setGenesisSigningPlan({
         wc: plan.wc, walletInputs: plan.walletInputs,
-        prompt: "Verify PUSD Mainnet circle genesis for " + name.trim(),
+        prompt: "Server-verify PUSD Mainnet circle genesis for " + name.trim(),
         createdAt: Date.now(),
+        operation: "genesis",
+        circle: plan.params,
       });
       setActiveCircle(plan.params);
       persistActiveCircle(plan.params);
@@ -248,18 +260,34 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
     setError("");
     setNotice("");
     try {
-      const verified = await wallet.signAndVerify(
+      const walletAddress = wallet.address("mainnet");
+      if (!walletAddress) throw new Error("The connected Selene session does not expose a Mainnet P2PKH signing address.");
+      const locallyVerified = await wallet.signAndVerify(
         signingPlan.wc,
         signingPlan.walletInputs,
-        signingPlan.prompt + " (local verification only; never broadcast)",
+        signingPlan.prompt + " (independent server verification only; never broadcast)",
       );
-      const inputCount = verified.decoded.inputs.length;
-      const outputCount = verified.decoded.outputs.length;
+      const serverVerified = await verifyPusdMainnetCircleSignedTransaction({
+        operation: signingPlan.operation,
+        circle: {
+          ...signingPlan.circle,
+          contribution: signingPlan.circle.contribution.toString(),
+          maxFee: signingPlan.circle.maxFee.toString(),
+        },
+        walletAddresses: [walletAddress],
+        signedTransactionHex: locallyVerified.signedTransaction,
+        ...(signingPlan.operation === "deposit"
+          ? { memberIndex: signingPlan.memberIndex, amount: signingPlan.amount }
+          : {}),
+      });
       if (target === "genesis") setGenesisSigningPlan(null);
       else setActionSigningPlan(null);
       setNotice(
-        "Selene signed the PUSD Mainnet review transaction and AjoChain passed exact input/output comparison, 0x61 sighash checks and BCH 2026 VM verification (" +
-        inputCount + " inputs, " + outputCount + " outputs). The signed bytes were discarded. Nothing was broadcast and no circle state changed.",
+        "Selene signed the PUSD Mainnet " + signingPlan.operation +
+        " transaction. Local exact-input/output, 0x61 sighash and BCH 2026 VM checks passed; the independent server also authenticated " +
+        serverVerified.confirmedInputs + " confirmed inputs across its Electrum quorum and passed the BCH 2026 VM (" +
+        serverVerified.inputCount + " inputs, " + serverVerified.outputCount + " outputs, " +
+        serverVerified.feeSatoshis + " sat fee). Signed bytes were discarded. Nothing was broadcast and no circle state changed.",
       );
     } catch (cause) {
       setError(errorMessage(cause));
@@ -308,8 +336,12 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
       const plan = await planPusdMainnetDeposit(activeCircle, memberIndex, amount, address);
       setActionSigningPlan({
         wc: plan.wc, walletInputs: plan.walletInputs,
-        prompt: "Verify PUSD Mainnet member deposit for " + activeCircle.name,
+        prompt: "Server-verify PUSD Mainnet member deposit for " + activeCircle.name,
         createdAt: Date.now(),
+        operation: "deposit",
+        circle: activeCircle,
+        memberIndex,
+        amount: amount.toString(),
       });
       setActionPreview({
         title: "Unsigned PUSD member-deposit preview",
@@ -342,8 +374,10 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
       const plan = await planPusdMainnetPayout(activeCircle, address);
       setActionSigningPlan({
         wc: plan.wc, walletInputs: plan.walletInputs,
-        prompt: "Verify PUSD Mainnet payout for " + activeCircle.name,
+        prompt: "Server-verify PUSD Mainnet payout for " + activeCircle.name,
         createdAt: Date.now(),
+        operation: "payout",
+        circle: activeCircle,
       });
       setActionPreview({
         title: "Unsigned PUSD payout preview",
@@ -376,8 +410,10 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
       const plan = await planPusdMainnetCancel(activeCircle, address);
       setActionSigningPlan({
         wc: plan.wc, walletInputs: plan.walletInputs,
-        prompt: "Verify PUSD Mainnet pre-payout cancellation for " + activeCircle.name,
+        prompt: "Server-verify PUSD Mainnet pre-payout cancellation for " + activeCircle.name,
         createdAt: Date.now(),
+        operation: "cancel",
+        circle: activeCircle,
       });
       setActionPreview({
         title: "Unsigned pre-payout cancellation preview",
@@ -524,7 +560,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
 
       <div className="pusd-mainnet-build-status">
         <LockKeyhole size={16} />
-        <span><b>Next engineering stage: lifecycle workspace and signed-byte verification</b><small>Genesis, deposit, payout and cancellation plans can now be sent to Selene for local exact-intent, 0x61 sighash and BCH 2026 VM verification. Signed bytes are discarded and never broadcast. Durable broadcaster/idempotency and reorg recovery remain locked.</small></span>
+        <span><b>Next engineering stage: lifecycle workspace and signed-byte verification</b><small>Genesis, deposit, payout and cancellation plans can be signed by Selene and checked again by the server against raw quorum-authenticated prevouts, exact circle/escrow artifacts, 0x61 wallet sighashes and the BCH 2026 VM. Signed bytes are discarded and never broadcast. PUSD spending remains locked.</small></span>
       </div>
 
       <div className="pusd-mainnet-saved">
