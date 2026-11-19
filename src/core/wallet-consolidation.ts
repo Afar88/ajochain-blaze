@@ -42,7 +42,7 @@ export async function assertProviderNetwork(provider: NetworkProvider, network: 
   if (typeof electrum.performRequest !== "function") throw new Error("Cannot verify that the BCH server is on " + label + ".");
   const header = await electrum.performRequest("blockchain.block.header", 0);
   if (typeof header !== "string" || !/^[0-9a-f]{160}$/i.test(header)) throw new Error("Cannot verify that the BCH server is on " + label + ".");
-  const hash = binToHex(sha256.hash(sha256.hash(hexToBin(header)).reverse()));
+  const hash = binToHex(sha256.hash(sha256.hash(hexToBin(header))).reverse());
   if (hash !== CHIPNET_GENESIS_BLOCK_HASH) throw new Error("The BCH server is not on " + label + ". Nothing was prepared.");
 }
 
