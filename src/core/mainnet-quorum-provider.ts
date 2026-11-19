@@ -228,6 +228,24 @@ export interface MainnetScriptHistorySnapshot {
   records: MainnetScriptHistoryRecord[];
 }
 
+async function mapConcurrent<T, R>(
+  values: readonly T[],
+  concurrency: number,
+  mapper: (value: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= values.length) return;
+      results[index] = await mapper(values[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, () => worker()));
+  return results;
+}
+
 function mainnetAddressLockingBytecode(address: string): string {
   const decoded = decodeCashAddress(address.trim());
   if (typeof decoded === "string" || decoded.prefix !== "bitcoincash" || decoded.type !== "p2pkh") {
@@ -362,7 +380,7 @@ export class MainnetQuorumNetworkProvider implements NetworkProvider {
       list.push(utxo);
       byTxid.set(utxo.txid, list);
     }
-    for (const [txid, utxos] of byTxid) {
+    await mapConcurrent([...byTxid.entries()], 8, async ([txid, utxos]) => {
       const transactions = await Promise.all(
         this.providers.map((provider) => provider.getRawTransaction(txid)),
       );
@@ -371,7 +389,7 @@ export class MainnetQuorumNetworkProvider implements NetworkProvider {
         throw new Error("Independent Electrum endpoints returned different raw bytes for transaction " + txid + ".");
       }
       for (const utxo of utxos) assertPreviousOutputMatches(utxo, normalized[0]);
-    }
+    });
     return agreed;
   }
 
@@ -392,7 +410,7 @@ export class MainnetQuorumNetworkProvider implements NetworkProvider {
     const expectedScripts = addresses.map(mainnetAddressLockingBytecode);
     await this.verifyTip();
     const providerSnapshots = await Promise.all(this.providers.map(async (provider) =>
-      Promise.all(addresses.map((address) => provider.getUtxos(address))),
+      mapConcurrent(addresses, 8, (address) => provider.getUtxos(address)),
     ));
     for (const snapshot of providerSnapshots) {
       for (let addressIndex = 0; addressIndex < snapshot.length; addressIndex += 1) {
