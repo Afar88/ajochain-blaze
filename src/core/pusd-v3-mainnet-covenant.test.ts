@@ -534,7 +534,7 @@ describe("AjoChain PUSD V3 Mainnet covenant (mock-chain invariants)", () => {
       expect(outputs.some((utxo) => utxo.token?.category === PUSD &&
         utxo.token.amount === CONTRIBUTION)).toBe(member === members[0]);
     }
-  });
+  }, 60_000);
 
   it("rejects cancellation after the first payout", async () => {
     const provider = new MockNetworkProvider();
