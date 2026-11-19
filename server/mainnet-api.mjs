@@ -2027,6 +2027,7 @@ function validatePusdMainnetCircleForVerification(value) {
     treasuryScript: PUSD_MAINNET_TREASURY_SCRIPT,
     contractLockingBytecode,
     contractAddress: contract.address,
+    escrowAddresses: escrowContracts.map((escrow) => escrow.address),
     escrowLockingBytecodes,
   };
 }
@@ -2474,7 +2475,7 @@ export async function verifyPusdMainnetCircleTransaction(sessions, tip, body) {
     operation,
     txid: hashTransaction(signedBytes).toLowerCase(),
     contractAddress: context.contractAddress,
-    escrowAddresses: context.escrowLockingBytecodes,
+    escrowAddresses: context.escrowAddresses,
     feeSatoshis: minerFee.toString(),
     inputCount: transaction.inputs.length,
     outputCount: transaction.outputs.length,
