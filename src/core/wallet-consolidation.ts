@@ -73,7 +73,23 @@ export async function planWalletConsolidation(
   }
   const seen = new Set<string>();
   const coins: { utxo: SpendableUtxo; entry: WalletAddressEntry }[] = [];
-  const results = await Promise.all(addresses.map(async (entry) => ({ entry, utxos: await provider.getUtxos(entry.address) })));
+  const batchProvider = provider as NetworkProvider & {
+    getUtxosForAddresses?: (addresses: readonly string[]) =>
+      Promise<{ address: string; utxos: SpendableUtxo[] }[]>;
+  };
+  const results = network === "mainnet" && typeof batchProvider.getUtxosForAddresses === "function"
+    ? (await batchProvider.getUtxosForAddresses(addresses.map((entry) => entry.address)))
+        .map((result) => ({
+          entry: addresses.find((entry) => entry.address.toLowerCase() === result.address.toLowerCase())!,
+          utxos: result.utxos,
+        }))
+    : await Promise.all(addresses.map(async (entry) => ({
+        entry,
+        utxos: await provider.getUtxos(entry.address),
+      })));
+  if (results.some((result) => !result.entry)) {
+    throw new Error("Mainnet wallet scan returned an address outside the requested receive/change set.");
+  }
   for (const { entry, utxos } of results) {
     for (const utxo of utxos) {
       const key = utxo.txid + ":" + utxo.vout;
