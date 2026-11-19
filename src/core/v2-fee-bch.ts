@@ -36,8 +36,10 @@ const legacyArtifact = legacyArtifactJson as unknown as Artifact;
 const legacyEscrowArtifact = legacyEscrowArtifactJson as unknown as Artifact;
 const legacyAutoReserveArtifact = legacyAutoReserveArtifactJson as unknown as Artifact;
 const guardedAutoReserveArtifact = guardedAutoReserveArtifactJson as unknown as Artifact;
-const STATE_DUST = 1_000n;
-const RECEIPT_DUST = 1_000n;
+export const V2_FEE_STATE_OUTPUT_SATOSHIS = 1_000n;
+export const V2_FEE_RECEIPT_OUTPUT_SATOSHIS = 1_000n;
+const STATE_DUST = V2_FEE_STATE_OUTPUT_SATOSHIS;
+const RECEIPT_DUST = V2_FEE_RECEIPT_OUTPUT_SATOSHIS;
 const CHANGE_DUST = 546n;
 const CASH_SCRIPT_INT_MAX = 0x7fffffffffffffffn;
 

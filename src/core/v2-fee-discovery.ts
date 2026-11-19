@@ -3,13 +3,14 @@ import {
   cashAddressToLockingBytecode,
   decodeTransaction,
   hexToBin,
+  hashTransactionUiOrder,
   lockingBytecodeToCashAddress,
   sha256,
   type Transaction,
 } from '@bitauth/libauth';
 import type { NetworkProvider } from 'cashscript';
 import { pkhToAddress } from './bch-address';
-import { createV2FeeCircleContract, v2FeeReceiptCommitment, v2FeeStateCommitment, type V2FeeCircleParams } from './v2-fee-bch';
+import { createV2FeeCircleContract, v2FeeReceiptCommitment, v2FeeStateCommitment, V2_FEE_RECEIPT_OUTPUT_SATOSHIS, V2_FEE_STATE_OUTPUT_SATOSHIS, type V2FeeCircleParams } from './v2-fee-bch';
 import { decodeV2FeeDiscoveryNote, V2_FEE_DISCOVERY_MARKER_SATS } from './v2-fee-discovery-note';
 import { assertChipnetProvider } from './wallet-consolidation';
 
@@ -42,9 +43,12 @@ export function parseV2FeeDiscoveryTransaction(tx: Transaction, provider: Networ
     return token !== undefined && binToHex(token.category) === category && token.amount === 0n &&
       token.nft?.capability === capability && binToHex(token.nft.commitment) === commitment;
   };
-  if (!tokenMatches(0, 'minting', v2FeeStateCommitment(0, false))) return null;
+  if (tx.outputs[0].valueSatoshis !== V2_FEE_STATE_OUTPUT_SATOSHIS ||
+      !tokenMatches(0, 'minting', v2FeeStateCommitment(0, false))) return null;
   for (let i = 0; i < memberCount; i++) {
-    if (!tokenMatches(1 + i, 'none', v2FeeReceiptCommitment(i, 0n))) return null;
+    const receipt = tx.outputs[1 + i];
+    if (receipt.valueSatoshis !== V2_FEE_RECEIPT_OUTPUT_SATOSHIS ||
+        !tokenMatches(1 + i, 'none', v2FeeReceiptCommitment(i, 0n))) return null;
   }
   const members: string[] = [];
   for (let i = 0; i < memberCount; i++) {
@@ -90,15 +94,23 @@ export async function discoverV2FeeCircles(
 ): Promise<V2FeeCircleParams[]> {
   await assertChipnetProvider(provider);
   const electrum = provider as NetworkProvider & { performRequest: (name: string, ...args: string[]) => Promise<unknown> };
-  const owned = new Set(walletAddresses.map((address) => address.toLowerCase()));
+  if (!Number.isSafeInteger(maxTransactions) || maxTransactions < 1 || maxTransactions > 2_000) {
+    throw new Error('Circle discovery transaction limit must be between 1 and 2,000.');
+  }
+  const normalizedAddresses = [...new Set(walletAddresses.map((address) => address.trim().toLowerCase()).filter(Boolean))];
+  const owned = new Set(normalizedAddresses);
   const txids = new Set<string>();
-  for (const address of walletAddresses) {
+  for (const address of normalizedAddresses) {
     const bytecode = cashAddressToLockingBytecode(address);
     if (typeof bytecode === 'string') continue;
     const history = await electrum.performRequest('blockchain.scripthash.get_history', binToHex(sha256.hash(bytecode.bytecode).reverse()));
     if (!Array.isArray(history)) continue;
     for (const entry of history) {
-      const txid = (entry as { tx_hash?: unknown })?.tx_hash;
+      const item = entry as { tx_hash?: unknown; height?: unknown };
+      // Wait for a positive block height; a mempool transaction is not a
+      // completed circle creation and should not appear in the member menu.
+      if (!Number.isSafeInteger(item?.height) || (item.height as number) <= 0) continue;
+      const txid = item?.tx_hash;
       if (typeof txid === 'string' && /^[0-9a-f]{64}$/i.test(txid)) txids.add(txid.toLowerCase());
       if (txids.size >= maxTransactions) break;
     }
@@ -106,10 +118,22 @@ export async function discoverV2FeeCircles(
   }
   const found = new Map<string, V2FeeCircleParams>();
   for (const txid of txids) {
-    const decoded = decodeTransaction(hexToBin(await provider.getRawTransaction(txid)));
-    if (typeof decoded === 'string') continue;
-    const params = parseV2FeeDiscoveryTransaction(decoded, provider);
-    if (params && params.members.some((member) => owned.has(member.toLowerCase()))) found.set(params.stateCategory, params);
+    try {
+      const raw = await provider.getRawTransaction(txid);
+      if (typeof raw !== 'string' || !/^(?:[0-9a-f]{2})+$/i.test(raw)) continue;
+      const rawBytes = hexToBin(raw);
+      // Bind downloaded bytes to the requested TXID before interpreting outputs.
+      if (binToHex(hashTransactionUiOrder(rawBytes)).toLowerCase() !== txid) continue;
+      const decoded = decodeTransaction(rawBytes);
+      if (typeof decoded === 'string') continue;
+      const params = parseV2FeeDiscoveryTransaction(decoded, provider);
+      if (params && params.members.some((member) => owned.has(member.toLowerCase()))) {
+        found.set(params.stateCategory, params);
+      }
+    } catch {
+      // One stale or unavailable history item must not hide other verified circles.
+      continue;
+    }
   }
   return [...found.values()];
 }

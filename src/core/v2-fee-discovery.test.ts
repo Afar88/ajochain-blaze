@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { binToHex, cashAddressToLockingBytecode, encodeTransaction, hexToBin, sha256, type Transaction } from "@bitauth/libauth";
+import { binToHex, cashAddressToLockingBytecode, encodeTransaction, hashTransactionUiOrder, hexToBin, sha256, type Transaction } from "@bitauth/libauth";
 import { MockNetworkProvider, type NetworkProvider } from "cashscript";
 import { pkhToAddress } from "./bch-address";
 import { createV2FeeCircleContract, v2FeeReceiptCommitment, v2FeeStateCommitment, type V2FeeCircleParams } from "./v2-fee-bch";
@@ -78,6 +78,17 @@ describe("on-chain circle discovery", () => {
     expect(parseV2FeeDiscoveryTransaction(forged, new MockNetworkProvider())).toBeNull();
   });
 
+  it("rejects incorrect genesis state and receipt BCH backing", () => {
+    const provider = new MockNetworkProvider();
+    const wrongStateValue = genesisTx();
+    wrongStateValue.outputs[0] = { ...wrongStateValue.outputs[0], valueSatoshis: 999n };
+    expect(parseV2FeeDiscoveryTransaction(wrongStateValue, provider)).toBeNull();
+
+    const wrongReceiptValue = genesisTx();
+    wrongReceiptValue.outputs[1] = { ...wrongReceiptValue.outputs[1], valueSatoshis: 999n };
+    expect(parseV2FeeDiscoveryTransaction(wrongReceiptValue, provider)).toBeNull();
+  });
+
   it("rejects altered settings, markers or token commitments", () => {
     const provider = new MockNetworkProvider();
     const wrongMarker = genesisTx();
@@ -96,7 +107,7 @@ describe("on-chain circle discovery", () => {
   it("finds circles that list one of the wallet's addresses and ignores others", async () => {
     const tx = genesisTx();
     const raw = binToHex(encodeTransaction(tx));
-    const txid = "cd".repeat(32);
+    const txid = binToHex(hashTransactionUiOrder(encodeTransaction(tx))).toLowerCase();
     const scriptHash = (address: string) =>
       binToHex(sha256.hash((cashAddressToLockingBytecode(address) as { bytecode: Uint8Array }).bytecode).reverse());
     const histories: Record<string, unknown> = { [scriptHash(params.members[2])]: [{ tx_hash: txid, height: 1 }] };
@@ -110,5 +121,38 @@ describe("on-chain circle discovery", () => {
     } as unknown as NetworkProvider;
     expect(await discoverV2FeeCircles(provider, [params.members[2]])).toEqual([discovered]);
     expect(await discoverV2FeeCircles(provider, [pkhToAddress(pkh(7), "chipnet")])).toEqual([]);
+  });  it("ignores unconfirmed genesis transactions until they have a block height", async () => {
+    const tx = genesisTx();
+    const raw = binToHex(encodeTransaction(tx));
+    const txid = binToHex(hashTransactionUiOrder(encodeTransaction(tx))).toLowerCase();
+    const address = params.members[2];
+    let rawReads = 0;
+    const provider = {
+      performRequest: async (name: string) => {
+        if (name === "blockchain.block.header") return CHIPNET_GENESIS_HEADER;
+        if (name === "blockchain.scripthash.get_history") return [{ tx_hash: txid, height: 0 }];
+        return null;
+      },
+      getRawTransaction: async () => { rawReads += 1; return raw; },
+    } as unknown as NetworkProvider;
+    expect(await discoverV2FeeCircles(provider, [address])).toEqual([]);
+    expect(rawReads).toBe(0);
   });
+
+  it("rejects raw transaction bytes that do not match the confirmed history txid", async () => {
+    const tx = genesisTx();
+    const raw = binToHex(encodeTransaction(tx));
+    const address = params.members[2];
+    const wrongTxid = "cd".repeat(32);
+    const provider = {
+      performRequest: async (name: string) => {
+        if (name === "blockchain.block.header") return CHIPNET_GENESIS_HEADER;
+        if (name === "blockchain.scripthash.get_history") return [{ tx_hash: wrongTxid, height: 1 }];
+        return null;
+      },
+      getRawTransaction: async () => raw,
+    } as unknown as NetworkProvider;
+    expect(await discoverV2FeeCircles(provider, [address])).toEqual([]);
+  });
+
 });
