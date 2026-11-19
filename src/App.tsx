@@ -528,7 +528,7 @@ export default function App() {
       const provider = await getClassicProvider(gatherNetwork);
       const walletAddresses = walletClient.listWalletAddresses(gatherNetwork);
       if (walletAddresses.length === 0) throw new Error("No wallet receive/change addresses are available on " + gatherNetwork + ".");
-      // Preserve any locally recorded, broadcast-but-unused V3 genesis input (vout 0).
+      // Keep any legacy CashTokens genesis setup output recorded by this wallet out of the gather plan.
       const pendingSetupOutpoints = new Set<string>();
       const setupPrefix = "ajochain:classic-genesis-setup:v1:" + gatherNetwork + ":";
       for (let i = 0; i < window.localStorage.length; i++) {
