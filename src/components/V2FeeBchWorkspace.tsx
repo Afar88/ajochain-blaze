@@ -46,7 +46,7 @@ function decodeCircle(encoded: string): V2FeeCircleParams {
   const binary = atob(normalized + "=".repeat((4 - normalized.length % 4) % 4));
   const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
   const value = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
-  if (value.version !== 2 || typeof value.covenant !== "string" || !["fee-v1", "fee-v2-escrow", "fee-v3-auto-reserve", "fee-v1-guarded", "fee-v2-escrow-guarded", "fee-v3-auto-reserve-guarded"].includes(value.covenant) || value.network !== "chipnet" ||
+  if (value.version !== 2 || typeof value.covenant !== "string" || !["fee-v1", "fee-v2-escrow", "fee-v3-auto-reserve", "fee-v1-guarded", "fee-v2-escrow-guarded", "fee-v3-auto-reserve-guarded", "fee-v3-auto-reserve-closing"].includes(value.covenant) || value.network !== "chipnet" ||
       typeof value.name !== "string" || !Array.isArray(value.members) ||
       !value.members.every((member) => typeof member === "string") ||
       typeof value.contribution !== "string" || typeof value.maxFee !== "string" ||
@@ -215,7 +215,7 @@ export default function V2FeeBchWorkspace({
       const members = buildV2FeeMemberOrder(initiator, additionalMembers, "chipnet");
       const draft: V2FeeCircleDraft = {
         version: 2,
-        covenant: "fee-v3-auto-reserve-guarded",
+        covenant: "fee-v3-auto-reserve-closing",
         name: name.trim(),
         network: "chipnet",
         members,
@@ -578,8 +578,10 @@ export default function V2FeeBchWorkspace({
               </div>
             ))}
           </div>
-          {snapshot.completed
-            ? <p className="classic-recipient"><b>Circle completed.</b> Every registered member received their scheduled payout. No further deposits or payouts are accepted.</p>
+          {snapshot.closedAs === "cancelled"
+            ? <p className="classic-recipient"><b>Circle cancelled.</b> Every member's recorded credit and receipt backing was refunded. Nothing remains locked in the contract.</p>
+            : snapshot.completed
+            ? <p className="classic-recipient"><b>Circle completed.</b> Every registered member received their scheduled payout. No further deposits or payouts are accepted.{snapshot.closedAs === "completed" ? " The circle tokens were closed and their BCH backing returned to the initiator, so nothing remains locked." : ""}</p>
             : <p className="classic-recipient">Next payout recipient: <b>Member {snapshot.round + 1}</b> · {snapshot.recipient}</p>}
           <p className="field-hint">{snapshot.hasPaid ? "The first payout has happened. Cancellation is permanently locked; remaining escrow cannot be withdrawn." : "No payout has happened yet. Only the initiator may cancel and refund recorded member credit."}</p>
         </> : <p className="classic-empty">Reading the state NFT and all member receipts from Chipnet. Refresh if the transaction is still confirming.</p>}
