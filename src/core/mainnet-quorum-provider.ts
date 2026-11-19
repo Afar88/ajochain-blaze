@@ -402,10 +402,10 @@ export class MainnetQuorumNetworkProvider implements NetworkProvider {
   async getUtxosForAddresses(
     addresses: readonly string[],
   ): Promise<{ address: string; utxos: SpendableUtxo[] }[]> {
-    if (!Array.isArray(addresses) || addresses.length === 0 || addresses.length > 100 ||
+    if (!Array.isArray(addresses) || addresses.length === 0 || addresses.length > 500 ||
         addresses.some((address) => typeof address !== "string" || !address.trim()) ||
         new Set(addresses.map((address) => address.trim().toLowerCase())).size !== addresses.length) {
-      throw new Error("Mainnet wallet scan requires 1–100 unique BCH addresses.");
+      throw new Error("Mainnet wallet scan requires 1–500 unique BCH addresses.");
     }
     const expectedScripts = addresses.map(mainnetAddressLockingBytecode);
     await this.verifyTip();

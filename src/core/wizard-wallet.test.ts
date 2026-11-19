@@ -306,11 +306,10 @@ describe("WizardConnect current receive-address confirmation", () => {
 
 
 describe("WizardConnect wallet address scanning", () => {
-  it("includes the currently selected receive index even when it is beyond the default scan window", () => {
-    expect(wizardConnectReceiveAddressIndexes(50, 250)).toEqual([
-      ...Array.from({ length: 51 }, (_, index) => index),
-      250,
-    ]);
+  it("covers every receive index up to the selected one, without gaps", () => {
+    expect(wizardConnectReceiveAddressIndexes(50, 250)).toEqual(
+      Array.from({ length: 251 }, (_, index) => index),
+    );
   });
 
   it("does not duplicate the selected index when it is already in the scan window", () => {

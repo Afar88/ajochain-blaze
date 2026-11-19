@@ -41,7 +41,7 @@ const DEFAULT_TIMEOUT_MS = 12_000;
 const MAX_TIP_AGE_MS = 30 * 60 * 1000;
 const MAX_UTXOS_PER_ADDRESS = 1_000;
 const MAX_WALLET_ADDRESSES = 20;
-const MAX_GATHER_WALLET_ADDRESSES = 80;
+const MAX_GATHER_WALLET_ADDRESSES = 500;
 const MAX_GATHER_INPUTS = 80;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const isHex = (value) => typeof value === "string" && /^(?:[0-9a-f]{2})+$/i.test(value);

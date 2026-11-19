@@ -81,12 +81,12 @@ export default function App() {
   const [menuCircles, setMenuCircles] = useState<MenuCircle[]>(readSavedV2MenuCircles);
   const [selectedMenuCircle, setSelectedMenuCircle] = useState<string | null>(null);
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => {
-    if (typeof window === "undefined") return "system";
+    if (typeof window === "undefined") return "dark";
     try {
       const saved = window.localStorage.getItem("ajochain-theme");
-      return saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
+      return saved === "light" || saved === "dark" || saved === "system" ? saved : "dark";
     } catch {
-      return "system";
+      return "dark";
     }
   });
   const [walletClient, setWalletClient] = useState<WalletClient | null>(null);
@@ -126,6 +126,19 @@ export default function App() {
     // BCH network rather than carrying an old confirmation across networks.
     walletClient?.clearReceiveAddressConfirmation(network);
   }, [network, walletClient]);
+
+  // Status messages are transient: show them while relevant and clear them
+  // automatically so the page returns to a clean state.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setGatherMessage("");
+      setDiscoveryMessage("");
+      setAddressMatchMessage("");
+      setPusdSignatureMessage("");
+      setPusdPlanError("");
+    }, 20_000);
+    return () => window.clearTimeout(timer);
+  }, [gatherMessage, discoveryMessage, addressMatchMessage, pusdSignatureMessage, pusdPlanError]);
 
   const menuLabel = page === "circle-detail"
     ? menuCircles.find((circle) => circle.encoded === selectedMenuCircle)?.name ?? "My circle"
@@ -721,7 +734,7 @@ export default function App() {
                 </button>
                 {menuCircles.length > 0 && (
                   <>
-                    <div className="dropdown-label circle-menu-label">YOUR CIRCLES</div>
+                    <div className="dropdown-label circle-menu-label">CIRCLE RECORDS</div>
                     {menuCircles.map((circle) => (
                       <button
                         key={circle.encoded}
