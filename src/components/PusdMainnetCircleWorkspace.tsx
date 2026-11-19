@@ -560,7 +560,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
 
       <div className="pusd-mainnet-build-status">
         <LockKeyhole size={16} />
-        <span><b>Next engineering stage: lifecycle workspace and signed-byte verification</b><small>Genesis, deposit, payout and cancellation plans can be signed by Selene and checked again by the server against raw quorum-authenticated prevouts, exact circle/escrow artifacts, 0x61 wallet sighashes and the BCH 2026 VM. Signed bytes are discarded and never broadcast. PUSD spending remains locked.</small></span>
+        <span><b>Next engineering stage: independent review and release operations</b><small>Genesis, deposit, payout and cancellation plans can be signed by Selene for local and server-side verification against quorum-authenticated prevouts, exact circle/escrow artifacts, 0x61 wallet sighashes and the BCH 2026 VM. Signed bytes are discarded and never broadcast. External security review, authoritative issuer policy, independently verified provider operators, real-wallet lifecycle tests, and durable submission/confirmation/reorg controls remain outstanding. PUSD spending remains locked.</small></span>
       </div>
 
       <div className="pusd-mainnet-saved">
