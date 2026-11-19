@@ -1,5 +1,19 @@
 # Blaze Chipnet circle discovery: security gate
 
+## On-chain discovery (enabled for new Chipnet circles)
+
+New `fee-v3-auto-reserve-closing` circles are discoverable without any server, database or login. Their genesis transaction adds, after the receipt NFTs, one 546-sat P2PKH marker output per member (in member order) and an `OP_RETURN "AJOD"` note holding the version, covenant code, member count, contribution, maxFee, initiator PKH and treasury locking bytecode (`src/core/v2-fee-discovery-note.ts`).
+
+When a wallet connects on Chipnet, the browser checks the Electrum history of the wallet's own receive (0–50) and change (0–20) addresses, decodes candidate transactions and rebuilds the parameters (`src/core/v2-fee-discovery.ts`). A circle is accepted only if:
+- input 0 spends output 0 of the transaction whose txid is the token category;
+- output 0 is the fresh `540000` minting state and outputs 1..N the zero-credit receipts;
+- the rebuilt parameters derive the exact covenant script holding all of them;
+- one of the markers pays an address of the connected wallet.
+
+The server never learns which addresses are queried or which circles exist. The Electrum server already sees these addresses for balance lookups. Membership is public on-chain from genesis; covenant spends already revealed member PKHs. Circle names are not written on-chain, so a found circle is labelled "Found circle <category prefix>". Older circles still need their invite link.
+
+## Shared server discovery
+
 **Shared discovery, registration, and backfill are disabled.** Share the existing Chipnet circle invite link to add a circle on another device. The local circle menu and invite restoration do not depend on the discovery route.
 
 ## Why it is disabled

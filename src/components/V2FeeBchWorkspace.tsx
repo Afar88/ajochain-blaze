@@ -5,6 +5,7 @@ import { CashTokensGenesisUtxoMissingError, classicAddressToPkh, getClassicProvi
 import { formatBch, type NetworkId } from "../core/network";
 import { wallet } from "../core/wizard-wallet";
 import { dedupeSavedV2FeeCircleRecords } from "../core/v2-fee-circle-records";
+import { encodeV2FeeCircleParams } from "../core/v2-fee-discovery";
 import {
   buildV2FeeMemberOrder,
   planV2FeeCancel,
@@ -31,16 +32,9 @@ function bchInputAmount(satoshis: bigint) {
   return fraction ? whole.toString() + "." + fraction : whole.toString();
 }
 function encodeCircle(params: V2FeeCircleParams) {
-  const json = JSON.stringify({
-    ...params,
-    contribution: params.contribution.toString(),
-    maxFee: params.maxFee.toString(),
-  });
-  const bytes = new TextEncoder().encode(json);
-  let binary = "";
-  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  return encodeV2FeeCircleParams(params);
 }
+
 function decodeCircle(encoded: string): V2FeeCircleParams {
   const normalized = encoded.replace(/-/g, "+").replace(/_/g, "/");
   const binary = atob(normalized + "=".repeat((4 - normalized.length % 4) % 4));
@@ -532,6 +526,7 @@ export default function V2FeeBchWorkspace({
                 : "Connect your Selene wallet and it will be registered automatically."}
             </div>
             <label>Other members' Chipnet BCH addresses · one per line<textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder="bchtest:…\nbchtest:…" required /></label>
+            <p className="field-hint">Each member, including you, receives a 546-sat marker, and the circle settings (not the name) are written on Chipnet. That lets members' wallets find the circle automatically, without an invite link.</p>
             <button className="primary-button" type="submit" disabled={busy || network !== "chipnet" || !walletConnected}>
               {busy ? "Creating circle…" : network !== "chipnet" ? "Switch to Chipnet" : !walletConnected ? "Connect wallet first" : "Create fee circle"}
             </button>
