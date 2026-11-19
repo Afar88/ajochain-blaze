@@ -2153,6 +2153,9 @@ export function assertPusdMainnetCircleLayout(transaction, sourceOutputs, inputS
         throw new Error("PUSD Mainnet genesis receipt backing must be exactly 1,000 satoshis.");
       }
       const escrowOutput = transaction.outputs[count + 1 + index];
+      if (binToHex(escrowOutput.lockingBytecode).toLowerCase() !== context.escrowLockingBytecodes[index]) {
+        throw new Error("PUSD Mainnet genesis escrow output " + index + " uses the wrong member script.");
+      }
       assertPusdPlainOutput(escrowOutput, context.escrowLockingBytecodes[index], count + 1 + index);
       if (escrowOutput.valueSatoshis !== PUSD_MAINNET_CIRCLE_DUST) {
         throw new Error("PUSD Mainnet genesis member escrow backing must be exactly 1,000 satoshis.");
@@ -2168,7 +2171,7 @@ export function assertPusdMainnetCircleLayout(transaction, sourceOutputs, inputS
     if (!Number.isSafeInteger(memberIndex) || memberIndex < 0 || memberIndex >= count ||
         transaction.inputs.length !== 5 || (transaction.outputs.length !== 4 && transaction.outputs.length !== 5) ||
         walletScript !== context.members[memberIndex]) {
-      throw new Error("PUSD Mainnet deposit must use the registered member wallet and exact five-input lifecycle layout.");
+      throw new Error("PUSD Mainnet deposit must use the registered member and connected wallet with the exact five-input lifecycle layout.");
     }
     if (inputScripts[0] !== context.contractLockingBytecode ||
         inputScripts[1] !== context.contractLockingBytecode ||
