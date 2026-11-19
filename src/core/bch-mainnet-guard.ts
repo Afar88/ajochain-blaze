@@ -8,6 +8,13 @@
  */
 export const BCH_MAINNET_OPERATIONS_ENABLED = false as const;
 
+/**
+ * Release gate for the V3 BCH Mainnet circle workspace only (create, pay,
+ * payout, cancel). The server enforces its own BCH_MAINNET_CIRCLE_BROADCAST_ENABLED
+ * gate and full verification before relaying. Classic BCH stays locked above.
+ */
+export const BCH_MAINNET_CIRCLE_SEND_ENABLED = true as const;
+
 export function assertBchTransactionBroadcastAllowed(network: "mainnet" | "chipnet"): void {
   if (network === "mainnet" && !BCH_MAINNET_OPERATIONS_ENABLED) {
     throw new Error(

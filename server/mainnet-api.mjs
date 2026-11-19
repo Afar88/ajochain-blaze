@@ -19,7 +19,7 @@ const PUSD_CATEGORY = "2469acc5afa4b10cb5b5c04afb89c3a3ffd61c5da9c01e26d00951cae
 // Hard release gate: runtime environment variables must never activate real-value broadcasts.
 export const MAINNET_BROADCAST_ENABLED = false;
 // Separate gate for BCH Mainnet circle transactions (create, pay, payout, cancel).
-export const BCH_MAINNET_CIRCLE_BROADCAST_ENABLED = false;
+export const BCH_MAINNET_CIRCLE_BROADCAST_ENABLED = true;
 export const MAINNET_GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f";
 export const BCH_MAINNET_FORK_CHECKPOINT_HEIGHT = 478_559;
 export const BCH_MAINNET_FORK_CHECKPOINT_HASH =
@@ -1709,7 +1709,7 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
   let inputSatoshis = 0n;
 
   for (const [index, input] of transaction.inputs.entries()) {
-    const previousTxid = reverseHex(binToHex(input.outpointTransactionHash));
+    const previousTxid = binToHex(input.outpointTransactionHash);
     const outpoint = previousTxid + ":" + input.outpointIndex;
     if (inputOutpoints.has(outpoint)) {
       throw new Error("Signed BCH Mainnet transaction contains a duplicate input outpoint.");
@@ -1749,7 +1749,7 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
     utxo,
   ]));
   for (const [index, input] of transaction.inputs.entries()) {
-    const previousTxid = reverseHex(binToHex(input.outpointTransactionHash));
+    const previousTxid = binToHex(input.outpointTransactionHash);
     const outpoint = previousTxid + ":" + input.outpointIndex;
     const current = currentUtxos.get(outpoint);
     if (!current || current.height <= 0 ||
@@ -1769,7 +1769,7 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
 
   if (operation === "genesis") {
     const firstInput = transaction.inputs[0];
-    const firstInputTxid = reverseHex(binToHex(firstInput.outpointTransactionHash));
+    const firstInputTxid = binToHex(firstInput.outpointTransactionHash);
     if (firstInputTxid !== context.stateCategory || firstInput.outpointIndex !== 0) {
       throw new Error("BCH Mainnet V3 genesis category must be derived from the first non-token input at vout 0.");
     }
