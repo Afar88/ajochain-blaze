@@ -16,6 +16,10 @@ export type WalletPathBranch = 'receive' | 'change';
 export type WalletInputPath = { branch: WalletPathBranch; index: number };
 export type WalletAddressEntry = WalletInputPath & { address: string };
 
+export function isCurrentReceiveAddressConfirmed(current: string | null, confirmed: string | null): boolean {
+  return Boolean(current && confirmed && current.toLowerCase() === confirmed.toLowerCase());
+}
+
 export function wizardConnectReceiveAddressIndexes(receiveLimit: number, selectedIndex: number): number[] {
   if (!Number.isSafeInteger(receiveLimit) || receiveLimit < 0 || receiveLimit > 10000 ||
       !Number.isSafeInteger(selectedIndex) || selectedIndex < 0 || selectedIndex > 100000) {
@@ -465,6 +469,7 @@ class WizardWallet {
   private connectionWatchdog: ReturnType<typeof setTimeout> | null = null;
   // Foreground/focus/online can fire in quick succession on mobile browsers.
   private lastResumeAttemptAt = 0;
+  private confirmedReceiveAddresses: Partial<Record<Net, string>> = {};
 
   onChange(fn: Listener) { this.listeners.push(fn); return () => { this.listeners = this.listeners.filter((listener) => listener !== fn); }; }
   private emit() { this.listeners.forEach((f) => f()); }
@@ -510,6 +515,7 @@ class WizardWallet {
     // Keep the previously matched public receive index when resuming a saved session.
     // A fresh pairing starts at index 0 and can be matched again by the user.
     this.receiveIndex = existing ? loadReceiveIndex() : 0;
+    this.confirmedReceiveAddresses = {};
     this.state = 'connecting';
     const generation = ++this.generation;
     const icon = new URL('favicon.svg', location.href).toString();
@@ -523,6 +529,7 @@ class WizardWallet {
       if (!this.isCurrent(mgr, generation)) return;
       this.clearConnectionWatchdog();
       this.walletName = mgr.walletName;
+      this.confirmedReceiveAddresses = {};
       savePublicPaths(mgr);
       this.error = null;
       this.state = 'connected';
@@ -547,6 +554,7 @@ class WizardWallet {
       this.qrUri = null;
       this.walletName = null;
       this.receiveIndex = loadReceiveIndex();
+      this.confirmedReceiveAddresses = {};
       this.state = 'disconnected';
       this.error = detailText || (protocolMismatch
         ? "Selene and AjoChain could not agree on a WizardConnect protocol. Start a fresh pairing."
@@ -614,6 +622,7 @@ class WizardWallet {
     this.qrUri = null;
     this.walletName = null;
     this.receiveIndex = 0;
+    this.confirmedReceiveAddresses = {};
     try {
       localStorage.removeItem(PATHS_STORAGE_KEY);
       localStorage.removeItem(RECEIVE_INDEX_STORAGE_KEY);
@@ -704,6 +713,7 @@ class WizardWallet {
       this.qrUri = null;
       this.walletName = null;
       this.receiveIndex = 0;
+      this.confirmedReceiveAddresses = {};
       try {
         localStorage.removeItem(PATHS_STORAGE_KEY);
         localStorage.removeItem(RECEIVE_INDEX_STORAGE_KEY);
@@ -746,6 +756,30 @@ class WizardWallet {
   }
 
   /** Ask the connected wallet to sign, then verify intent without broadcasting. */
+  /**
+   * Confirm that the user has matched the address currently displayed by Selene.
+   * This is deliberately separate from automatic member-address matching:
+   * an old circle member may be derivable by this xpub without being Selene's
+   * currently displayed receive address.
+   */
+  confirmReceiveAddress(address: string, network: Net, maxIndex = DEFAULT_RECEIVE_ADDRESS_SEARCH_LIMIT): number | null {
+    const index = this.matchReceiveAddress(address, network, maxIndex);
+    if (index === null) return null;
+    const current = this.address(network);
+    if (!current) throw new Error("Selene's matched receive address is no longer available in the connected session.");
+    this.confirmedReceiveAddresses[network] = current;
+    this.emit();
+    return index;
+  }
+
+  /** True only while the connected session's current address matches the user's explicit confirmation. */
+  isReceiveAddressConfirmed(network: Net): boolean {
+    return isCurrentReceiveAddressConfirmed(
+      this.address(network),
+      this.confirmedReceiveAddresses[network] ?? null,
+    );
+  }
+
   /** Public receive and change addresses of the connected wallet, for coin discovery. */
   listWalletAddresses(network: Net, receiveLimit = DEFAULT_RECEIVE_ADDRESS_SEARCH_LIMIT, changeLimit = 20): WalletAddressEntry[] {
     if (this.state !== 'connected' || !this.mgr || this.mgr.protocol !== 'hdwalletv1') {
