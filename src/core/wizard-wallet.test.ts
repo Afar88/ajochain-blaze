@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { decodeCashAddress } from "@bitauth/libauth";
 import {
   wizardRelayStatusMessage,
+  isCurrentReceiveAddressConfirmed,
   buildWizardSignRequest,
   assertP2pkhWalletInputCoverage,
   assertRequiredContractWalletSighash,
@@ -286,6 +287,23 @@ describe("WizardConnect sign-request serialization", () => {
     )).toThrow(/Invalid wallet signing input index/);
   });
 });
+
+describe("WizardConnect current receive-address confirmation", () => {
+  it("confirms only the exact address that was explicitly matched", () => {
+    expect(isCurrentReceiveAddressConfirmed("bitcoincash:abc", "bitcoincash:abc")).toBe(true);
+    expect(isCurrentReceiveAddressConfirmed("bitcoincash:abc", "bitcoincash:def")).toBe(false);
+  });
+
+  it("treats CashAddress letter casing as equivalent", () => {
+    expect(isCurrentReceiveAddressConfirmed("BITCOINCASH:ABC", "bitcoincash:abc")).toBe(true);
+  });
+
+  it("does not treat an unconfirmed or unavailable address as confirmed", () => {
+    expect(isCurrentReceiveAddressConfirmed("bitcoincash:abc", null)).toBe(false);
+    expect(isCurrentReceiveAddressConfirmed(null, "bitcoincash:abc")).toBe(false);
+  });
+});
+
 
 describe("WizardConnect wallet address scanning", () => {
   it("includes the currently selected receive index even when it is beyond the default scan window", () => {

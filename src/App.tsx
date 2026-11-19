@@ -51,6 +51,7 @@ type WalletView = {
   walletName: string | null;
   error: string | null;
   receiveIndex: number;
+  mainnetAddressConfirmed: boolean;
 };
 type PusdView = {
   status: "idle" | "loading" | "ready" | "error";
@@ -95,7 +96,8 @@ export default function App() {
   const [discoveryRun, setDiscoveryRun] = useState(0);
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
   const [walletView, setWalletView] = useState<WalletView>({
-    state: "idle", uri: null, qrUri: null, walletName: null, error: null, receiveIndex: 0,
+    state: "idle", uri: null, qrUri: null, walletName: null, error: null,
+    receiveIndex: 0, mainnetAddressConfirmed: false,
   });
   const [showWallet, setShowWallet] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState("");
@@ -117,6 +119,14 @@ export default function App() {
 
   const walletAddress = walletClient?.address(network) ?? null;
   const connected = walletView.state === "connected";
+
+  useEffect(() => {
+    // A network change can also mean Selene is showing a different receive
+    // address. Require the user to sync the address for the newly selected
+    // BCH network rather than carrying an old confirmation across networks.
+    walletClient?.clearReceiveAddressConfirmation(network);
+  }, [network, walletClient]);
+
   const menuLabel = page === "circle-detail"
     ? menuCircles.find((circle) => circle.encoded === selectedMenuCircle)?.name ?? "My circle"
     : pageLabels[page];
@@ -126,6 +136,10 @@ export default function App() {
     window.addEventListener("storage", refreshSavedCircles);
     return () => window.removeEventListener("storage", refreshSavedCircles);
   }, []);
+
+  useEffect(() => {
+    if (walletView.state !== "connected") setAddressMatchMessage("");
+  }, [walletView.state]);
 
   useEffect(() => {
     let active = true;
@@ -206,6 +220,7 @@ export default function App() {
           walletName: client.walletName,
           error: client.error,
           receiveIndex: client.receiveIndex,
+          mainnetAddressConfirmed: client.isReceiveAddressConfirmed("mainnet"),
         });
         unsubscribe = client.onChange(sync);
         sync();
@@ -253,6 +268,17 @@ export default function App() {
       });
       return () => { active = false; };
     }
+    if (!walletClient.isReceiveAddressConfirmed("mainnet")) {
+      setPusdView({
+        status: "idle", amount: 0n,
+        detail: "Sync the Mainnet receive address currently shown in Selene under Wallet Details before checking this wallet's PUSD balance.",
+        utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
+      });
+      setPusdTransferPlan(null);
+      setPusdPlanError("");
+      setPusdSignatureMessage("");
+      return () => { active = false; };
+    }
     const address = walletClient.address("mainnet");
     if (!address) {
       setPusdView({
@@ -293,7 +319,7 @@ export default function App() {
         });
       });
     return () => { active = false; };
-  }, [page, network, walletView.state, walletView.receiveIndex, walletClient, pusdRefresh]);
+  }, [page, network, walletView.state, walletView.receiveIndex, walletView.mainnetAddressConfirmed, walletClient, pusdRefresh]);
 
   const preparePusdTransfer = async () => {
     setPusdPlanError("");
@@ -305,6 +331,10 @@ export default function App() {
     }
     if (network !== "mainnet") {
       setPusdPlanError("PUSD is Mainnet-only. Switch the app network to Mainnet first.");
+      return;
+    }
+    if (!walletClient.isReceiveAddressConfirmed("mainnet")) {
+      setPusdPlanError("Sync the Mainnet receive address currently shown in Selene under Wallet Details before preparing a PUSD transfer.");
       return;
     }
     if (pusdView.status !== "ready") {
@@ -349,6 +379,10 @@ export default function App() {
       setPusdSignatureMessage("A verified Mainnet PUSD balance is required before signature verification.");
       return;
     }
+    if (!walletClient.isReceiveAddressConfirmed("mainnet")) {
+      setPusdSignatureMessage("Sync the Mainnet receive address currently shown in Selene before testing the PUSD signature.");
+      return;
+    }
     const senderAddress = walletClient.address("mainnet");
     if (!senderAddress || !pusdRecipient.trim()) {
       setPusdSignatureMessage("Confirm the connected sender address and a valid recipient address.");
@@ -373,6 +407,10 @@ export default function App() {
         fetchPusdWalletBalance(senderAddress),
         fetchPusdFeeQuote(),
       ]);
+      if (!walletClient.isReceiveAddressConfirmed("mainnet") ||
+          walletClient.address("mainnet") !== senderAddress) {
+        throw new Error("Selene's confirmed Mainnet address changed during PUSD preparation. The signed request was not started; sync the address and retry.");
+      }
       const freshPlan = buildPusdTransferPlan({
         authenticatedUtxos: freshBalance.utxos,
         requiredPusdAmount: parseAssetAmount("PUSD", pusdAmount),
@@ -386,6 +424,10 @@ export default function App() {
         freshPlan.walletInputs,
         "Verify PUSD Mainnet transfer to " + pusdRecipient.trim() + " (local verification only; never broadcast)",
       );
+      if (!walletClient.isReceiveAddressConfirmed("mainnet") ||
+          walletClient.address("mainnet") !== senderAddress) {
+        throw new Error("Selene's confirmed Mainnet address changed after signing. The signed bytes were discarded; nothing was broadcast.");
+      }
       setPusdTransferPlan(freshPlan);
       setPusdSignatureMessage(
         "Selene signed the freshly rebuilt PUSD transfer and AjoChain passed exact input/output comparison, CashTokens output comparison, 0x61 sighash checks and BCH 2026 VM verification (" +
@@ -516,6 +558,15 @@ export default function App() {
   const gatherWalletCoins = async () => {
     const gatherNetwork = network;
     if (!walletClient || walletClient.state !== "connected" || !walletAddress) return;
+    const destinationAddress = walletClient.address(gatherNetwork);
+    if (!destinationAddress) {
+      setGatherMessage("The connected Selene receive address is not available for this network.");
+      return;
+    }
+    if (gatherNetwork === "mainnet" && !walletClient.isReceiveAddressConfirmed("mainnet")) {
+      setGatherMessage("Sync the Mainnet receive address currently shown in Selene under Wallet Details before gathering real BCH.");
+      return;
+    }
     setGatherBusy(true);
     setGatherMessage("Scanning this wallet's " + (gatherNetwork === "mainnet" ? "Mainnet" : "Chipnet") + " receive and change addresses…");
     try {
@@ -542,7 +593,7 @@ export default function App() {
       const plan = await planWalletConsolidation(
         provider,
         walletAddresses,
-        walletAddress,
+        destinationAddress,
         pendingSetupOutpoints,
         gatherNetwork,
       );
@@ -550,11 +601,21 @@ export default function App() {
       const realFundsWarning = gatherNetwork === "mainnet"
         ? "\n\nThis uses real BCH. The only output returns to your connected wallet address. CashTokens and pending circle setup coins are not moved."
         : "\n\nCashTokens and pending circle setup coins are not moved.";
+      if (gatherNetwork === "mainnet" &&
+          (!walletClient.isReceiveAddressConfirmed("mainnet") ||
+           walletClient.address("mainnet") !== destinationAddress)) {
+        throw new Error("Selene's confirmed Mainnet address or connection changed during the coin scan. Sync the address and retry.");
+      }
       if (!window.confirm(
         "Gather " + plan.inputCount + " " + networkLabel + " BCH coin(s) into one coin at " + plan.destination + "?\n\n" +
         "Total " + plan.totalSatoshis.toString() + " sats, estimated miner fee " + plan.fee.toString() + " sats." +
         realFundsWarning,
       )) { setGatherMessage(""); return; }
+      if (gatherNetwork === "mainnet" &&
+          (!walletClient.isReceiveAddressConfirmed("mainnet") ||
+           walletClient.address("mainnet") !== destinationAddress)) {
+        throw new Error("Selene's confirmed Mainnet address changed before signing. Sync the address and prepare a fresh gather.");
+      }
       const signed = await walletClient.signAndVerify(
         plan.wc,
         plan.walletInputs,
@@ -562,6 +623,10 @@ export default function App() {
         plan.inputPaths,
       );
       if (gatherNetwork === "mainnet") {
+        if (!walletClient.isReceiveAddressConfirmed("mainnet") ||
+            walletClient.address("mainnet") !== destinationAddress) {
+          throw new Error("Selene's confirmed Mainnet address or connection changed after signing. The signed bytes were not broadcast; sync the address and retry.");
+        }
         const response = await fetch("/api/bch/gather", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -608,8 +673,13 @@ export default function App() {
     setSeleneAddress("");
   };
 
-  const shortAddress = (value: string | null) =>
-    value ? value.slice(0, 10) + "…" + value.slice(-6) : "Address syncing…";
+  const shortAddress = (value: string | null) => {
+    if (network === "mainnet" && walletClient?.state === "connected" &&
+        !walletClient.isReceiveAddressConfirmed("mainnet")) {
+      return "Sync Selene address";
+    }
+    return value ? value.slice(0, 10) + "…" + value.slice(-6) : "Address syncing…";
+  };
 
   return (
     <main className="app-shell compact-app">
@@ -963,16 +1033,25 @@ export default function App() {
                 <input id="selene-address" className="form-control" value={seleneAddress} onChange={(event) => setSeleneAddress(event.target.value)} placeholder="Paste the current Selene receive address" autoComplete="off" />
                 <button className="primary-button" onClick={() => {
                   try {
-                    const index = walletClient?.matchReceiveAddress(seleneAddress, network, 250) ?? null;
+                    const index = walletClient?.confirmReceiveAddress(seleneAddress, network, 250) ?? null;
                     setAddressMatchMessage(index === null
-                      ? "No match in receive indices 0–250. Confirm this is the address on Selene's Receive screen and that both apps use the same network."
-                      : "Synced to Selene's current receive address (index " + index + "). Wallet Details and circle actions now use this address.");
+                      ? "No match in receive indices 0–250 of this connected receive key. Check Selene's Mainnet Receive screen and network. If it still does not match, this session may expose a different receive path; do not create a circle with the stale address."
+                      : "Confirmed Selene's current receive address (index " + index + "). Mainnet circle creation will now use this exact address as Member 1.");
                   } catch (cause) { setAddressMatchMessage(cause instanceof Error ? cause.message : "Could not match address."); }
                 }}>Sync Selene address</button>
                 {addressMatchMessage && <p className="wallet-match-message" role="status">{addressMatchMessage}</p>}
+                <small className="field-hint">
+                  {walletClient?.isReceiveAddressConfirmed(network)
+                    ? "Current Selene receive address confirmed for this wallet connection."
+                    : "This connection's current receive address is not confirmed yet."}
+                </small>
                 {(network === "chipnet" || network === "mainnet") && walletAddress && <>
-                  <button className="secondary-button" disabled={gatherBusy} onClick={() => void gatherWalletCoins()}>
-                    {gatherBusy ? "Scanning and preparing coins…" : network === "mainnet" ? "Gather Mainnet BCH coins to this address" : "Gather Selene coins to this address"}
+                  <button className="secondary-button"
+                    disabled={gatherBusy || (network === "mainnet" && !walletClient?.isReceiveAddressConfirmed("mainnet"))}
+                    onClick={() => void gatherWalletCoins()}>
+                    {gatherBusy ? "Scanning and preparing coins…" : network === "mainnet" && !walletClient?.isReceiveAddressConfirmed("mainnet")
+                      ? "Sync Selene address before gathering"
+                      : network === "mainnet" ? "Gather Mainnet BCH coins to this address" : "Gather Selene coins to this address"}
                   </button>
                   {network === "mainnet" && <small className="field-hint">Mainnet gathering uses real BCH and requires Selene approval. Only plain BCH is consolidated back into your own wallet; CashTokens are left untouched.</small>}
                   {gatherMessage && <p className="wallet-match-message" role="status">{gatherMessage}</p>}
