@@ -634,10 +634,17 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
           <input value={contribution} onChange={(event) => setContribution(event.target.value)} inputMode="decimal" placeholder="0.002" required />
           <small>Minimum 0.002 BCH per member, per scheduled round. Up to 8 decimal places.</small>
         </label>
-        <label>Member Mainnet addresses · one per line
+        <div className="creator-member-preview">
+          <b>Member 1 · You, the initiator</b>
+          {initiatorAddress
+            ? <code>{initiatorAddress}</code>
+            : "Connect Selene and match the address currently shown on its Mainnet Receive screen. Your address will be added first automatically."}
+        </div>
+        <label>Other members' Mainnet addresses · one per line
           <textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder={"bitcoincash:…\nbitcoincash:…"} required />
-          <small>Enter 2–5 unique Bitcoin Cash Mainnet P2PKH or token-aware P2PKH addresses.</small>
+          <small>Add 1–4 other unique Bitcoin Cash Mainnet P2PKH or token-aware P2PKH addresses. Your connected Selene address is always Member 1.</small>
         </label>
+        {memberOrder.error && <p className="classic-error" role="alert">{memberOrder.error}</p>}
         <label>Maximum BCH miner fee per action (satoshis)
           <input value={maxFee} onChange={(event) => setMaxFee(event.target.value)} inputMode="numeric" required />
           <small>Miner fees are funded separately from the member pot and the 1% project fee.</small>
@@ -660,11 +667,12 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
         )}
 
         <div className="pusd-mainnet-actions">
-          <button className="secondary-button" type="button" onClick={saveDraft} disabled={network !== "mainnet"}>Save local draft</button>
-        <button className="primary-button" type="submit" disabled={busy || network !== "mainnet" || !walletConnected}>
+          <button className="secondary-button" type="button" onClick={saveDraft} disabled={network !== "mainnet" || !walletConnected}>Save local draft</button>
+        <button className="primary-button" type="submit" disabled={busy || network !== "mainnet" || !walletConnected || Boolean(memberOrder.error)}>
           {busy ? "Preparing Mainnet preview…" : "Prepare on-chain creation preview"} <ArrowRight size={15} />
         </button>
         </div>
+        <small className="field-hint">Member order is fixed at creation: your connected Mainnet address is Member 1, followed by the addresses above. Each address is a specific receive key from a wallet seed, so use the address currently shown by Selene before creating the circle.</small>
       </form>
 
       {preview && (
