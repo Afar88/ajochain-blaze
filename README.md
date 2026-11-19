@@ -33,7 +33,7 @@ BLAZE supports separate BCH and ParyonUSD (PUSD) workspaces. They use different 
 
 ![AjoChain BLAZE architecture](docs/assets/ajochain-architecture.svg)
 
-The browser application connects to the member's wallet and reads chain data through BCH network providers. The PUSD circle verification API adds a server-side check of the exact signed transaction, its authenticated previous outputs and covenant execution. The API is read-only: it does not relay or broadcast the verified bytes.
+The browser application connects to the member's wallet and reads chain data through BCH network providers. Circle discovery and circle state come from the blockchain, not a central application backend or database. Optional API routes provide chain-provider reads and additional PUSD signed-transaction preflight; they do not register, store or discover circles.
 
 ### On-chain discovery
 
@@ -142,12 +142,12 @@ The active BLAZE application is deployed through the dedicated Vercel project **
 - Application: https://ajochain-blaze.vercel.app
 - Repository: https://github.com/Afar88/ajochain-blaze
 
-Keep this project isolated from the legacy AjoChain projects and their database resources. The deployment guide documents the BLAZE-only Electrum provider manifest and private Upstash settings. Never put server credentials in browser variables or reuse the legacy database.
+Keep this project isolated from legacy AjoChain deployments. The optional API adapter uses a BLAZE-specific Electrum provider manifest. No Neon, Postgres, Redis or legacy database is required for on-chain circle discovery. Never put provider credentials in browser variables.
 
 ## Documentation map
 
 - [Ready-to-run setup and deployment](docs/QUICKSTART.md)
-- [Circle discovery backend and security gate](docs/BLAZE_CIRCLE_DISCOVERY_BACKEND.md)
+- [On-chain circle discovery architecture](docs/BLAZE_CIRCLE_DISCOVERY_BACKEND.md)
 - [BCH, PUSD and member accounting](docs/BCH_PUSD_MEMBER_ACCOUNTING.md)
 - [PUSD Mainnet release checklist](docs/PUSD_MAINNET_RELEASE_CHECKLIST.md)
 - [Mainnet release checklist](docs/MAINNET_RELEASE_CHECKLIST.md)
