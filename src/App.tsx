@@ -51,6 +51,7 @@ type WalletView = {
   walletName: string | null;
   error: string | null;
   receiveIndex: number;
+  mainnetAddressConfirmed: boolean;
 };
 type PusdView = {
   status: "idle" | "loading" | "ready" | "error";
@@ -95,7 +96,8 @@ export default function App() {
   const [discoveryRun, setDiscoveryRun] = useState(0);
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
   const [walletView, setWalletView] = useState<WalletView>({
-    state: "idle", uri: null, qrUri: null, walletName: null, error: null, receiveIndex: 0,
+    state: "idle", uri: null, qrUri: null, walletName: null, error: null,
+    receiveIndex: 0, mainnetAddressConfirmed: false,
   });
   const [showWallet, setShowWallet] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState("");
@@ -210,6 +212,7 @@ export default function App() {
           walletName: client.walletName,
           error: client.error,
           receiveIndex: client.receiveIndex,
+          mainnetAddressConfirmed: client.isReceiveAddressConfirmed("mainnet"),
         });
         unsubscribe = client.onChange(sync);
         sync();
@@ -257,6 +260,14 @@ export default function App() {
       });
       return () => { active = false; };
     }
+    if (!walletClient.isReceiveAddressConfirmed("mainnet")) {
+      setPusdView({
+        status: "idle", amount: 0n,
+        detail: "Sync the Mainnet receive address currently shown in Selene under Wallet Details before checking this wallet's PUSD balance.",
+        utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
+      });
+      return () => { active = false; };
+    }
     const address = walletClient.address("mainnet");
     if (!address) {
       setPusdView({
@@ -297,7 +308,7 @@ export default function App() {
         });
       });
     return () => { active = false; };
-  }, [page, network, walletView.state, walletView.receiveIndex, walletClient, pusdRefresh]);
+  }, [page, network, walletView.state, walletView.receiveIndex, walletView.mainnetAddressConfirmed, walletClient, pusdRefresh]);
 
   const preparePusdTransfer = async () => {
     setPusdPlanError("");
@@ -309,6 +320,10 @@ export default function App() {
     }
     if (network !== "mainnet") {
       setPusdPlanError("PUSD is Mainnet-only. Switch the app network to Mainnet first.");
+      return;
+    }
+    if (!walletClient.isReceiveAddressConfirmed("mainnet")) {
+      setPusdPlanError("Sync the Mainnet receive address currently shown in Selene under Wallet Details before preparing a PUSD transfer.");
       return;
     }
     if (pusdView.status !== "ready") {
@@ -353,6 +368,10 @@ export default function App() {
       setPusdSignatureMessage("A verified Mainnet PUSD balance is required before signature verification.");
       return;
     }
+    if (!walletClient.isReceiveAddressConfirmed("mainnet")) {
+      setPusdSignatureMessage("Sync the Mainnet receive address currently shown in Selene before testing the PUSD signature.");
+      return;
+    }
     const senderAddress = walletClient.address("mainnet");
     if (!senderAddress || !pusdRecipient.trim()) {
       setPusdSignatureMessage("Confirm the connected sender address and a valid recipient address.");
@@ -377,6 +396,10 @@ export default function App() {
         fetchPusdWalletBalance(senderAddress),
         fetchPusdFeeQuote(),
       ]);
+      if (!walletClient.isReceiveAddressConfirmed("mainnet") ||
+          walletClient.address("mainnet") !== senderAddress) {
+        throw new Error("Selene's confirmed Mainnet address changed during PUSD preparation. The signed request was not started; sync the address and retry.");
+      }
       const freshPlan = buildPusdTransferPlan({
         authenticatedUtxos: freshBalance.utxos,
         requiredPusdAmount: parseAssetAmount("PUSD", pusdAmount),
@@ -390,6 +413,10 @@ export default function App() {
         freshPlan.walletInputs,
         "Verify PUSD Mainnet transfer to " + pusdRecipient.trim() + " (local verification only; never broadcast)",
       );
+      if (!walletClient.isReceiveAddressConfirmed("mainnet") ||
+          walletClient.address("mainnet") !== senderAddress) {
+        throw new Error("Selene's confirmed Mainnet address changed after signing. The signed bytes were discarded; nothing was broadcast.");
+      }
       setPusdTransferPlan(freshPlan);
       setPusdSignatureMessage(
         "Selene signed the freshly rebuilt PUSD transfer and AjoChain passed exact input/output comparison, CashTokens output comparison, 0x61 sighash checks and BCH 2026 VM verification (" +
