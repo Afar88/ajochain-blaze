@@ -701,7 +701,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
         )}
 
         <div className="pusd-mainnet-actions">
-          <button className="secondary-button" type="button" onClick={saveDraft} disabled={network !== "mainnet" || !walletConnected}>Save local draft</button>
+          <button className="secondary-button" type="button" onClick={saveDraft} disabled={network !== "mainnet" || !walletConnected || !initiatorAddressConfirmed}>Save local draft</button>
         <button className="primary-button" type="submit" disabled={busy || network !== "mainnet" || !walletConnected || !initiatorAddressConfirmed || Boolean(memberOrder.error)}>
           {busy ? "Preparing Mainnet preview…" : "Prepare on-chain creation preview"} <ArrowRight size={15} />
         </button>
