@@ -171,8 +171,9 @@ test("Mainnet BCH gather accepts only one token-free output back to a wallet-der
   const otherAddress = createMainnetTestAddress(22);
   const walletScript = cashAddressToLockingBytecode(walletAddress);
   const otherScript = cashAddressToLockingBytecode(otherAddress);
+  const inputHash = Buffer.from("0123456789abcdef".repeat(4), "hex");
   const input = {
-    outpointTransactionHash: Buffer.alloc(32, 0xab),
+    outpointTransactionHash: inputHash,
     outpointIndex: 1,
     unlockingBytecode: Buffer.from([0x01, 0x01]),
   };
@@ -188,7 +189,7 @@ test("Mainnet BCH gather accepts only one token-free output back to a wallet-der
     180,
   );
   assert.equal(layout.outputSatoshis, 50_000n);
-  assert.deepEqual(layout.inputOutpoints, ["ab".repeat(32) + ":1"]);
+  assert.deepEqual(layout.inputOutpoints, [Buffer.from(inputHash).reverse().toString("hex") + ":1"]);
 
   assert.throws(() => validateBchMainnetGatherLayout(
     makeTransaction({ ...walletOutput, lockingBytecode: Buffer.from(otherScript, "hex") }),
