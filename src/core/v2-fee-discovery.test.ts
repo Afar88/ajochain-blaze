@@ -154,5 +154,32 @@ describe("on-chain circle discovery", () => {
     } as unknown as NetworkProvider;
     expect(await discoverV2FeeCircles(provider, [address])).toEqual([]);
   });
+  it("checks every wallet address before applying the global transaction scan limit", async () => {
+    const tx = genesisTx();
+    const raw = binToHex(encodeTransaction(tx));
+    const actualTxid = binToHex(hashTransactionUiOrder(encodeTransaction(tx))).toLowerCase();
+    const busyAddress = params.members[0];
+    const circleAddress = params.members[2];
+    const scriptHash = (address: string) =>
+      binToHex(sha256.hash((cashAddressToLockingBytecode(address) as { bytecode: Uint8Array }).bytecode).reverse());
+    const histories: Record<string, unknown> = {
+      [scriptHash(busyAddress)]: [
+        { tx_hash: "11".repeat(32), height: 10 },
+        { tx_hash: "22".repeat(32), height: 11 },
+      ],
+      [scriptHash(circleAddress)]: [
+        { tx_hash: actualTxid, height: 12 },
+      ],
+    };
+    const provider = {
+      performRequest: async (name: string, arg: string | number) => {
+        if (name === "blockchain.block.header") return CHIPNET_GENESIS_HEADER;
+        if (name === "blockchain.scripthash.get_history") return histories[arg as string] ?? [];
+        return null;
+      },
+      getRawTransaction: async () => raw,
+    } as unknown as NetworkProvider;
+    expect(await discoverV2FeeCircles(provider, [busyAddress, circleAddress], 2)).toEqual([discovered]);
+  });
 
 });

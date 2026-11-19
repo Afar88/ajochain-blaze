@@ -99,23 +99,39 @@ export async function discoverV2FeeCircles(
   }
   const normalizedAddresses = [...new Set(walletAddresses.map((address) => address.trim().toLowerCase()).filter(Boolean))];
   const owned = new Set(normalizedAddresses);
-  const txids = new Set<string>();
+  const historyByTxid = new Map<string, number>();
+  let successfulHistoryLookups = 0;
   for (const address of normalizedAddresses) {
     const bytecode = cashAddressToLockingBytecode(address);
     if (typeof bytecode === 'string') continue;
-    const history = await electrum.performRequest('blockchain.scripthash.get_history', binToHex(sha256.hash(bytecode.bytecode).reverse()));
-    if (!Array.isArray(history)) continue;
-    for (const entry of history) {
-      const item = entry as { tx_hash?: unknown; height?: unknown };
-      // Wait for a positive block height; a mempool transaction is not a
-      // completed circle creation and should not appear in the member menu.
-      if (!Number.isSafeInteger(item?.height) || (item.height as number) <= 0) continue;
-      const txid = item?.tx_hash;
-      if (typeof txid === 'string' && /^[0-9a-f]{64}$/i.test(txid)) txids.add(txid.toLowerCase());
-      if (txids.size >= maxTransactions) break;
+    let history: unknown;
+    try {
+      history = await electrum.performRequest('blockchain.scripthash.get_history', binToHex(sha256.hash(bytecode.bytecode).reverse()));
+      successfulHistoryLookups += 1;
+    } catch {
+      // Keep scanning other receive/change addresses if one lookup is unavailable.
+      continue;
     }
-    if (txids.size >= maxTransactions) break;
+    if (!Array.isArray(history)) continue;
+    const recentForAddress = history.flatMap((entry) => {
+      const item = entry as { tx_hash?: unknown; height?: unknown };
+      if (!Number.isSafeInteger(item?.height) || (item.height as number) <= 0 ||
+          typeof item?.tx_hash !== 'string' || !/^[0-9a-f]{64}$/i.test(item.tx_hash)) return [];
+      return [{ txid: item.tx_hash.toLowerCase(), height: item.height as number }];
+    }).sort((a, b) => b.height - a.height || a.txid.localeCompare(b.txid)).slice(0, maxTransactions);
+    for (const item of recentForAddress) {
+      historyByTxid.set(item.txid, Math.max(historyByTxid.get(item.txid) ?? 0, item.height));
+    }
   }
+  if (normalizedAddresses.length > 0 && successfulHistoryLookups === 0) {
+    throw new Error('Could not read Chipnet transaction history for any connected wallet address.');
+  }
+  // Apply the global cap after collecting the newest confirmed history from
+  // every receive/change address; a busy first address must not starve the rest.
+  const txids = [...historyByTxid.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, maxTransactions)
+    .map(([txid]) => txid);
   const found = new Map<string, V2FeeCircleParams>();
   for (const txid of txids) {
     try {

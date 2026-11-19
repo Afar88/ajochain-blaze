@@ -4,7 +4,7 @@
 
 New `fee-v3-auto-reserve-closing` circles are discoverable without any server, database or login. Their genesis transaction adds, after the receipt NFTs, one 546-sat P2PKH marker output per member (in member order) and an `OP_RETURN "AJOD"` note holding the version, covenant code, member count, contribution, maxFee, initiator PKH and treasury locking bytecode (`src/core/v2-fee-discovery-note.ts`).
 
-When a wallet connects on Chipnet, the browser checks the Electrum history of the wallet's own receive (0–50) and change (0–20) addresses, decodes candidate transactions and rebuilds the parameters (`src/core/v2-fee-discovery.ts`). A circle is accepted only if:
+When a wallet connects on Chipnet, the browser checks the Electrum history of the wallet's own receive (0–50) and change (0–20) addresses, ranks confirmed candidate transactions across all those addresses, and verifies up to the newest 300 (`src/core/v2-fee-discovery.ts`). It ignores mempool-only entries and checks that each downloaded raw transaction hashes to the history TXID. A circle is accepted only if:
 - input 0 spends output 0 of the transaction whose txid is the token category;
 - output 0 is the fresh `540000` minting state and outputs 1..N the zero-credit receipts;
 - the rebuilt parameters derive the exact covenant script holding all of them;
