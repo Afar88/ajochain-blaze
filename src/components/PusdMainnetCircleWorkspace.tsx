@@ -212,6 +212,8 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
       persistActiveCircle(circle);
       setDeployedCircles(addDeployedCircle(circle));
       setCircleSnapshot(null);
+      setGenesisSigningPlan(null);
+      setActionSigningPlan(null);
       setNotice("PUSD Mainnet circle invite loaded. Re-read the on-chain state before acting.");
     } catch {
       setError("This link is not a valid PUSD Mainnet V3 circle invite.");
@@ -688,6 +690,8 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
               persistActiveCircle(circle);
               setDeployedCircles(addDeployedCircle(circle));
               setCircleSnapshot(null);
+              setGenesisSigningPlan(null);
+              setActionSigningPlan(null);
               setInviteInput("");
               setNotice("PUSD Mainnet circle invite loaded. Re-read the on-chain state before acting.");
             } catch (cause) {
