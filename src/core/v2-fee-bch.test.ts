@@ -12,7 +12,7 @@ import { hash160, secp256k1, hexToBin } from '@bitauth/libauth';
 import artifactJson from '../../contracts/AjoCircleV2Fee.json' with { type: 'json' };
 import legacyArtifactJson from '../../contracts/AjoCircleV2Fee.legacy.json' with { type: 'json' };
 import { pkhToAddress } from './bch-address';
-import { buildV2FeeMemberOrder, requireV2FeeGenesisUtxo, v2FeeArtifactForCovenant } from './v2-fee-bch';
+import { buildV2FeeMemberOrder, requireV2FeeGenesisUtxo, requireV2FeeGenesisMaxFee, v2FeeArtifactForCovenant } from './v2-fee-bch';
 import { CashTokensGenesisUtxoMissingError } from './classic-bch';
 
 const artifact = artifactJson as unknown as Artifact;
@@ -32,6 +32,23 @@ const members = [key(1), key(2)];
 const initiator = key(8);
 const treasury = key(9);
 const wrongTreasury = key(10);
+
+describe("V2 fee genesis maxFee preflight", () => {
+  it("includes discovery overhead for every supported member count", () => {
+    for (const memberCount of [2, 3, 4, 5]) {
+      const base = 6_000n + BigInt(memberCount) * 500n;
+      const expected = base + BigInt(memberCount) * 40n + 100n;
+      expect(requireV2FeeGenesisMaxFee(memberCount, expected, true)).toBe(expected);
+      expect(() => requireV2FeeGenesisMaxFee(memberCount, expected - 1n, true)).toThrow(
+        `needs maxFee of at least ${expected.toString()} sats`,
+      );
+    }
+  });
+
+  it("preserves the prior fee estimate for circles without discovery outputs", () => {
+    expect(requireV2FeeGenesisMaxFee(2, 7_000n, false)).toBe(7_000n);
+  });
+});
 
 function makeLegacyContract(provider: MockNetworkProvider) {
   return new Contract(legacyArtifact, [
