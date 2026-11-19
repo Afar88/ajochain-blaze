@@ -137,6 +137,69 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
+
+export type PusdMainnetCircleVerificationOperation = "genesis" | "deposit" | "payout" | "cancel";
+
+export interface PusdMainnetCircleVerificationRequest {
+  operation: PusdMainnetCircleVerificationOperation;
+  circle: {
+    version: 3;
+    network: "mainnet";
+    name: string;
+    members: string[];
+    contribution: string;
+    maxFee: string;
+    stateCategory: string;
+    initiator: string;
+    treasury: string;
+  };
+  walletAddresses: string[];
+  signedTransactionHex: string;
+  memberIndex?: number;
+  amount?: string;
+}
+
+export interface PusdMainnetCircleVerificationResult {
+  network: "mainnet";
+  operation: PusdMainnetCircleVerificationOperation;
+  txid: string;
+  contractAddress: string;
+  escrowAddresses: string[];
+  feeSatoshis: string;
+  inputCount: number;
+  outputCount: number;
+  tipHeight: number;
+  tipHash: string;
+  confirmedInputs: number;
+  verified: true;
+  broadcast: false;
+  message: string;
+}
+
+/**
+ * Send Selene-signed PUSD circle bytes to the read-only backend verifier.
+ * This endpoint independently authenticates prevouts and contract execution;
+ * it has no broadcast or submission path.
+ */
+export async function verifyPusdMainnetCircleSignedTransaction(
+  request: PusdMainnetCircleVerificationRequest,
+): Promise<PusdMainnetCircleVerificationResult> {
+  if (request.operation === "deposit" &&
+      (!Number.isSafeInteger(request.memberIndex) || typeof request.amount !== "string")) {
+    throw new Error("PUSD circle deposit verification requires its member index and raw PUSD amount.");
+  }
+  const result = await requestJson<PusdMainnetCircleVerificationResult>(
+    "/api/pusd/circle/verify",
+    { method: "POST", body: JSON.stringify(request) },
+  );
+  if (result.network !== "mainnet" || result.operation !== request.operation ||
+      result.broadcast !== false || result.verified !== true ||
+      !/^[0-9a-f]{64}$/i.test(result.txid)) {
+    throw new Error("PUSD Mainnet server verification returned an inconsistent or unsafe result.");
+  }
+  return result;
+}
+
 function normalizeRawPusdUtxos(raw: RawPusdUtxo[]): PusdUtxo[] {
   if (!Array.isArray(raw)) throw new Error("PUSD provider returned an invalid UTXO list.");
   return raw.map((utxo) => {
