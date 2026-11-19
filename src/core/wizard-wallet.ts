@@ -780,6 +780,13 @@ class WizardWallet {
     );
   }
 
+  /** Require a fresh Selene address match after switching the app's BCH network. */
+  clearReceiveAddressConfirmation(network: Net): void {
+    if (!this.confirmedReceiveAddresses[network]) return;
+    delete this.confirmedReceiveAddresses[network];
+    this.emit();
+  }
+
   /** Public receive and change addresses of the connected wallet, for coin discovery. */
   listWalletAddresses(network: Net, receiveLimit = DEFAULT_RECEIVE_ADDRESS_SEARCH_LIMIT, changeLimit = 20): WalletAddressEntry[] {
     if (this.state !== 'connected' || !this.mgr || this.mgr.protocol !== 'hdwalletv1') {
