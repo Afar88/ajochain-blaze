@@ -119,6 +119,14 @@ export default function App() {
 
   const walletAddress = walletClient?.address(network) ?? null;
   const connected = walletView.state === "connected";
+
+  useEffect(() => {
+    // A network change can also mean Selene is showing a different receive
+    // address. Require the user to sync the address for the newly selected
+    // BCH network rather than carrying an old confirmation across networks.
+    walletClient?.clearReceiveAddressConfirmation(network);
+  }, [network, walletClient]);
+
   const menuLabel = page === "circle-detail"
     ? menuCircles.find((circle) => circle.encoded === selectedMenuCircle)?.name ?? "My circle"
     : pageLabels[page];
