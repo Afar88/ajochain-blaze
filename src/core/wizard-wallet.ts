@@ -3,7 +3,7 @@
 // derives receive addresses locally and asks the wallet to sign transactions.
 import { initiateDappRelay, RelayMsgAction, type DappRelayResult } from '@wizardconnect/core';
 import { DappConnectionManager, loadSession } from '@wizardconnect/dapp';
-import { binToHex, createVirtualMachineBch2026, decodeTransactionBCH, encodeTransactionOutputs, hash160, hexToBin } from '@bitauth/libauth';
+import { binToHex, createVirtualMachineBch2026, decodeCashAddress, decodeTransactionBCH, encodeTransactionOutputs, hash160, hexToBin } from '@bitauth/libauth';
 import { sourceOutputToRelay, transactionToHex } from '@wizardconnect/core/hdwalletv1-serialize';
 import { pkhToAddress, type Net } from './bch-address';
 
@@ -15,6 +15,48 @@ export const DEFAULT_RECEIVE_ADDRESS_SEARCH_LIMIT = 50;
  * receive xpub. Never return a cached address or an address from another
  * protocol/session: 0 is the documented WizardConnect "receive" child path.
  */
+const CASH_ADDRESS_PREFIX: Record<Net, string> = { mainnet: 'bitcoincash', chipnet: 'bchtest' };
+
+export function findWizardConnectReceiveIndex(
+  address: string,
+  protocol: string | null,
+  getPubkey: ((childIndex: number, addressIndex: bigint) => Uint8Array | undefined) | null,
+  network: Net,
+  maxIndex = DEFAULT_RECEIVE_ADDRESS_SEARCH_LIMIT,
+): number | null {
+  if (!Number.isSafeInteger(maxIndex) || maxIndex < 0 || maxIndex > 10000) {
+    throw new Error('Receive-address search limit must be between 0 and 10,000.');
+  }
+  const trimmed = address.trim().toLowerCase();
+  if (!trimmed) return null;
+  const expectedPrefix = CASH_ADDRESS_PREFIX[network];
+  const otherNetwork: Net = network === 'mainnet' ? 'chipnet' : 'mainnet';
+  const candidates = trimmed.includes(':')
+    ? [trimmed]
+    : [expectedPrefix + ':' + trimmed, CASH_ADDRESS_PREFIX[otherNetwork] + ':' + trimmed];
+  const decoded = candidates.map((candidate) => decodeCashAddress(candidate)).find((result) => typeof result !== 'string');
+  if (!decoded) throw new Error('That is not a valid Bitcoin Cash address. Copy it again from Selene.');
+  if (decoded.type !== 'p2pkh' && decoded.type !== 'p2pkhWithTokens') {
+    throw new Error('That is not a Selene receive address. Copy the address from Selene\'s Receive screen.');
+  }
+  if (decoded.prefix !== expectedPrefix) {
+    const addressNetwork = decoded.prefix === 'bchtest' ? 'Chipnet' : decoded.prefix === 'bitcoincash' ? 'Mainnet' : decoded.prefix;
+    throw new Error(
+      'This is a ' + addressNetwork + ' address, but the site is set to ' +
+      (network === 'chipnet' ? 'Chipnet' : 'Mainnet') + '. Switch the site and Selene to the same network, then match again.',
+    );
+  }
+  const target = binToHex(decoded.payload);
+  for (let i = 0; i <= maxIndex; i++) {
+    if (protocol !== 'hdwalletv1' || !getPubkey) return null;
+    const publicKey = getPubkey(WIZARDCONNECT_RECEIVE_CHILD_INDEX, BigInt(i));
+    if (!(publicKey instanceof Uint8Array) || publicKey.length !== 33 ||
+        (publicKey[0] !== 0x02 && publicKey[0] !== 0x03)) continue;
+    if (binToHex(hash160(publicKey)) === target) return i;
+  }
+  return null;
+}
+
 export function deriveWizardConnectReceiveAddress(
   protocol: string | null,
   getPubkey: ((childIndex: number, addressIndex: bigint) => Uint8Array | undefined) | null,
@@ -650,26 +692,19 @@ class WizardWallet {
     if (this.state !== "connected" || !this.mgr || this.mgr.protocol !== "hdwalletv1") {
       throw new Error("Connect Selene through WizardConnect before matching a receive address.");
     }
-    const target = address.trim().toLowerCase();
-    if (!target) return null;
-    if (!Number.isSafeInteger(maxIndex) || maxIndex < 0 || maxIndex > 10000) {
-      throw new Error("Receive-address search limit must be between 0 and 10,000.");
-    }
-    for (let i = 0; i <= maxIndex; i++) {
-      const derivedAddress = deriveWizardConnectReceiveAddress(
-        this.mgr.protocol,
-        (childIndex, index) => this.mgr?.getPubkey(childIndex, index),
-        network,
-        i,
-      );
-      if (derivedAddress?.toLowerCase() === target) {
-        this.receiveIndex = i;
-        try { localStorage.setItem(RECEIVE_INDEX_STORAGE_KEY, String(i)); } catch { /* best effort */ }
-        this.emit();
-        return i;
-      }
-    }
-    return null;
+    const mgr = this.mgr;
+    const i = findWizardConnectReceiveIndex(
+      address,
+      mgr.protocol,
+      (childIndex, index) => mgr.getPubkey(childIndex, index),
+      network,
+      maxIndex,
+    );
+    if (i === null) return null;
+    this.receiveIndex = i;
+    try { localStorage.setItem(RECEIVE_INDEX_STORAGE_KEY, String(i)); } catch { /* best effort */ }
+    this.emit();
+    return i;
   }
 
   /** Ask the connected wallet to sign, then verify intent without broadcasting. */
