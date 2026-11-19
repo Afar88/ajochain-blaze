@@ -963,10 +963,10 @@ export default function App() {
                 <input id="selene-address" className="form-control" value={seleneAddress} onChange={(event) => setSeleneAddress(event.target.value)} placeholder="Paste the current Selene receive address" autoComplete="off" />
                 <button className="primary-button" onClick={() => {
                   try {
-                    const index = walletClient?.matchReceiveAddress(seleneAddress, network, 250) ?? null;
+                    const index = walletClient?.confirmReceiveAddress(seleneAddress, network, 250) ?? null;
                     setAddressMatchMessage(index === null
                       ? "No match in receive indices 0–250. Confirm this is the address on Selene's Receive screen and that both apps use the same network."
-                      : "Synced to Selene's current receive address (index " + index + "). Wallet Details and circle actions now use this address.");
+                      : "Confirmed Selene's current receive address (index " + index + "). Mainnet circle creation will now use this exact address as Member 1.");
                   } catch (cause) { setAddressMatchMessage(cause instanceof Error ? cause.message : "Could not match address."); }
                 }}>Sync Selene address</button>
                 {addressMatchMessage && <p className="wallet-match-message" role="status">{addressMatchMessage}</p>}
