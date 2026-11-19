@@ -37,9 +37,9 @@ The browser application connects to the member's wallet and reads chain data thr
 
 ### On-chain discovery
 
-For the newer guarded BCH V3 Chipnet circles, discovery is performed from the connected wallet's own derived receive/change address history. BLAZE downloads candidate raw transactions, checks their transaction IDs, validates the genesis/category relationship, verifies the ordered receipt and member markers, and rebuilds the exact covenant scripts before accepting a match.
+For discoverable BCH V3 circles on **Chipnet and Mainnet**, discovery is performed from the connected wallet's own derived receive/change address history. BLAZE reads Electrum transaction history, downloads candidate raw transactions, verifies each transaction ID, validates the genesis/category relationship, checks the ordered state and receipt NFTs plus member markers, and rebuilds the exact covenant scripts before accepting a match. A circle is returned only when the connected wallet is one of its members.
 
-There is no central registry required to discover these new Chipnet circles. Shared server discovery and registration remain disabled. Older circles can still be restored using their existing invite links.
+There is no central registry, database, server registration or backfill required for discovery on either network. Older circle versions can still be restored using their existing invite links, but invite data is not treated as proof of membership or payment.
 
 The configured Electrum providers are a read quorum, not a substitute for a locally validated SPV/chainwork client. Different endpoint names do not prove independent operators or infrastructure. See [the circle-discovery security gate](docs/BLAZE_CIRCLE_DISCOVERY_BACKEND.md).
 
@@ -69,11 +69,11 @@ Read [BCH, PUSD and member accounting](docs/BCH_PUSD_MEMBER_ACCOUNTING.md) for t
 
 | Area | Current state | What that means |
 |---|---|---|
-| BCH V3 automatic-reserve circles | **Chipnet prototype** | The guarded V3 path is the active new-circle flow on Chipnet. Its on-chain discovery and member receipt rules are test-network functionality. |
+| BCH V3 automatic-reserve circles | **Chipnet + Mainnet workspaces** | Circle discovery is on-chain on both networks. The dedicated V3 Mainnet create/pay/payout path is separate from the Classic BCH guard. |
 | Classic / V1 / V2 circles | **Versioned compatibility** | Existing circles retain their original covenant and accounting rules; they are not silently migrated to V3. |
-| BCH Mainnet circles | **Read-only / preview** | The Mainnet workspace validates drafts and prepares an unsigned genesis preview. Mainnet circle signing and broadcast are not approved. |
+| BCH Mainnet circles | **V3 on-chain discovery and dedicated send path** | The V3 workspace has its own Mainnet signing/broadcast path. Classic BCH operations remain controlled by their separate legacy guard. |
 | PUSD Mainnet V3 circles | **Engineering / read-only verification** | The workspace and lifecycle planners cover genesis, deposit, payout and pre-first-payout cancellation. PR [#78](https://github.com/Afar88/ajochain-blaze/pull/78) adds server-side signed-byte verification; it does not add a broadcast path or enable spending. |
-| Shared circle registry | **Disabled** | BLAZE does not rely on a server registry for new Chipnet V3 discovery. Existing invite restoration remains available. |
+| Shared circle registry | **Not used** | Neither Chipnet nor Mainnet circle discovery depends on a centralized registry. Circle identity and lifecycle are reconstructed from BCH transactions and UTXOs. |
 
 ### PUSD verification status
 
@@ -81,7 +81,7 @@ The PUSD server verifier in [PR #78](https://github.com/Afar88/ajochain-blaze/pu
 
 It covers genesis, member deposit, payout (including final close) and pre-first-payout cancellation. The endpoint is **POST /api/pusd/circle/verify**. It returns verification information only; signed transaction bytes are discarded after the response and are not reserved, relayed or broadcast.
 
-**Verification is not spending approval.** The PUSD Mainnet spending guard remains hard-coded to false, and the Mainnet broadcast guard remains closed. No real PUSD or BCH should be sent to prototype circle scripts.
+**PUSD verification is not spending approval.** The PUSD Mainnet broadcast guard remains hard-coded to false. This is separate from the dedicated BCH V3 Mainnet send path. Do not send real PUSD to prototype PUSD scripts.
 
 ## Get running
 
