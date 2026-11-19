@@ -2251,12 +2251,15 @@ export function assertPusdMainnetCircleLayout(transaction, sourceOutputs, inputS
     }
   }
   const feeIndex = 2 * count + 1;
-  if (inputScripts[feeIndex] !== walletScript || sourceOutputs[feeIndex].token) {
-    throw new Error("PUSD Mainnet lifecycle fee input must be token-free BCH from the connected sponsor wallet.");
+  if (sourceOutputs[feeIndex].token) {
+    throw new Error("PUSD Mainnet lifecycle fee input must be token-free BCH.");
   }
 
   const state = pusdStatePosition(sourceOutputs[0], context, "PUSD Mainnet lifecycle state input");
   if (operation === "payout") {
+    if (inputScripts[feeIndex] !== walletScript) {
+      throw new Error("PUSD Mainnet payout fee input must belong to the connected sponsor wallet.");
+    }
     if (state.completed) throw new Error("PUSD Mainnet circle has already completed all scheduled payouts.");
     const closing = state.round + 1 === count;
     const expectedOutputs = closing ? count + 4 : 2 * count + 4;
@@ -2939,6 +2942,9 @@ export function createMainnetApiServer() {
       }
       if (request.method === "POST" && url.pathname === "/api/pusd/circle/verify") {
         const body = await readJson(request);
+        if (!["genesis", "deposit", "payout", "cancel"].includes(body?.operation)) {
+          throw new Error("Unsupported PUSD Mainnet circle verification operation.");
+        }
         await withElectrumSessions(async (sessions) => {
           const tip = await getTipQuorum(sessions);
           const result = await verifyPusdMainnetCircleTransaction(sessions, tip, body);
