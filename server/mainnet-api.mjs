@@ -2115,7 +2115,7 @@ function assertPusdEscrowOutput(output, context, memberIndex, credit, expectedVa
   }
 }
 
-function assertPusdMainnetCircleLayout(transaction, sourceOutputs, inputScripts, walletScripts, context, operation, body) {
+export function assertPusdMainnetCircleLayout(transaction, sourceOutputs, inputScripts, walletScripts, context, operation, body) {
   const count = context.memberCount;
   const walletScript = walletScripts[0];
   if (operation === "genesis") {
