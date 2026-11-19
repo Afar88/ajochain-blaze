@@ -425,7 +425,7 @@ export default function App() {
     let cancelled = false;
     void (async () => {
       try {
-        const [{ getClassicProvider }, { discoverV2FeeCircles, encodeV2FeeCircleParams }, { dedupeSavedV2FeeCircleRecords }] = await Promise.all([
+        const [{ getClassicProvider }, { discoverV2FeeCircles, encodeV2FeeCircleParams }, { dedupeSavedV2FeeCircleRecords, getV2FeeCircleRecordIdentity }] = await Promise.all([
           import("./core/classic-bch"),
           import("./core/v2-fee-discovery"),
           import("./core/v2-fee-circle-records"),
@@ -435,13 +435,17 @@ export default function App() {
         if (cancelled || found.length === 0) return;
         const stored: unknown = JSON.parse(window.localStorage.getItem(V2_MENU_STORAGE_KEY) || "[]");
         const existing = dedupeSavedV2FeeCircleRecords(stored);
-        const merged = dedupeSavedV2FeeCircleRecords([
-          ...existing,
-          ...found.map((params) => ({ encoded: encodeV2FeeCircleParams(params), savedAt: Date.now() })),
-        ]);
-        const added = merged.length - existing.length;
+        // A genesis category belongs to exactly one circle; never relabel or duplicate a saved circle.
+        const knownCategories = new Set(existing.flatMap((record) => {
+          const identity = getV2FeeCircleRecordIdentity(record.encoded);
+          return identity ? [identity.stateCategory.toLowerCase()] : [];
+        }));
+        const additions = found
+          .filter((params) => !knownCategories.has(params.stateCategory.toLowerCase()))
+          .map((params) => ({ encoded: encodeV2FeeCircleParams(params), savedAt: 0 }));
+        const added = additions.length;
         if (added > 0) {
-          window.localStorage.setItem(V2_MENU_STORAGE_KEY, JSON.stringify(merged));
+          window.localStorage.setItem(V2_MENU_STORAGE_KEY, JSON.stringify([...existing, ...additions]));
           setMenuCircles(readSavedV2MenuCircles());
           setDiscoveryMessage(`Found ${added} circle${added === 1 ? "" : "s"} for this wallet on Chipnet. Open it from Your circles.`);
         }

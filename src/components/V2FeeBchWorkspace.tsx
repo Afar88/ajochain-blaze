@@ -85,7 +85,7 @@ type Props = {
 export default function V2FeeBchWorkspace({
   network, walletConnected, view = "create", selectedCircle = null, onCircleSaved,
 }: Props) {
-  const [saved, setSaved] = useState<SavedCircle[]>(readSaved);
+  const [, setSaved] = useState<SavedCircle[]>(readSaved);
   const [selected, setSelected] = useState<string | null>(() => selectedCircle ?? readSaved()[0]?.encoded ?? null);
   const [name, setName] = useState("My Ajo Circle");
   const [amount, setAmount] = useState("0.002");
@@ -106,7 +106,8 @@ export default function V2FeeBchWorkspace({
 
   const persist = (params: V2FeeCircleParams) => {
     const encoded = encodeCircle(params);
-    const next = dedupeSavedV2FeeCircleRecords([{ encoded, savedAt: Date.now() }, ...saved]);
+    // Merge with storage, not component state: wallet discovery may have added circles since mount.
+    const next = dedupeSavedV2FeeCircleRecords([{ encoded, savedAt: Date.now() }, ...readSaved()]);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     setSaved(next);
     setSelected(encoded);
