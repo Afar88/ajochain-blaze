@@ -1920,7 +1920,7 @@ export function validateBchMainnetGatherLayout(transaction, walletScripts, desti
   }
   const seen = new Set();
   for (const [index, input] of transaction.inputs.entries()) {
-    const txid = binToHex(input.outpointTransactionHash).toLowerCase();
+    const txid = reverseHex(binToHex(input.outpointTransactionHash)).toLowerCase();
     if (!/^[0-9a-f]{64}$/.test(txid) ||
         !Number.isSafeInteger(input.outpointIndex) || input.outpointIndex < 0) {
       throw new Error("Mainnet BCH gather input " + index + " has an invalid outpoint.");
@@ -2002,7 +2002,7 @@ export async function verifyBchMainnetGatherTransaction(sessions, tip, body) {
   let inputSatoshis = 0n;
 
   for (const [index, input] of transaction.inputs.entries()) {
-    const previousTxid = binToHex(input.outpointTransactionHash).toLowerCase();
+    const previousTxid = reverseHex(binToHex(input.outpointTransactionHash)).toLowerCase();
     let previous = previousByTxid.get(previousTxid);
     if (!previous) {
       previous = await fetchQuorumPreviousTransaction(sessions, previousTxid);
