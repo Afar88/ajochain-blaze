@@ -1,10 +1,11 @@
 /**
  * Mainnet BCH transaction kill-switch.
  *
- * Classic BCH construction is ported and can be exercised on Chipnet. Mainnet
- * planning/read-only inspection may be used for review, but this constant must
- * stay false until the contract, network adapter and wallet-signing path have
- * independent evidence and an approved release. Never make this user-controlled.
+ * BCH V3 now has a read-only signed-transaction preflight on Mainnet. This is
+ * not an approved submission/relay path. Keep this constant false until the
+ * exact deployed covenant artifacts, provider trust model, Selene/WizardConnect
+ * lifecycle, and production operations have independent evidence and written
+ * release approval. Never make this user-controlled.
  */
 export const BCH_MAINNET_OPERATIONS_ENABLED = false as const;
 
@@ -18,9 +19,10 @@ export const BCH_MAINNET_CIRCLE_SEND_ENABLED = true as const;
 export function assertBchTransactionBroadcastAllowed(network: "mainnet" | "chipnet"): void {
   if (network === "mainnet" && !BCH_MAINNET_OPERATIONS_ENABLED) {
     throw new Error(
-      "BCH Mainnet broadcasting is still locked. The Classic covenant and transaction " +
-      "adapter need independent security review and a real-wallet end-to-end release test. " +
-      "Use Chipnet to test circle creation, contributions and payouts.",
+      "BCH Mainnet broadcasting is still locked. V3 has read-only signed-transaction verification, " +
+      "but no approved production submission/relay path. Independent covenant audit, provider-operator " +
+      "verification, real Selene/WizardConnect lifecycle tests and operational release approval remain " +
+      "required. Use Chipnet for real transaction-flow testing.",
     );
   }
 }
