@@ -16,6 +16,16 @@ export type WalletPathBranch = 'receive' | 'change';
 export type WalletInputPath = { branch: WalletPathBranch; index: number };
 export type WalletAddressEntry = WalletInputPath & { address: string };
 
+export function wizardConnectReceiveAddressIndexes(receiveLimit: number, selectedIndex: number): number[] {
+  if (!Number.isSafeInteger(receiveLimit) || receiveLimit < 0 || receiveLimit > 10000 ||
+      !Number.isSafeInteger(selectedIndex) || selectedIndex < 0 || selectedIndex > 100000) {
+    throw new Error("WizardConnect receive-address indexes are outside the supported range.");
+  }
+  const indexes = Array.from({ length: receiveLimit + 1 }, (_, index) => index);
+  if (!indexes.includes(selectedIndex)) indexes.push(selectedIndex);
+  return indexes.sort((left, right) => left - right);
+}
+
 export function deriveWizardConnectAddress(
   protocol: string | null,
   getPubkey: ((childIndex: number, addressIndex: bigint) => Uint8Array | undefined) | null,
@@ -743,9 +753,13 @@ class WizardWallet {
     }
     const mgr = this.mgr;
     const entries: WalletAddressEntry[] = [];
-    const limits: [WalletPathBranch, number][] = [['receive', receiveLimit], ['change', changeLimit]];
-    for (const [branch, limit] of limits) {
-      for (let index = 0; index <= limit; index++) {
+    const receiveIndexes = wizardConnectReceiveAddressIndexes(receiveLimit, this.receiveIndex);
+    const limits: [WalletPathBranch, number[]][] = [
+      ['receive', receiveIndexes],
+      ['change', Array.from({ length: changeLimit + 1 }, (_, index) => index)],
+    ];
+    for (const [branch, indexes] of limits) {
+      for (const index of indexes) {
         const address = deriveWizardConnectAddress(mgr.protocol, (childIndex, i) => mgr.getPubkey(childIndex, i), network, branch, index);
         if (address) entries.push({ branch, index, address });
       }

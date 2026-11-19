@@ -349,6 +349,16 @@ describe('V2 fee-circle creator registration', () => {
     )).toEqual([creatorAddress, firstOtherAddress, secondOtherAddress]);
   });
 
+  it('registers the connected Mainnet creator as Member 1 before every additional address', () => {
+    const mainnetCreatorAddress = pkhToAddress(initiator.pkh, 'mainnet');
+    const mainnetOtherAddress = pkhToAddress(members[0].pkh, 'mainnet');
+    expect(buildV2FeeMemberOrder(
+      mainnetCreatorAddress,
+      [mainnetOtherAddress],
+      'mainnet',
+    )).toEqual([mainnetCreatorAddress, mainnetOtherAddress]);
+  });
+
   it('rejects the creator address being entered again as an additional member', () => {
     expect(() => buildV2FeeMemberOrder(
       creatorAddress,

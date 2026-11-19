@@ -605,6 +605,7 @@ export default function App() {
     setCircleWorkspace((current) => resolveCircleWorkspaceForNetwork(current, next));
     setMenuOpen(false);
     setAddressMatchMessage("");
+    setSeleneAddress("");
   };
 
   const shortAddress = (value: string | null) =>
@@ -956,18 +957,18 @@ export default function App() {
             {connected ? (
               <div className="wallet-detail-body">
                 <div className="wallet-address-card"><span>{NETWORKS[network].label}</span><code>{walletAddress ?? "Address not available yet"}</code>{walletAddress
-                  ? <small>Live WizardConnect receive key · address index {walletView.receiveIndex} · public address only. Selene shows a new address after each payment; all of them belong to this wallet. Circles recognise the address you joined with.</small>
+                  ? <small>Derived receive address · index {walletView.receiveIndex}. Selene may rotate to another receive index; those addresses can belong to the same seed, but they are different on-chain addresses. Sync the currently displayed Selene Receive address below before creating or managing a circle.</small>
                   : <small className="wallet-match-message">WizardConnect is connected, but no valid live receive key is available yet. Check the Selene session and reconnect if needed.</small>}</div>
-                <label className="field-label" htmlFor="selene-address">Verify against the receive address shown in Selene</label>
-                <input id="selene-address" className="form-control" value={seleneAddress} onChange={(event) => setSeleneAddress(event.target.value)} placeholder="Paste Selene receive address to verify derivation" autoComplete="off" />
+                <label className="field-label" htmlFor="selene-address">Sync with the address currently shown on Selene's {NETWORKS[network].label} Receive screen</label>
+                <input id="selene-address" className="form-control" value={seleneAddress} onChange={(event) => setSeleneAddress(event.target.value)} placeholder="Paste the current Selene receive address" autoComplete="off" />
                 <button className="primary-button" onClick={() => {
                   try {
-                    const index = walletClient?.matchReceiveAddress(seleneAddress, network, 50) ?? null;
+                    const index = walletClient?.matchReceiveAddress(seleneAddress, network, 250) ?? null;
                     setAddressMatchMessage(index === null
-                      ? "No match in receive indices 0–50. Check Selene's selected network before sending funds."
-                      : "Matched Selene receive address at index " + index + ".");
+                      ? "No match in receive indices 0–250. Confirm this is the address on Selene's Receive screen and that both apps use the same network."
+                      : "Synced to Selene's current receive address (index " + index + "). Wallet Details and circle actions now use this address.");
                   } catch (cause) { setAddressMatchMessage(cause instanceof Error ? cause.message : "Could not match address."); }
-                }}>Match Selene address</button>
+                }}>Sync Selene address</button>
                 {addressMatchMessage && <p className="wallet-match-message" role="status">{addressMatchMessage}</p>}
                 {(network === "chipnet" || network === "mainnet") && walletAddress && <>
                   <button className="secondary-button" disabled={gatherBusy} onClick={() => void gatherWalletCoins()}>

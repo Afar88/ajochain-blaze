@@ -9,6 +9,7 @@ import {
   readPushOnlyUnlockingScript,
   deriveWizardConnectReceiveAddress,
   findWizardConnectReceiveIndex,
+  wizardConnectReceiveAddressIndexes,
   WIZARDCONNECT_RECEIVE_CHILD_INDEX,
 } from "./wizard-wallet";
 
@@ -285,6 +286,27 @@ describe("WizardConnect sign-request serialization", () => {
     )).toThrow(/Invalid wallet signing input index/);
   });
 });
+
+describe("WizardConnect wallet address scanning", () => {
+  it("includes the currently selected receive index even when it is beyond the default scan window", () => {
+    expect(wizardConnectReceiveAddressIndexes(50, 250)).toEqual([
+      ...Array.from({ length: 51 }, (_, index) => index),
+      250,
+    ]);
+  });
+
+  it("does not duplicate the selected index when it is already in the scan window", () => {
+    expect(wizardConnectReceiveAddressIndexes(50, 4)).toEqual(
+      Array.from({ length: 51 }, (_, index) => index),
+    );
+  });
+
+  it("rejects unreasonable receive-index ranges", () => {
+    expect(() => wizardConnectReceiveAddressIndexes(10001, 4)).toThrow(/outside the supported range/);
+    expect(() => wizardConnectReceiveAddressIndexes(50, -1)).toThrow(/outside the supported range/);
+  });
+});
+
 
 describe("WizardConnect Selene address matching", () => {
   const keyFor = (index: bigint) => Uint8Array.from([0x02, ...new Uint8Array(32).fill(Number(index) + 1)]);
