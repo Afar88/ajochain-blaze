@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { NetworkProvider, SpendableUtxo } from "cashscript";
 import { binToHex, cashAddressToLockingBytecode } from "@bitauth/libauth";
 import { planWalletConsolidation } from "./wallet-consolidation";
+import { MainnetQuorumNetworkProvider } from "./mainnet-quorum-provider";
 import { buildWizardSignRequest, deriveWizardConnectAddress, type WalletAddressEntry } from "./wizard-wallet";
 
 const getPubkey = (child: number, index: bigint) => Uint8Array.from([0x02, child + 1, ...new Uint8Array(31).fill(Number(index) + 1)]);
@@ -79,11 +80,18 @@ describe("wallet coin consolidation", () => {
       index: 2,
       address: deriveWizardConnectAddress("hdwalletv1", getPubkey, "mainnet", "change", 2)!,
     };
-    const provider = providerWith({
-      [mainnetChange.address]: [coin(8, 120_000n)],
-    }) as NetworkProvider & { getBlockHeight?: () => Promise<number> };
-    (provider as unknown as { network: string }).network = "mainnet";
-    provider.getBlockHeight = async () => 900_000;
+    const provider = Object.assign(
+      new MainnetQuorumNetworkProvider([{} as never, {} as never]),
+      {
+        getBlockHeight: async () => 900_000,
+        getUtxos: async (address: string) => {
+          const utxos = address === mainnetChange.address ? [coin(8, 120_000n)] : [];
+          const encoded = cashAddressToLockingBytecode(address);
+          if (typeof encoded === "string") throw new Error(encoded);
+          return utxos.map((utxo) => ({ ...utxo, lockingBytecode: binToHex(encoded.bytecode) }));
+        },
+      },
+    ) as unknown as NetworkProvider;
 
     const plan = await planWalletConsolidation(
       provider,
