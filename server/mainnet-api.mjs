@@ -1709,7 +1709,7 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
   let inputSatoshis = 0n;
 
   for (const [index, input] of transaction.inputs.entries()) {
-    const previousTxid = reverseHex(binToHex(input.outpointTransactionHash));
+    const previousTxid = binToHex(input.outpointTransactionHash);
     const outpoint = previousTxid + ":" + input.outpointIndex;
     if (inputOutpoints.has(outpoint)) {
       throw new Error("Signed BCH Mainnet transaction contains a duplicate input outpoint.");
@@ -1749,7 +1749,7 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
     utxo,
   ]));
   for (const [index, input] of transaction.inputs.entries()) {
-    const previousTxid = reverseHex(binToHex(input.outpointTransactionHash));
+    const previousTxid = binToHex(input.outpointTransactionHash);
     const outpoint = previousTxid + ":" + input.outpointIndex;
     const current = currentUtxos.get(outpoint);
     if (!current || current.height <= 0 ||
@@ -1769,7 +1769,7 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
 
   if (operation === "genesis") {
     const firstInput = transaction.inputs[0];
-    const firstInputTxid = reverseHex(binToHex(firstInput.outpointTransactionHash));
+    const firstInputTxid = binToHex(firstInput.outpointTransactionHash);
     if (firstInputTxid !== context.stateCategory || firstInput.outpointIndex !== 0) {
       throw new Error("BCH Mainnet V3 genesis category must be derived from the first non-token input at vout 0.");
     }
