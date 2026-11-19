@@ -417,6 +417,16 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
       setError("This signed-transaction review plan is older than 60 seconds. Refresh the chain preview and prepare a new plan before asking Selene to sign.");
       return;
     }
+    if (signingPlan.operation === "genesis") {
+      const currentAddress = wallet.address("mainnet");
+      if (!wallet.isReceiveAddressConfirmed("mainnet") || !currentAddress ||
+          !sameMainnetAddress(currentAddress, signingPlan.circle.initiator)) {
+        setGenesisSigningPlan(null);
+        setPreview(null);
+        setError("Selene's confirmed Mainnet receive address or connection changed after the preview. Sync the current address again and prepare a fresh circle preview.");
+        return;
+      }
+    }
     setLifecycleBusy(true);
     setError("");
     setNotice("");
@@ -592,6 +602,10 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
         maxFee: BigInt(maxFee.trim()),
         initiator,
       }, initiator);
+      if (!wallet.isReceiveAddressConfirmed("mainnet") ||
+          wallet.address("mainnet") !== initiator) {
+        throw new Error("Selene's Mainnet connection or receive address changed during preview preparation. Sync the address and prepare again.");
+      }
       setGenesisSigningPlan({
         wc: plan.wc, walletInputs: plan.walletInputs,
         prompt: "Verify BCH Mainnet circle genesis for " + name.trim(),
