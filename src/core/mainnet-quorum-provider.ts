@@ -1,5 +1,6 @@
 import {
   binToHex,
+  decodeCashAddress,
   decodeTransactionBCH,
   hashTransaction,
   hexToBin,
@@ -227,6 +228,32 @@ export interface MainnetScriptHistorySnapshot {
   records: MainnetScriptHistoryRecord[];
 }
 
+async function mapConcurrent<T, R>(
+  values: readonly T[],
+  concurrency: number,
+  mapper: (value: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= values.length) return;
+      results[index] = await mapper(values[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, () => worker()));
+  return results;
+}
+
+function mainnetAddressLockingBytecode(address: string): string {
+  const decoded = decodeCashAddress(address.trim());
+  if (typeof decoded === "string" || decoded.prefix !== "bitcoincash" || decoded.type !== "p2pkh") {
+    throw new Error("Mainnet wallet gathering accepts only valid BCH Mainnet P2PKH addresses.");
+  }
+  return "76a914" + binToHex(decoded.payload).toLowerCase() + "88ac";
+}
+
 function scriptHashForLockingBytecode(lockingBytecode: Uint8Array | string): string {
   const bytes = typeof lockingBytecode === "string" ? hexToBin(lockingBytecode) : lockingBytecode;
   if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
@@ -353,7 +380,7 @@ export class MainnetQuorumNetworkProvider implements NetworkProvider {
       list.push(utxo);
       byTxid.set(utxo.txid, list);
     }
-    for (const [txid, utxos] of byTxid) {
+    await mapConcurrent([...byTxid.entries()], 8, async ([txid, utxos]) => {
       const transactions = await Promise.all(
         this.providers.map((provider) => provider.getRawTransaction(txid)),
       );
@@ -362,8 +389,63 @@ export class MainnetQuorumNetworkProvider implements NetworkProvider {
         throw new Error("Independent Electrum endpoints returned different raw bytes for transaction " + txid + ".");
       }
       for (const utxo of utxos) assertPreviousOutputMatches(utxo, normalized[0]);
-    }
+    });
     return agreed;
+  }
+
+  /**
+   * Read a wallet's receive/change address set under one verified tip and
+   * authenticate the combined UTXO snapshots together. This avoids repeating
+   * four chain-identity/tip RPCs and raw-prevout verification for every
+   * derivation address during wallet coin gathering.
+   */
+  async getUtxosForAddresses(
+    addresses: readonly string[],
+  ): Promise<{ address: string; utxos: SpendableUtxo[] }[]> {
+    if (!Array.isArray(addresses) || addresses.length === 0 || addresses.length > 100 ||
+        addresses.some((address) => typeof address !== "string" || !address.trim()) ||
+        new Set(addresses.map((address) => address.trim().toLowerCase())).size !== addresses.length) {
+      throw new Error("Mainnet wallet scan requires 1–100 unique BCH addresses.");
+    }
+    const expectedScripts = addresses.map(mainnetAddressLockingBytecode);
+    await this.verifyTip();
+    const providerSnapshots = await Promise.all(this.providers.map(async (provider) =>
+      mapConcurrent(addresses, 8, (address) => provider.getUtxos(address)),
+    ));
+    for (const snapshot of providerSnapshots) {
+      for (let addressIndex = 0; addressIndex < snapshot.length; addressIndex += 1) {
+        for (const utxo of snapshot[addressIndex]) {
+          if (utxo.lockingBytecode.toLowerCase() !== expectedScripts[addressIndex]) {
+            throw new Error("Mainnet Electrum returned a UTXO under an address whose P2PKH locking script does not match that address.");
+          }
+        }
+      }
+    }
+    const combinedSnapshots = providerSnapshots.map((snapshot) => snapshot.flat());
+    const agreed = await this.verifyUtxos(combinedSnapshots);
+
+    const addressByOutpoint = new Map<string, string>();
+    for (const [index, addressUtxos] of providerSnapshots[0].entries()) {
+      for (const utxo of addressUtxos) {
+        const key = utxo.txid.toLowerCase() + ":" + utxo.vout;
+        if (addressByOutpoint.has(key)) {
+          throw new Error("Mainnet wallet scan returned the same UTXO under more than one address.");
+        }
+        addressByOutpoint.set(key, addresses[index]);
+      }
+    }
+    const utxosByAddress = new Map<string, SpendableUtxo[]>(
+      addresses.map((address) => [address, []]),
+    );
+    for (const utxo of agreed) {
+      const address = addressByOutpoint.get(utxo.txid.toLowerCase() + ":" + utxo.vout);
+      if (!address) throw new Error("Verified Mainnet UTXO could not be mapped to its requested wallet address.");
+      utxosByAddress.get(address)!.push(utxo);
+    }
+    return addresses.map((address) => ({
+      address,
+      utxos: utxosByAddress.get(address)!,
+    }));
   }
 
   async getUtxos(address: string): Promise<SpendableUtxo[]> {

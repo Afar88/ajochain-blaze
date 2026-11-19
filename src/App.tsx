@@ -514,33 +514,85 @@ export default function App() {
   }, [walletClient, walletView.state, discoveryRun]);
 
   const gatherWalletCoins = async () => {
-    if (!walletClient || walletClient.state !== "connected" || network !== "chipnet" || !walletAddress) return;
+    const gatherNetwork = network;
+    if (!walletClient || walletClient.state !== "connected" || !walletAddress) return;
     setGatherBusy(true);
-    setGatherMessage("Scanning this wallet's Chipnet addresses…");
+    setGatherMessage("Scanning this wallet's " + (gatherNetwork === "mainnet" ? "Mainnet" : "Chipnet") + " receive and change addresses…");
     try {
       const [{ getClassicProvider }, { planWalletConsolidation }] = await Promise.all([
         import("./core/classic-bch"),
         import("./core/wallet-consolidation"),
       ]);
-      const provider = await getClassicProvider("chipnet");
-      // Keep a broadcast-but-unused circle setup coin (output 0) where the creation flow expects it.
+      // Mainnet gathering must use the fork-checkpointed multi-provider quorum,
+      // never the single-provider connection reserved for read-only discovery.
+      const provider = await getClassicProvider(gatherNetwork);
+      const walletAddresses = walletClient.listWalletAddresses(gatherNetwork);
+      if (walletAddresses.length === 0) throw new Error("No wallet receive/change addresses are available on " + gatherNetwork + ".");
+      // Keep any legacy CashTokens genesis setup output recorded by this wallet out of the gather plan.
       const pendingSetupOutpoints = new Set<string>();
+      const setupPrefix = "ajochain:classic-genesis-setup:v1:" + gatherNetwork + ":";
       for (let i = 0; i < window.localStorage.length; i++) {
         const key = window.localStorage.key(i);
-        if (!key?.startsWith("ajochain:classic-genesis-setup:v1:chipnet:")) continue;
+        if (!key?.startsWith(setupPrefix)) continue;
         try {
           const txid = JSON.parse(window.localStorage.getItem(key) ?? "null")?.txid;
           if (typeof txid === "string") pendingSetupOutpoints.add(txid.toLowerCase() + ":0");
         } catch { /* ignore malformed records */ }
       }
-      const plan = await planWalletConsolidation(provider, walletClient.listWalletAddresses("chipnet"), walletAddress, pendingSetupOutpoints);
+      const plan = await planWalletConsolidation(
+        provider,
+        walletAddresses,
+        walletAddress,
+        pendingSetupOutpoints,
+        gatherNetwork,
+      );
+      const networkLabel = gatherNetwork === "mainnet" ? "Mainnet" : "Chipnet";
+      const realFundsWarning = gatherNetwork === "mainnet"
+        ? "\n\nThis uses real BCH. The only output returns to your connected wallet address. CashTokens and pending circle setup coins are not moved."
+        : "\n\nCashTokens and pending circle setup coins are not moved.";
       if (!window.confirm(
-        "Gather " + plan.inputCount + " Chipnet coin(s) into one coin at " + plan.destination + "?\n\n" +
-        "Total " + plan.totalSatoshis.toString() + " sats, miner fee " + plan.fee.toString() + " sats. CashTokens are not moved.",
+        "Gather " + plan.inputCount + " " + networkLabel + " BCH coin(s) into one coin at " + plan.destination + "?\n\n" +
+        "Total " + plan.totalSatoshis.toString() + " sats, estimated miner fee " + plan.fee.toString() + " sats." +
+        realFundsWarning,
       )) { setGatherMessage(""); return; }
-      const signed = await walletClient.signAndVerify(plan.wc, plan.walletInputs, "Gather your BCH into one coin for AjoChain", plan.inputPaths);
-      const txid = await provider.sendRawTransaction(signed.signedTransaction);
-      setGatherMessage("Coins gathered. Transaction: " + txid);
+      const signed = await walletClient.signAndVerify(
+        plan.wc,
+        plan.walletInputs,
+        "Gather your " + networkLabel + " BCH into one coin for AjoChain",
+        plan.inputPaths,
+      );
+      if (gatherNetwork === "mainnet") {
+        const response = await fetch("/api/bch/gather", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            walletAddresses: walletAddresses.map((entry) => entry.address),
+            destinationAddress: plan.destination,
+            signedTransactionHex: signed.signedTransaction,
+          }),
+        });
+        const payload = await response.json().catch(() => ({})) as {
+          error?: unknown;
+          network?: string;
+          txid?: string;
+          relayStatus?: string;
+          broadcast?: boolean;
+        };
+        if (!response.ok) {
+          throw new Error(typeof payload.error === "string" ? payload.error : "Mainnet BCH gather could not be verified or relayed.");
+        }
+        if (payload.network !== "mainnet" || payload.broadcast !== true ||
+            typeof payload.txid !== "string" || !/^[0-9a-f]{64}$/i.test(payload.txid)) {
+          throw new Error("The Mainnet gather API returned an incomplete result. Check the transaction before trying again.");
+        }
+        setGatherMessage(
+          "Mainnet coins gathered back to your wallet. Transaction: " + payload.txid +
+          " · relay: " + (payload.relayStatus ?? "accepted") + ". It is not confirmed yet.",
+        );
+      } else {
+        const txid = await provider.sendRawTransaction(signed.signedTransaction);
+        setGatherMessage("Chipnet coins gathered. Transaction: " + txid);
+      }
     } catch (cause) {
       setGatherMessage(cause instanceof Error ? cause.message : "Could not gather coins.");
     } finally {
@@ -917,8 +969,11 @@ export default function App() {
                   } catch (cause) { setAddressMatchMessage(cause instanceof Error ? cause.message : "Could not match address."); }
                 }}>Match Selene address</button>
                 {addressMatchMessage && <p className="wallet-match-message" role="status">{addressMatchMessage}</p>}
-                {network === "chipnet" && walletAddress && <>
-                  <button className="secondary-button" disabled={gatherBusy} onClick={() => void gatherWalletCoins()}>Gather Selene coins to this address</button>
+                {(network === "chipnet" || network === "mainnet") && walletAddress && <>
+                  <button className="secondary-button" disabled={gatherBusy} onClick={() => void gatherWalletCoins()}>
+                    {gatherBusy ? "Scanning and preparing coins…" : network === "mainnet" ? "Gather Mainnet BCH coins to this address" : "Gather Selene coins to this address"}
+                  </button>
+                  {network === "mainnet" && <small className="field-hint">Mainnet gathering uses real BCH and requires Selene approval. Only plain BCH is consolidated back into your own wallet; CashTokens are left untouched.</small>}
                   {gatherMessage && <p className="wallet-match-message" role="status">{gatherMessage}</p>}
                 </>}
                 <button className="secondary-button" disabled={discoveryBusy} onClick={() => setDiscoveryRun((run) => run + 1)}>Check for my circles</button>
@@ -946,7 +1001,7 @@ export default function App() {
           </section>
         </div>
       )}
-      <footer className="app-footer"><span>© 2026 AjoChain</span><span><span className="footer-dot" /> {network === "chipnet" ? "Chipnet testing" : "Mainnet read-only"}</span></footer>
+      <footer className="app-footer"><span>© 2026 AjoChain</span><span><span className="footer-dot" /> {network === "chipnet" ? "Chipnet testing" : "Mainnet · wallet-authorized transactions"}</span></footer>
     </main>
   );
 }

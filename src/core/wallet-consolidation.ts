@@ -1,6 +1,7 @@
 import { hexToBin, binToHex, sha256 } from "@bitauth/libauth";
 import { TransactionBuilder, placeholderP2PKHUnlocker, type NetworkProvider, type SpendableUtxo } from "cashscript";
 import type { WalletAddressEntry, WalletInputPath } from "./wizard-wallet";
+import { MainnetQuorumNetworkProvider } from "./mainnet-quorum-provider";
 
 const DUST = 546n;
 const MAX_CONSOLIDATION_INPUTS = 80;
@@ -21,16 +22,28 @@ export const CHIPNET_GENESIS_BLOCK_HASH = "000000001dd410c49a788668ce26751718cc7
 
 export const MAINNET_GENESIS_BLOCK_HASH = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f";
 
-/** Refuse to continue unless the Electrum endpoint proves, by its genesis block, which network it serves. */
+/** Verify the selected BCH network before scanning wallet UTXOs. */
 export async function assertProviderNetwork(provider: NetworkProvider, network: "chipnet" | "mainnet"): Promise<void> {
   const label = network === "chipnet" ? "Chipnet" : "Mainnet";
+  if (network === "mainnet") {
+    // The dedicated Mainnet reader proves BCH fork checkpoints and a fresh,
+    // agreeing tip across independent Electrum providers.
+    if (!(provider instanceof MainnetQuorumNetworkProvider)) {
+      throw new Error("Mainnet coin gathering requires the verified BCH Mainnet Electrum quorum. Nothing was prepared.");
+    }
+    const height = await provider.getBlockHeight();
+    if (!Number.isSafeInteger(height) || height < 1) {
+      throw new Error("The BCH Mainnet provider did not return a verified chain tip. Nothing was prepared.");
+    }
+    return;
+  }
+
   const electrum = provider as NetworkProvider & { performRequest?: (name: string, ...args: number[]) => Promise<unknown> };
   if (typeof electrum.performRequest !== "function") throw new Error("Cannot verify that the BCH server is on " + label + ".");
   const header = await electrum.performRequest("blockchain.block.header", 0);
   if (typeof header !== "string" || !/^[0-9a-f]{160}$/i.test(header)) throw new Error("Cannot verify that the BCH server is on " + label + ".");
   const hash = binToHex(sha256.hash(sha256.hash(hexToBin(header))).reverse());
-  const expected = network === "chipnet" ? CHIPNET_GENESIS_BLOCK_HASH : MAINNET_GENESIS_BLOCK_HASH;
-  if (hash !== expected) throw new Error("The BCH server is not on " + label + ". Nothing was prepared.");
+  if (hash !== CHIPNET_GENESIS_BLOCK_HASH) throw new Error("The BCH server is not on " + label + ". Nothing was prepared.");
 }
 
 /** Refuse to plan unless the Electrum endpoint proves it serves Chipnet, so Mainnet coins can't be swept. */
@@ -51,15 +64,32 @@ export async function planWalletConsolidation(
   addresses: readonly WalletAddressEntry[],
   destination: string,
   excludeOutpoints: ReadonlySet<string> = new Set(),
+  network: "chipnet" | "mainnet" = "chipnet",
 ): Promise<WalletConsolidationPlan> {
-  await assertChipnetProvider(provider);
+  await assertProviderNetwork(provider, network);
   const target = destination.trim().toLowerCase();
   if (!addresses.some((entry) => entry.address.toLowerCase() === target)) {
     throw new Error("The destination is not one of this wallet's addresses.");
   }
   const seen = new Set<string>();
   const coins: { utxo: SpendableUtxo; entry: WalletAddressEntry }[] = [];
-  const results = await Promise.all(addresses.map(async (entry) => ({ entry, utxos: await provider.getUtxos(entry.address) })));
+  const batchProvider = provider as NetworkProvider & {
+    getUtxosForAddresses?: (addresses: readonly string[]) =>
+      Promise<{ address: string; utxos: SpendableUtxo[] }[]>;
+  };
+  const results = network === "mainnet" && typeof batchProvider.getUtxosForAddresses === "function"
+    ? (await batchProvider.getUtxosForAddresses(addresses.map((entry) => entry.address)))
+        .map((result) => ({
+          entry: addresses.find((entry) => entry.address.toLowerCase() === result.address.toLowerCase())!,
+          utxos: result.utxos,
+        }))
+    : await Promise.all(addresses.map(async (entry) => ({
+        entry,
+        utxos: await provider.getUtxos(entry.address),
+      })));
+  if (results.some((result) => !result.entry)) {
+    throw new Error("Mainnet wallet scan returned an address outside the requested receive/change set.");
+  }
   for (const { entry, utxos } of results) {
     for (const utxo of utxos) {
       const key = utxo.txid + ":" + utxo.vout;
