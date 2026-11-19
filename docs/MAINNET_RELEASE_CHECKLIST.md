@@ -1,6 +1,6 @@
 # Mainnet release checklist
 
-**Current status: NOT APPROVED FOR REAL-VALUE CIRCLE OPERATIONS.**
+**Current status: PATHS ARE SEPARATELY GATED.** BCH V3 Mainnet signing/broadcast is enabled in its dedicated code path; Classic BCH and PUSD retain their separate guards. This checklist records outstanding independent review and operational evidence, not a blanket instruction to disable the V3 path.
 
 External reviewer handoff: [`MAINNET_EXTERNAL_REVIEW_BRIEF.md`](./MAINNET_EXTERNAL_REVIEW_BRIEF.md).
 
@@ -33,7 +33,7 @@ CI now emits the exact source SHA-256, compiled artifact JSON SHA-256 and compil
 - [ ] Test each payout position: recipient reserve equals all remaining installments; already-paid members retain their full remaining reserve; unpaid members only need the current installment; final recipient reserve is zero.
 - [ ] Reconcile every receipt commitment and the state UTXO value after every payout, including duplicate observations, reorgs, missing receipts and conflicting outputs.
 - [ ] Verify exact recipient net payout, immutable 1% treasury output, reserve backing and separately funded miner fee in the actual signed transaction.
-- [ ] The `fee-v3-auto-reserve-mainnet` adapter uses the Mainnet quorum reader, Mainnet address validation, and the exact shared BCH/PUSD treasury. The Mainnet workspace now has a read-only server preflight for signed genesis, deposit, payout and cancellation transactions: it independently derives the V3 script from the compiled artifact, checks confirmed Electrum-quorum UTXOs, exact lifecycle layout and BCH 2026 VM execution. It never reserves, relays or broadcasts. Independently audit the exact compiled artifact and constructor binding, then complete real two-wallet device tests and the separate reviewed submission path before release.
+- [ ] The `fee-v3-auto-reserve-mainnet` adapter uses the Mainnet quorum reader, Mainnet address validation, and the exact shared BCH/PUSD treasury. The BCH V3 Mainnet workspace has its own explicit Selene signing and `/api/bch/broadcast` path, controlled by `BCH_MAINNET_CIRCLE_SEND_ENABLED` in the client and `BCH_MAINNET_CIRCLE_BROADCAST_ENABLED` in the API. These are separate from the Classic BCH `BCH_MAINNET_OPERATIONS_ENABLED` gate. Preserve the V3 path while completing two-wallet device tests, full lifecycle/confirmation/reorg validation and independent review of the exact compiled artifact and constructor binding.
 - [ ] Complete the same external security review, current-consensus VM validation, independent wallet signing and confirmation testing required for all real-value BCH circles.
 
 ## PUSD transfers
@@ -66,9 +66,9 @@ CI now emits the exact source SHA-256, compiled artifact JSON SHA-256 and compil
 
 ## Current hard stops
 
-- BCH Mainnet circle signing/broadcast is locked by `BCH_MAINNET_OPERATIONS_ENABLED = false`.
+- Classic BCH Mainnet operations remain locked by `BCH_MAINNET_OPERATIONS_ENABLED = false`. The dedicated BCH V3 circle send path has separate client/server gates (`BCH_MAINNET_CIRCLE_SEND_ENABLED` and `BCH_MAINNET_CIRCLE_BROADCAST_ENABLED`), which are enabled in the current code. Do not use the Classic gate to disable or describe the V3 path.
 - PUSD Mainnet spending is locked by `PUSD_MAINNET_SPENDING_ENABLED = false` in the client and `MAINNET_BROADCAST_ENABLED = false` in the API. Runtime environment variables cannot override the API lock.
-- V2 full-cycle escrow remains Chipnet-only. BCH V3 now has an unsigned Mainnet genesis-preview adapter, but deposits, payouts, cancellation signing and every Mainnet broadcast remain disabled pending full review.
+- V2 full-cycle escrow remains Chipnet-only. BCH V3 Mainnet has on-chain discovery and a dedicated sign/broadcast path. Its independent audit and full wallet/confirmation/reorg evidence remain distinct release work; do not describe the whole BCH V3 path as read-only.
 - PUSD circle/escrow contracts are prototypes and are not an active product flow.
 
 Do not remove a hard stop until the corresponding section has evidence, independent approval, and a release commit that has passed the complete test suite. Do not mark the product “Mainnet ready” while any required item remains unchecked.
