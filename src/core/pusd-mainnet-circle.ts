@@ -372,6 +372,14 @@ export async function planPusdMainnetCircleGenesis(
   };
 }
 
+/** No state NFT is unspent: the circle closed on its final payout, or was never created. */
+export class PusdCircleNoStateError extends Error {
+  constructor() {
+    super("No PUSD circle state is unspent at this contract. The circle has closed after its final payout or has not been created yet.");
+    this.name = "PusdCircleNoStateError";
+  }
+}
+
 export async function readPusdMainnetCircle(params: PusdMainnetCircleParams): Promise<PusdMainnetCircleSnapshot> {
   validatePusdMainnetCircleParams(params);
   const provider = await getClassicProvider("mainnet");
@@ -379,7 +387,7 @@ export async function readPusdMainnetCircle(params: PusdMainnetCircleParams): Pr
   const utxos = await contract.getUtxos();
   const categoryUtxos = utxos.filter((utxo) => utxo.token?.category === params.stateCategory);
   if (categoryUtxos.length === 0) {
-    throw new Error("No PUSD circle state is unspent at this contract. The circle has closed after its final payout or has not been created yet.");
+    throw new PusdCircleNoStateError();
   }
   if (categoryUtxos.length !== params.members.length + 1) {
     throw new Error("PUSD Mainnet circle state/receipt NFT set is incomplete or contains unexpected outputs.");

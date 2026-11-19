@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, ShieldCheck } from "lucide-react";
-import { decodeClassicCircle, readClassicCircle } from "../core/classic-bch";
+import { decodeClassicCircle, getClassicProvider, readClassicCircle } from "../core/classic-bch";
 import { loadSavedClassicCircles } from "../core/circle-account";
 import { readCircleTransactionHistory, type CircleActivitySnapshot, type CircleTransactionRecord } from "../core/chain-activity";
 import { decodeV2FeeCircle, readV2FeeCircle, validateV2FeeCircleDraft, type V2FeeCircleParams } from "../core/v2-fee-bch";
-import { readPusdMainnetCircle, validatePusdMainnetCircleParams, type PusdMainnetCircleParams } from "../core/pusd-mainnet-circle";
+import {
+  PusdCircleNoStateError, createPusdMainnetCircleContracts, readPusdMainnetCircle,
+  validatePusdMainnetCircleParams, type PusdMainnetCircleParams,
+} from "../core/pusd-mainnet-circle";
 import { formatAssetAmount } from "../core/assets";
 import { formatBch } from "../core/network";
 
@@ -194,7 +197,29 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
         ...historyResult,
       };
     }
-    const snapshot = await readPusdMainnetCircle(ref.params);
+    let snapshot;
+    try {
+      snapshot = await readPusdMainnetCircle(ref.params);
+    } catch (cause) {
+      if (!(cause instanceof PusdCircleNoStateError)) throw cause;
+      // A closed circle has no live UTXOs, but its script history is still readable.
+      const provider = await getClassicProvider("mainnet");
+      const { contract, escrows } = createPusdMainnetCircleContracts(ref.params, provider);
+      const historyResult = await readHistorySafely(
+        provider,
+        "mainnet",
+        [contract.lockingBytecode, ...escrows.map((escrow) => escrow.lockingBytecode)],
+      );
+      if (!historyResult.history?.records.length) throw cause;
+      return {
+        ref, status: "ready",
+        stateLabel: "Closed",
+        roundLabel: ref.params.members.length + " / " + ref.params.members.length,
+        recipient: null,
+        details: "No circle state remains on-chain: the circle was closed by its final payout or by cancellation.",
+        ...historyResult,
+      };
+    }
     const historyResult = await readHistorySafely(
       snapshot.provider,
       "mainnet",
