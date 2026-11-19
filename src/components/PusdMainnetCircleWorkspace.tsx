@@ -330,7 +330,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
     if (!activeCircle) return;
     const address = wallet.address("mainnet");
     if (!walletConnected || wallet.state !== "connected" || !address) {
-      setError("Connect the registered circle initiator wallet through WizardConnect first.");
+      setError("Connect a wallet to sponsor the payout miner fee through WizardConnect first.");
       return;
     }
     setLifecycleBusy(true);

@@ -372,12 +372,23 @@ export async function planPusdMainnetCircleGenesis(
   };
 }
 
+/** No state NFT is unspent: the circle closed on its final payout, or was never created. */
+export class PusdCircleNoStateError extends Error {
+  constructor() {
+    super("No PUSD circle state is unspent at this contract. The circle has closed after its final payout or has not been created yet.");
+    this.name = "PusdCircleNoStateError";
+  }
+}
+
 export async function readPusdMainnetCircle(params: PusdMainnetCircleParams): Promise<PusdMainnetCircleSnapshot> {
   validatePusdMainnetCircleParams(params);
   const provider = await getClassicProvider("mainnet");
   const { contract, escrows } = createPusdMainnetCircleContracts(params, provider);
   const utxos = await contract.getUtxos();
   const categoryUtxos = utxos.filter((utxo) => utxo.token?.category === params.stateCategory);
+  if (categoryUtxos.length === 0) {
+    throw new PusdCircleNoStateError();
+  }
   if (categoryUtxos.length !== params.members.length + 1) {
     throw new Error("PUSD Mainnet circle state/receipt NFT set is incomplete or contains unexpected outputs.");
   }
@@ -523,15 +534,17 @@ export async function planPusdMainnetDeposit(
   };
 }
 
+/**
+ * Any connected wallet may sponsor the payout miner fee; its BCH change returns
+ * to the same address. The final round burns the state and receipt NFTs and
+ * refunds every BCH carrier (receipt + escrow to each member, state to the initiator).
+ */
 export async function planPusdMainnetPayout(
   params: PusdMainnetCircleParams,
-  initiatorAddress: string,
+  sponsorAddress: string,
 ): Promise<PusdMainnetTransactionPlan> {
   validatePusdMainnetCircleParams(params);
-  if (toHex(classicAddressToPkh(initiatorAddress, "mainnet")) !==
-      toHex(classicAddressToPkh(params.initiator, "mainnet"))) {
-    throw new Error("Only the registered PUSD circle initiator can sponsor the payout miner fee.");
-  }
+  classicAddressToPkh(sponsorAddress, "mainnet");
   const snapshot = await readPusdMainnetCircle(params);
   if (snapshot.completed) throw new Error("This PUSD circle has already completed.");
   if (!snapshot.credits.every((credit) => credit >= params.contribution)) {
@@ -539,10 +552,14 @@ export async function planPusdMainnetPayout(
   }
 
   const economics = calculatePusdCircleEconomics(params.members.length, params.contribution);
-  const reserve = snapshot.round + 1 < params.members.length ? params.contribution : 0n;
+  const closing = snapshot.round + 1 === params.members.length;
+  if (closing && !snapshot.credits.every((credit) => credit === params.contribution)) {
+    throw new Error("The final PUSD payout requires exactly one contribution in every member escrow.");
+  }
+  const reserve = closing ? 0n : params.contribution;
   const payoutAmount = economics.grossPot - economics.projectFee - reserve;
   const provider = await getClassicProvider("mainnet");
-  const bchUtxos = (await provider.getUtxos(initiatorAddress)).filter((utxo) => !utxo.token);
+  const bchUtxos = (await provider.getUtxos(sponsorAddress)).filter((utxo) => !utxo.token);
   const treasuryCarrier = pusdCarrierSatoshis(
     hexToBin("76a914" + toHex(getMainnetProjectTreasuryPkh()) + "88ac"),
     economics.projectFee,
@@ -563,7 +580,27 @@ export async function planPusdMainnetPayout(
     for (let index = 0; index < count; index++) {
       builder.addInput(snapshot.escrowUtxos[index], snapshot.escrows[index].unlock.attest());
     }
-    builder.addInput(feeInput, placeholderP2PKHUnlocker(initiatorAddress));
+    builder.addInput(feeInput, placeholderP2PKHUnlocker(sponsorAddress));
+    const treasuryOutput = {
+      to: params.treasury, amount: treasuryCarrier,
+      token: { category: PUSD_ASSET.categoryId, amount: economics.projectFee },
+    };
+    const recipientOutput = {
+      to: params.members[snapshot.round], amount: recipientCarrier,
+      token: { category: PUSD_ASSET.categoryId, amount: payoutAmount },
+    };
+    if (closing) {
+      builder.addOutput(treasuryOutput).addOutput(recipientOutput);
+      for (let index = 0; index < count; index++) {
+        builder.addOutput({
+          to: params.members[index],
+          amount: snapshot.escrowUtxos[index].satoshis + snapshot.receipts[index].satoshis,
+        });
+      }
+      builder.addOutput({ to: params.initiator, amount: snapshot.state.satoshis });
+      builder.addOutput({ to: sponsorAddress, amount: feeChange });
+      return builder;
+    }
     builder.addOutput({
       to: snapshot.contract.tokenAddress, amount: snapshot.state.satoshis,
       token: { category: params.stateCategory, amount: 0n, nft: { capability: "minting", commitment: stateCommitment(snapshot.round + 1, true) } },
@@ -589,15 +626,8 @@ export async function planPusdMainnetPayout(
         builder.addOutput({ to: snapshot.escrows[index].address, amount: snapshot.escrowUtxos[index].satoshis });
       }
     }
-    builder.addOutput({
-      to: params.treasury, amount: treasuryCarrier,
-      token: { category: PUSD_ASSET.categoryId, amount: economics.projectFee },
-    });
-    builder.addOutput({
-      to: params.members[snapshot.round], amount: recipientCarrier,
-      token: { category: PUSD_ASSET.categoryId, amount: payoutAmount },
-    });
-    builder.addOutput({ to: initiatorAddress, amount: feeChange });
+    builder.addOutput(treasuryOutput).addOutput(recipientOutput);
+    builder.addOutput({ to: sponsorAddress, amount: feeChange });
     return builder;
   };
 
@@ -615,7 +645,9 @@ export async function planPusdMainnetPayout(
     feeEstimate: fee,
     transactionSizeBytes: size,
     projectTreasury: params.treasury,
-    summary: "Mainnet PUSD payout plan: 1% PUSD treasury fee, one next-contribution reserve for non-final recipient, and separately funded BCH miner fee. Unsigned and not broadcast.",
+    summary: closing
+      ? "Mainnet final PUSD payout plan: 1% PUSD treasury fee, full net payout, closes the circle and refunds every BCH carrier. Unsigned and not broadcast."
+      : "Mainnet PUSD payout plan: 1% PUSD treasury fee, one next-contribution reserve for non-final recipient, and separately funded BCH miner fee. Unsigned and not broadcast.",
   };
 }
 

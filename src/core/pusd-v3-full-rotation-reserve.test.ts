@@ -150,7 +150,7 @@ async function payout(fixture: Fixture, recipientIndex: number) {
   const { provider, contract, escrows } = fixture;
   const { state, receipts, escrowUtxos } = await current(fixture);
   const reserveAddress = pkhToAddress(initiator.pkh, "chipnet");
-  const feeInput = provider.addUtxo(reserveAddress, randomUtxo({ satoshis: 25_000n }));
+  const feeInput = provider.addUtxo(reserveAddress, randomUtxo({ satoshis: 40_000n }));
   const recipientReserve = recipientIndex < members.length - 1 ? CONTRIBUTION : 0n;
   const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
   const nextStateCommitment = "54" + (round + 1).toString(16).padStart(2, "0") + "01";
@@ -162,6 +162,31 @@ async function payout(fixture: Fixture, recipientIndex: number) {
     builder.addInput(escrowUtxos[index], escrows[index].unlock.attest());
   }
   builder.addInput(feeInput, initiator.signature.unlockP2PKH());
+  const grossPot = BigInt(members.length) * CONTRIBUTION;
+  const projectFee = grossPot / 100n;
+  const payoutAmount = grossPot - projectFee - recipientReserve;
+  const treasuryOutput = {
+    to: tokenAddress(treasuryPkh), amount: DUST,
+    token: { category: PUSD, amount: projectFee },
+  };
+  const recipientOutput = {
+    to: tokenAddress(members[recipientIndex].pkh), amount: DUST,
+    token: { category: PUSD, amount: payoutAmount },
+  };
+  if (round + 1 === members.length) {
+    builder.addOutput(treasuryOutput).addOutput(recipientOutput);
+    for (let index = 0; index < members.length; index++) {
+      builder.addOutput({
+        to: pkhToAddress(members[index].pkh, "chipnet"),
+        amount: escrowUtxos[index].satoshis + receipts[index].satoshis,
+      });
+    }
+    builder
+      .addOutput({ to: reserveAddress, amount: state.satoshis })
+      .addOutput({ to: reserveAddress, amount: 10_000n });
+    await builder.send();
+    return;
+  }
   builder.addOutput({
     to: contract.tokenAddress, amount: state.satoshis,
     token: { category: STATE, amount: 0n, nft: { capability: "minting", commitment: nextStateCommitment } },
@@ -189,18 +214,9 @@ async function payout(fixture: Fixture, recipientIndex: number) {
     }
   }
 
-  const grossPot = BigInt(members.length) * CONTRIBUTION;
-  const projectFee = grossPot / 100n;
-  const payoutAmount = grossPot - projectFee - recipientReserve;
   builder
-    .addOutput({
-      to: tokenAddress(treasuryPkh), amount: DUST,
-      token: { category: PUSD, amount: projectFee },
-    })
-    .addOutput({
-      to: tokenAddress(members[recipientIndex].pkh), amount: DUST,
-      token: { category: PUSD, amount: payoutAmount },
-    })
+    .addOutput(treasuryOutput)
+    .addOutput(recipientOutput)
     .addOutput({ to: reserveAddress, amount: 10_000n });
 
   await builder.send();
@@ -252,10 +268,9 @@ describe("AjoChain PUSD V3 full-rotation reserve rule", () => {
     // The final collector also pays the same gross-pot fee, but has no
     // next-round contribution withheld.
     expect(await totalTreasuryPusd(provider)).toBe(9n);
-    snapshot = await current(fixture);
-    expect(snapshot.state.token!.nft!.commitment).toBe("540301");
-    expect(snapshot.escrowUtxos.map((utxo) => utxo.token?.amount ?? 0n))
-      .toEqual([0n, 0n, 0n]);
+    // The final payout closes the circle: no state, receipt or escrow UTXO remains.
+    expect(await fixture.contract.getUtxos()).toHaveLength(0);
+    for (const escrow of fixture.escrows) expect(await escrow.getUtxos()).toHaveLength(0);
     expect(await provider.getUtxos(tokenAddress(members[2].pkh))).toEqual(
       expect.arrayContaining([expect.objectContaining({ token: expect.objectContaining({ category: PUSD, amount: 297n }) })]),
     );

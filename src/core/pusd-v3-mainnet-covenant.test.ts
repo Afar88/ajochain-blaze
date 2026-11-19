@@ -35,6 +35,7 @@ function key(n: number) {
 
 const members = [key(1), key(2)];
 const initiator = key(8);
+const outsider = key(9);
 
 function mainnetTokenAddress(pkh: Uint8Array) {
   const result = encodeCashAddress({ prefix: "bitcoincash", type: "p2pkhWithTokens", payload: pkh });
@@ -170,6 +171,10 @@ type PayoutOverrides = {
   recipientPkh?: Uint8Array;
   escrowInputSourceForMemberZero?: number;
   escrowOutputTargetForMemberZero?: number;
+  sponsor?: ReturnType<typeof key>;
+  feeChangePkh?: Uint8Array;
+  memberRefundShortfall?: bigint;
+  stateRefundPkh?: Uint8Array;
 };
 
 async function payout(
@@ -180,9 +185,12 @@ async function payout(
   overrides: PayoutOverrides = {},
 ) {
   const { state, receipts, escrowUtxos } = await current(contract, escrows);
-  const reserveAddress = pkhToAddress(initiator.pkh, "chipnet");
+  const sponsor = overrides.sponsor ?? initiator;
+  const reserveAddress = pkhToAddress(sponsor.pkh, "chipnet");
+  const changeAddress = pkhToAddress(overrides.feeChangePkh ?? sponsor.pkh, "chipnet");
   const reserve = provider.addUtxo(reserveAddress, randomUtxo({ satoshis: 25_000n }));
-  const reserveCredit = recipientIndex < members.length - 1 ? CONTRIBUTION : 0n;
+  const closing = recipientIndex === members.length - 1;
+  const reserveCredit = closing ? 0n : CONTRIBUTION;
   const nextRound = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16) + 1;
   const nextStateCommitment = "54" + nextRound.toString(16).padStart(2, "0") + "01";
   const circleUnlock = contract.unlock.payout();
@@ -194,7 +202,34 @@ async function payout(
     .addInput(receipts[1], circleUnlock)
     .addInput(escrowUtxos[escrowInputZero], escrows[escrowInputZero].unlock.attest())
     .addInput(escrowUtxos[escrowInputOne], escrows[escrowInputOne].unlock.attest())
-    .addInput(reserve, initiator.signature.unlockP2PKH())
+    .addInput(reserve, sponsor.signature.unlockP2PKH());
+
+  const grossPot = BigInt(members.length) * CONTRIBUTION;
+  const projectFee = grossPot / 100n;
+  const recipientPayout = grossPot - projectFee - reserveCredit;
+  const treasuryOutput = {
+    to: tokenAddress(overrides.treasuryPkh ?? treasuryPkh), amount: DUST,
+    token: { category: PUSD, amount: projectFee },
+  };
+  const recipientOutput = {
+    to: tokenAddress(overrides.recipientPkh ?? members[recipientIndex].pkh), amount: DUST,
+    token: { category: PUSD, amount: recipientPayout },
+  };
+  if (closing) {
+    builder.addOutput(treasuryOutput).addOutput(recipientOutput);
+    for (let index = 0; index < members.length; index++) {
+      const refund = escrowUtxos[index].satoshis + receipts[index].satoshis -
+        (index === 0 ? overrides.memberRefundShortfall ?? 0n : 0n);
+      builder.addOutput({ to: pkhToAddress(members[index].pkh, "chipnet"), amount: refund });
+    }
+    builder
+      .addOutput({ to: pkhToAddress(overrides.stateRefundPkh ?? initiator.pkh, "chipnet"), amount: state.satoshis })
+      .addOutput({ to: changeAddress, amount: 10_000n });
+    await builder.send();
+    return;
+  }
+
+  builder
     .addOutput({
       to: contract.tokenAddress, amount: state.satoshis,
       token: { category: STATE, amount: 0n, nft: { capability: "minting", commitment: nextStateCommitment } },
@@ -224,19 +259,10 @@ async function payout(
     }
   }
 
-  const grossPot = BigInt(members.length) * CONTRIBUTION;
-  const projectFee = grossPot / 100n;
-  const recipientPayout = grossPot - projectFee - reserveCredit;
   builder
-    .addOutput({
-      to: tokenAddress(overrides.treasuryPkh ?? treasuryPkh), amount: DUST,
-      token: { category: PUSD, amount: projectFee },
-    })
-    .addOutput({
-      to: tokenAddress(overrides.recipientPkh ?? members[recipientIndex].pkh), amount: DUST,
-      token: { category: PUSD, amount: recipientPayout },
-    })
-    .addOutput({ to: reserveAddress, amount: 10_000n });
+    .addOutput(treasuryOutput)
+    .addOutput(recipientOutput)
+    .addOutput({ to: changeAddress, amount: 10_000n });
 
   await builder.send();
 }
@@ -430,23 +456,69 @@ describe("AjoChain PUSD V3 Mainnet covenant (mock-chain invariants)", () => {
     )).toBe(true);
   }, 60_000);
 
-  it("pays no future reserve to the final recipient", async () => {
+  it("closes the circle on the final payout and refunds every BCH carrier", async () => {
     const provider = new MockNetworkProvider();
     const { contract, escrows } = makeContracts(provider);
     addGenesis(provider, contract, escrows);
     await deposit(provider, contract, escrows, 0);
     await deposit(provider, contract, escrows, 1);
     await payout(provider, contract, escrows, 0);
-
     await deposit(provider, contract, escrows, 1);
+
+    const before = await current(contract, escrows);
+    const memberBacking = members.map((_, index) =>
+      before.escrowUtxos[index].satoshis + before.receipts[index].satoshis);
     await payout(provider, contract, escrows, 1);
 
-    const { state, receipts, escrowUtxos } = await current(contract, escrows);
-    expect(state.token!.nft!.commitment).toBe("540201");
-    expect(receipts.map((receipt) => receipt.token!.nft!.commitment)).toEqual([
-      creditCommitment(0, 0n), creditCommitment(1, 0n),
-    ]);
-    expect(escrowUtxos.every((utxo) => utxo.token?.category === undefined)).toBe(true);
+    expect(await contract.getUtxos()).toHaveLength(0);
+    for (const escrow of escrows) expect(await escrow.getUtxos()).toHaveLength(0);
+    for (let index = 0; index < members.length; index++) {
+      const outputs = await provider.getUtxos(pkhToAddress(members[index].pkh, "chipnet"));
+      expect(outputs.some((utxo) => !utxo.token && utxo.satoshis === memberBacking[index])).toBe(true);
+    }
+    const initiatorOutputs = await provider.getUtxos(pkhToAddress(initiator.pkh, "chipnet"));
+    expect(initiatorOutputs.some((utxo) => !utxo.token && utxo.satoshis === before.state.satoshis)).toBe(true);
+    const finalRecipientOutputs = await provider.getUtxos(tokenAddress(members[1].pkh));
+    expect(finalRecipientOutputs.some((utxo) =>
+      utxo.token?.category === PUSD && utxo.token.amount === 198n,
+    )).toBe(true);
+  }, 60_000);
+
+  it("rejects a final payout that short-changes a member refund or redirects the state refund", async () => {
+    const provider = new MockNetworkProvider();
+    const { contract, escrows } = makeContracts(provider);
+    addGenesis(provider, contract, escrows);
+    await deposit(provider, contract, escrows, 0);
+    await deposit(provider, contract, escrows, 1);
+    await payout(provider, contract, escrows, 0);
+    await deposit(provider, contract, escrows, 1);
+
+    await expect(payout(provider, contract, escrows, 1, { memberRefundShortfall: 1n })).rejects.toThrow();
+    await expect(payout(provider, contract, escrows, 1, { stateRefundPkh: outsider.pkh })).rejects.toThrow();
+    await payout(provider, contract, escrows, 1);
+    expect(await contract.getUtxos()).toHaveLength(0);
+  }, 60_000);
+
+  it("lets a non-initiator sponsor the payout fee and returns change only to that sponsor", async () => {
+    const provider = new MockNetworkProvider();
+    const { contract, escrows } = makeContracts(provider);
+    addGenesis(provider, contract, escrows);
+    await deposit(provider, contract, escrows, 0);
+    await deposit(provider, contract, escrows, 1);
+
+    await expect(payout(provider, contract, escrows, 0, {
+      sponsor: members[1], feeChangePkh: initiator.pkh,
+    })).rejects.toThrow();
+    await payout(provider, contract, escrows, 0, { sponsor: members[1] });
+    const { state } = await current(contract, escrows);
+    expect(state.token!.nft!.commitment).toBe("540101");
+
+    await deposit(provider, contract, escrows, 1);
+    await expect(payout(provider, contract, escrows, 1, {
+      sponsor: outsider, feeChangePkh: members[0].pkh,
+    })).rejects.toThrow();
+    await payout(provider, contract, escrows, 1, { sponsor: outsider });
+    expect(await contract.getUtxos()).toHaveLength(0);
   }, 60_000);
 
   it("refunds each member's exact PUSD credit before the first payout", async () => {

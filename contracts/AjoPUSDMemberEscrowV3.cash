@@ -4,6 +4,7 @@ pragma cashscript ^0.14.0;
 // A fixed member index and member P2PKH hash bind each escrow to one receipt.
 // The sidecar independently validates deposits, reserve transitions, and
 // pre-first-payout cancellation refunds in the same transaction as the circle.
+// The final payout returns this escrow's and its receipt's BCH to the member.
 contract AjoPUSDMemberEscrowV3(
     bytes32 stateCategory,
     bytes32 pusdCategory,
@@ -82,6 +83,14 @@ contract AjoPUSDMemberEscrowV3(
                 require(tx.outputs.length == 4);
                 require(tx.inputs[3].tokenAmount == newCredit - oldCredit);
             }
+        } else if (round + 1 == memberCount) {
+            require(tx.inputs.length == 2 * memberCount + 2);
+            require(tx.outputs.length == memberCount + 4);
+            require(oldCredit == contribution);
+            int refundOutput = memberIndex + 2;
+            require(tx.outputs[refundOutput].lockingBytecode == new LockingBytecodeP2PKH(member));
+            require(tx.outputs[refundOutput].tokenCategory == 0x);
+            require(tx.outputs[refundOutput].value == tx.inputs[escrowIndex].value + tx.inputs[receiptIndex].value);
         } else {
             require(tx.inputs.length == 2 * memberCount + 2);
             require(tx.outputs.length == 2 * memberCount + 4);
