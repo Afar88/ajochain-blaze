@@ -665,8 +665,13 @@ export default function App() {
     setSeleneAddress("");
   };
 
-  const shortAddress = (value: string | null) =>
-    value ? value.slice(0, 10) + "…" + value.slice(-6) : "Address syncing…";
+  const shortAddress = (value: string | null) => {
+    if (network === "mainnet" && walletClient?.state === "connected" &&
+        !walletClient.isReceiveAddressConfirmed("mainnet")) {
+      return "Sync Selene address";
+    }
+    return value ? value.slice(0, 10) + "…" + value.slice(-6) : "Address syncing…";
+  };
 
   return (
     <main className="app-shell compact-app">
