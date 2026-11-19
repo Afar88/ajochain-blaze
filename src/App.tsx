@@ -87,6 +87,8 @@ export default function App() {
     }
   });
   const [walletClient, setWalletClient] = useState<WalletClient | null>(null);
+  const [gatherBusy, setGatherBusy] = useState(false);
+  const [gatherMessage, setGatherMessage] = useState("");
   const [walletView, setWalletView] = useState<WalletView>({
     state: "idle", uri: null, qrUri: null, walletName: null, error: null, receiveIndex: 0,
   });
@@ -415,6 +417,41 @@ export default function App() {
   const navigate = (next: Page) => {
     setPage(next);
     setMenuOpen(false);
+  };
+
+  const gatherWalletCoins = async () => {
+    if (!walletClient || walletClient.state !== "connected" || network !== "chipnet" || !walletAddress) return;
+    setGatherBusy(true);
+    setGatherMessage("Scanning this wallet's Chipnet addresses…");
+    try {
+      const [{ getClassicProvider }, { planWalletConsolidation }] = await Promise.all([
+        import("./core/classic-bch"),
+        import("./core/wallet-consolidation"),
+      ]);
+      const provider = await getClassicProvider("chipnet");
+      // Keep a broadcast-but-unused circle setup coin (output 0) where the creation flow expects it.
+      const pendingSetupOutpoints = new Set<string>();
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (!key?.startsWith("ajochain:classic-genesis-setup:v1:chipnet:")) continue;
+        try {
+          const txid = JSON.parse(window.localStorage.getItem(key) ?? "null")?.txid;
+          if (typeof txid === "string") pendingSetupOutpoints.add(txid.toLowerCase() + ":0");
+        } catch { /* ignore malformed records */ }
+      }
+      const plan = await planWalletConsolidation(provider, walletClient.listWalletAddresses("chipnet"), walletAddress, pendingSetupOutpoints);
+      if (!window.confirm(
+        "Gather " + plan.inputCount + " Chipnet coin(s) into one coin at " + plan.destination + "?\n\n" +
+        "Total " + plan.totalSatoshis.toString() + " sats, miner fee " + plan.fee.toString() + " sats. CashTokens are not moved.",
+      )) { setGatherMessage(""); return; }
+      const signed = await walletClient.signAndVerify(plan.wc, plan.walletInputs, "Gather your BCH into one coin for AjoChain", plan.inputPaths);
+      const txid = await provider.sendRawTransaction(signed.signedTransaction);
+      setGatherMessage("Coins gathered. Transaction: " + txid);
+    } catch (cause) {
+      setGatherMessage(cause instanceof Error ? cause.message : "Could not gather coins.");
+    } finally {
+      setGatherBusy(false);
+    }
   };
 
   const changeNetwork = (next: NetworkId) => {
@@ -786,6 +823,10 @@ export default function App() {
                   } catch (cause) { setAddressMatchMessage(cause instanceof Error ? cause.message : "Could not match address."); }
                 }}>Match Selene address</button>
                 {addressMatchMessage && <p className="wallet-match-message" role="status">{addressMatchMessage}</p>}
+                {network === "chipnet" && walletAddress && <>
+                  <button className="secondary-button" disabled={gatherBusy} onClick={() => void gatherWalletCoins()}>Gather Selene coins to this address</button>
+                  {gatherMessage && <p className="wallet-match-message" role="status">{gatherMessage}</p>}
+                </>}
                 <button className="secondary-button" onClick={() => void walletClient?.disconnect()}>Disconnect wallet</button>
               </div>
             ) : (

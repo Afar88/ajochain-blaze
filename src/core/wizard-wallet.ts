@@ -9,6 +9,28 @@ import { pkhToAddress, type Net } from './bch-address';
 
 export const WIZARDCONNECT_RECEIVE_CHILD_INDEX = 0;
 export const DEFAULT_RECEIVE_ADDRESS_SEARCH_LIMIT = 50;
+/** WizardConnect hdwalletv1 "change" child path (childIndexOfPathName("change")). */
+export const WIZARDCONNECT_CHANGE_CHILD_INDEX = 1;
+
+export type WalletPathBranch = 'receive' | 'change';
+export type WalletInputPath = { branch: WalletPathBranch; index: number };
+export type WalletAddressEntry = WalletInputPath & { address: string };
+
+export function deriveWizardConnectAddress(
+  protocol: string | null,
+  getPubkey: ((childIndex: number, addressIndex: bigint) => Uint8Array | undefined) | null,
+  network: Net,
+  branch: WalletPathBranch,
+  addressIndex: number,
+): string | null {
+  if (protocol !== 'hdwalletv1' || !getPubkey ||
+      !Number.isSafeInteger(addressIndex) || addressIndex < 0) return null;
+  const childIndex = branch === 'change' ? WIZARDCONNECT_CHANGE_CHILD_INDEX : WIZARDCONNECT_RECEIVE_CHILD_INDEX;
+  const publicKey = getPubkey(childIndex, BigInt(addressIndex));
+  if (!(publicKey instanceof Uint8Array) || publicKey.length !== 33 ||
+      (publicKey[0] !== 0x02 && publicKey[0] !== 0x03)) return null;
+  return pkhToAddress(hash160(publicKey), network);
+}
 
 /**
  * Derive a BCH receive address from the active WizardConnect hdwalletv1
@@ -123,7 +145,7 @@ function loadReceiveIndex() {
 export function buildWizardSignRequest(
   wcObject: any,
   walletInputs: number[],
-  receiveIndex: number,
+  receiveIndex: number | ReadonlyMap<number, WalletInputPath>,
   prompt: string,
   sequence: number,
 ) {
@@ -138,7 +160,13 @@ export function buildWizardSignRequest(
     if (!Number.isInteger(inputIndex) || inputIndex < 0 || inputIndex >= transaction.inputs.length) {
       throw new Error(`Invalid wallet signing input index: ${inputIndex}`);
     }
-    return [inputIndex, 'receive', receiveIndex] as [number, string, number];
+    if (typeof receiveIndex === 'number') return [inputIndex, 'receive', receiveIndex] as [number, string, number];
+    const path = receiveIndex.get(inputIndex);
+    if (!path || (path.branch !== 'receive' && path.branch !== 'change') ||
+        !Number.isSafeInteger(path.index) || path.index < 0) {
+      throw new Error(`Missing or invalid wallet path for signing input ${inputIndex}.`);
+    }
+    return [inputIndex, path.branch, path.index] as [number, string, number];
   });
   if (new Set(walletInputs).size !== walletInputs.length) {
     throw new Error('Wallet signing request contains duplicate input indexes.');
@@ -708,11 +736,28 @@ class WizardWallet {
   }
 
   /** Ask the connected wallet to sign, then verify intent without broadcasting. */
-  async signAndVerify(wcObject: any, walletInputs: number[], prompt: string) {
+  /** Public receive and change addresses of the connected wallet, for coin discovery. */
+  listWalletAddresses(network: Net, receiveLimit = DEFAULT_RECEIVE_ADDRESS_SEARCH_LIMIT, changeLimit = 20): WalletAddressEntry[] {
+    if (this.state !== 'connected' || !this.mgr || this.mgr.protocol !== 'hdwalletv1') {
+      throw new Error('Connect Selene through WizardConnect before scanning wallet addresses.');
+    }
+    const mgr = this.mgr;
+    const entries: WalletAddressEntry[] = [];
+    const limits: [WalletPathBranch, number][] = [['receive', receiveLimit], ['change', changeLimit]];
+    for (const [branch, limit] of limits) {
+      for (let index = 0; index <= limit; index++) {
+        const address = deriveWizardConnectAddress(mgr.protocol, (childIndex, i) => mgr.getPubkey(childIndex, i), network, branch, index);
+        if (address) entries.push({ branch, index, address });
+      }
+    }
+    return entries;
+  }
+
+  async signAndVerify(wcObject: any, walletInputs: number[], prompt: string, inputPaths?: ReadonlyMap<number, WalletInputPath>) {
     if (!this.mgr || this.state !== 'connected') throw new Error('Connect a wallet first');
     const mgr = this.mgr;
     const generation = this.generation;
-    const request = buildWizardSignRequest(wcObject, walletInputs, this.receiveIndex, prompt, mgr.nextSequence());
+    const request = buildWizardSignRequest(wcObject, walletInputs, inputPaths ?? this.receiveIndex, prompt, mgr.nextSequence());
     const res = await mgr.sendSignRequest(request as Parameters<typeof mgr.sendSignRequest>[0]);
     if (!this.isCurrent(mgr, generation) || this.state !== 'connected') {
       throw new Error('Wallet connection changed before signing completed. Please reconnect and try again.');
