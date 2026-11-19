@@ -13,6 +13,9 @@ import {
   assertBchMainnetStateCommitment,
   createBchMainnetV3ContractContext,
   assertBchMainnetPayoutLayout,
+  createPusdMainnetV3ContractContext,
+  assertPusdMainnetCircleLayout,
+  verifyPusdMainnetCircleTransaction,
   verifyBchMainnetCircleTransaction,
   assertPusdTokenOutputCarrier,
   assertPusdBchChangeCarrier,
@@ -58,6 +61,74 @@ function createMainnetTestAddress(seed) {
   if (typeof encoded === "string") throw new Error(encoded);
   return encoded.address;
 }
+
+
+function createMainnetTestTokenAddress(seed) {
+  const encoded = encodeCashAddress({
+    prefix: "bitcoincash",
+    type: "p2pkhWithTokens",
+    payload: new Uint8Array(20).fill(seed),
+  });
+  if (typeof encoded === "string") throw new Error("Could not encode token-aware Mainnet test address");
+  return encoded.address;
+}
+
+const pusdMainnetVerificationCircle = {
+  version: 3,
+  network: "mainnet",
+  name: "PUSD verifier test circle",
+  members: [createMainnetTestTokenAddress(31), createMainnetTestTokenAddress(32)],
+  contribution: "200000",
+  maxFee: "10000",
+  stateCategory: "ab".repeat(32),
+  initiator: createMainnetTestAddress(30),
+  treasury: "bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q",
+};
+
+function pusdOutput(script, valueSatoshis, token) {
+  return {
+    lockingBytecode: hexToBin(script),
+    valueSatoshis,
+    ...(token ? { token } : {}),
+  };
+}
+
+function pusdNft(context, commitment, capability = "none") {
+  return {
+    category: hexToBin(context.stateCategory),
+    amount: 0n,
+    nft: { capability, commitment: hexToBin(commitment) },
+  };
+}
+
+function pusdToken(amount) {
+  return { category: hexToBin("2469acc5afa4b10cb5b5c04afb89c3a3ffd61c5da9c01e26d00951cae2a02544"), amount };
+}
+
+function makePusdPayoutFixture(round = 1) {
+  const context = createPusdMainnetV3ContractContext(pusdMainnetVerificationCircle);
+  const feeScript = cashAddressToLockingBytecode(createMainnetTestAddress(33));
+  const credit = Buffer.alloc(8);
+  credit.writeBigUInt64LE(BigInt(context.contribution));
+  const sourceOutputs = [
+    pusdOutput(context.contractLockingBytecode, 1_000n, pusdNft(context, "54" + round.toString(16).padStart(2, "0") + (round === 0 ? "00" : "01"), "minting")),
+    pusdOutput(context.contractLockingBytecode, 1_000n, pusdNft(context, "5200" + credit.toString("hex"))),
+    pusdOutput(context.contractLockingBytecode, 1_000n, pusdNft(context, "5201" + credit.toString("hex"))),
+    pusdOutput(context.escrowLockingBytecodes[0], 1_000n, pusdToken(context.contribution)),
+    pusdOutput(context.escrowLockingBytecodes[1], 1_000n, pusdToken(context.contribution)),
+    pusdOutput(feeScript, 60_000n),
+  ];
+  const inputScripts = [
+    context.contractLockingBytecode,
+    context.contractLockingBytecode,
+    context.contractLockingBytecode,
+    context.escrowLockingBytecodes[0],
+    context.escrowLockingBytecodes[1],
+    feeScript,
+  ];
+  return { context, feeScript, sourceOutputs, inputScripts };
+}
+
 
 const bchMainnetVerificationCircle = {
   version: 2,
@@ -1042,6 +1113,134 @@ test("BCH Mainnet payout verifier accepts the V3 final closing layout and its ex
   const nonFinalSource = sourceOutputs.slice();
   nonFinalSource[0] = out(context.contractLockingBytecode, 401_000n, nft("540000", "minting"));
   assert.throws(() => assertBchMainnetPayoutLayout(tx(closing), nonFinalSource, inputScripts, [fee], context), /exact ordered state/);
+});
+
+
+test("PUSD Mainnet server reconstructs the exact circle and each member escrow script offline", () => {
+  const context = createPusdMainnetV3ContractContext(pusdMainnetVerificationCircle);
+  assert.match(context.contractLockingBytecode, /^aa20[0-9a-f]{64}87$/);
+  assert.equal(cashAddressToLockingBytecode(context.contractAddress), context.contractLockingBytecode);
+  assert.equal(context.memberCount, 2);
+  assert.equal(context.escrowLockingBytecodes.length, 2);
+  for (const script of context.escrowLockingBytecodes) {
+    assert.match(script, /^aa20[0-9a-f]{64}87$/);
+  }
+  assert.equal(context.treasuryScript, "76a91417c8d3de33e0e229101f756dc5f189b123c1c83c88ac");
+  assert.throws(() => createPusdMainnetV3ContractContext({
+    ...pusdMainnetVerificationCircle, network: "chipnet",
+  }), /valid PUSD Mainnet V3 circle context/i);
+  assert.throws(() => createPusdMainnetV3ContractContext({
+    ...pusdMainnetVerificationCircle,
+    members: [pusdMainnetVerificationCircle.members[0], pusdMainnetVerificationCircle.members[0]],
+  }), /must be unique/i);
+  assert.throws(() => createPusdMainnetV3ContractContext({
+    ...pusdMainnetVerificationCircle, treasury: createMainnetTestAddress(44),
+  }), /immutable AjoChain treasury/i);
+});
+
+test("PUSD Mainnet final payout verifier accepts exact member backing refunds and non-initiator sponsor", () => {
+  const { context, feeScript, sourceOutputs, inputScripts } = makePusdPayoutFixture(1);
+  const feeChange = 57_000n;
+  const transaction = {
+    inputs: new Array(6).fill({}),
+    outputs: [
+      pusdOutput(context.treasuryScript, 1_000n, pusdToken(4_000n)),
+      pusdOutput(context.members[1], 1_000n, pusdToken(396_000n)),
+      pusdOutput(context.members[0], 2_000n),
+      pusdOutput(context.members[1], 2_000n),
+      pusdOutput(context.initiatorScript, 1_000n),
+      pusdOutput(feeScript, feeChange),
+    ],
+  };
+  assert.doesNotThrow(() => assertPusdMainnetCircleLayout(
+    transaction, sourceOutputs, inputScripts, [feeScript], context, "payout", {},
+  ));
+
+  const wrongSponsorChange = structuredClone(transaction);
+  wrongSponsorChange.outputs[5].lockingBytecode = hexToBin(context.initiatorScript);
+  assert.throws(() => assertPusdMainnetCircleLayout(
+    wrongSponsorChange, sourceOutputs, inputScripts, [feeScript], context, "payout", {},
+  ), /token-free output/);
+
+  const shortMemberRefund = structuredClone(transaction);
+  shortMemberRefund.outputs[2].valueSatoshis = 1_999n;
+  assert.throws(() => assertPusdMainnetCircleLayout(
+    shortMemberRefund, sourceOutputs, inputScripts, [feeScript], context, "payout", {},
+  ), /exact member's escrow and receipt BCH backing/);
+
+  const redirectedStateBacking = structuredClone(transaction);
+  redirectedStateBacking.outputs[4].valueSatoshis = 999n;
+  assert.throws(() => assertPusdMainnetCircleLayout(
+    redirectedStateBacking, sourceOutputs, inputScripts, [feeScript], context, "payout", {},
+  ), /exact state BCH backing/);
+});
+
+test("PUSD Mainnet payout verifier checks reserve carry-forward and exact escrow credits", () => {
+  const { context, feeScript, sourceOutputs, inputScripts } = makePusdPayoutFixture(0);
+  const receipt0 = Buffer.alloc(8);
+  receipt0.writeBigUInt64LE(200_000n);
+  const receipt1 = Buffer.alloc(8);
+  receipt1.writeBigUInt64LE(0n);
+  const transaction = {
+    inputs: new Array(6).fill({}),
+    outputs: [
+      pusdOutput(context.contractLockingBytecode, 1_000n, pusdNft(context, "540101", "minting")),
+      pusdOutput(context.contractLockingBytecode, 1_000n, pusdNft(context, "5200" + receipt0.toString("hex"))),
+      pusdOutput(context.contractLockingBytecode, 1_000n, pusdNft(context, "5201" + receipt1.toString("hex"))),
+      pusdOutput(context.escrowLockingBytecodes[0], 1_000n, pusdToken(200_000n)),
+      pusdOutput(context.escrowLockingBytecodes[1], 1_000n),
+      pusdOutput(context.treasuryScript, 1_000n, pusdToken(4_000n)),
+      pusdOutput(context.members[0], 1_000n, pusdToken(196_000n)),
+      pusdOutput(feeScript, 56_000n),
+    ],
+  };
+  assert.doesNotThrow(() => assertPusdMainnetCircleLayout(
+    transaction, sourceOutputs, inputScripts, [feeScript], context, "payout", {},
+  ));
+  const wrongReserve = structuredClone(transaction);
+  wrongReserve.outputs[1].token.nft.commitment = hexToBin("52000000000000000000");
+  assert.throws(() => assertPusdMainnetCircleLayout(
+    wrongReserve, sourceOutputs, inputScripts, [feeScript], context, "payout", {},
+  ), /expected circle NFT/);
+});
+
+test("PUSD Mainnet verifier requires initiator-only cancellation before first payout", () => {
+  const context = createPusdMainnetV3ContractContext(pusdMainnetVerificationCircle);
+  const feeScript = context.initiatorScript;
+  const credit0 = Buffer.alloc(8);
+  credit0.writeBigUInt64LE(0n);
+  const credit1 = Buffer.alloc(8);
+  credit1.writeBigUInt64LE(50_000n);
+  const sourceOutputs = [
+    pusdOutput(context.contractLockingBytecode, 1_000n, pusdNft(context, "540000", "minting")),
+    pusdOutput(context.contractLockingBytecode, 1_000n, pusdNft(context, "5200" + credit0.toString("hex"))),
+    pusdOutput(context.contractLockingBytecode, 1_000n, pusdNft(context, "5201" + credit1.toString("hex"))),
+    pusdOutput(context.escrowLockingBytecodes[0], 1_000n),
+    pusdOutput(context.escrowLockingBytecodes[1], 1_000n, pusdToken(50_000n)),
+    pusdOutput(feeScript, 60_000n),
+  ];
+  const inputScripts = [
+    context.contractLockingBytecode,
+    context.contractLockingBytecode,
+    context.contractLockingBytecode,
+    context.escrowLockingBytecodes[0],
+    context.escrowLockingBytecodes[1],
+    feeScript,
+  ];
+  const transaction = {
+    inputs: new Array(6).fill({}),
+    outputs: [
+      pusdOutput(context.members[0], 2_000n),
+      pusdOutput(context.members[1], 2_000n, pusdToken(50_000n)),
+      pusdOutput(context.initiatorScript, 56_000n),
+    ],
+  };
+  assert.doesNotThrow(() => assertPusdMainnetCircleLayout(
+    transaction, sourceOutputs, inputScripts, [feeScript], context, "cancel", {},
+  ));
+  assert.throws(() => assertPusdMainnetCircleLayout(
+    transaction, sourceOutputs, inputScripts, [cashAddressToLockingBytecode(createMainnetTestAddress(45))], context, "cancel", {},
+  ), /initiator-only/);
 });
 
 test("BCH Mainnet circle broadcast is gated and refuses before any verification or relay", async () => {
