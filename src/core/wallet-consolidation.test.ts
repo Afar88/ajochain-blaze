@@ -68,6 +68,44 @@ describe("wallet coin consolidation", () => {
     await expect(planWalletConsolidation(provider, addresses, receive0.address)).rejects.toThrow(/not on Chipnet/);
   });
 
+  it("plans Mainnet gathering only through the verified Mainnet quorum provider", async () => {
+    const mainnetReceive = {
+      branch: "receive" as const,
+      index: 0,
+      address: deriveWizardConnectAddress("hdwalletv1", getPubkey, "mainnet", "receive", 0)!,
+    };
+    const mainnetChange = {
+      branch: "change" as const,
+      index: 2,
+      address: deriveWizardConnectAddress("hdwalletv1", getPubkey, "mainnet", "change", 2)!,
+    };
+    const provider = providerWith({
+      [mainnetChange.address]: [coin(8, 120_000n)],
+    }) as NetworkProvider & { getBlockHeight?: () => Promise<number> };
+    (provider as unknown as { network: string }).network = "mainnet";
+    provider.getBlockHeight = async () => 900_000;
+
+    const plan = await planWalletConsolidation(
+      provider,
+      [mainnetReceive, mainnetChange],
+      mainnetReceive.address,
+      new Set(),
+      "mainnet",
+    );
+    expect(plan.inputCount).toBe(1);
+    expect(plan.totalSatoshis).toBe(120_000n);
+    expect(plan.destination).toBe(mainnetReceive.address);
+
+    const chipnetOnly = providerWith({});
+    await expect(planWalletConsolidation(
+      chipnetOnly,
+      [mainnetReceive, mainnetChange],
+      mainnetReceive.address,
+      new Set(),
+      "mainnet",
+    )).rejects.toThrow(/verified BCH Mainnet Electrum quorum/i);
+  });
+
   it("leaves a pending circle setup coin untouched", async () => {
     const setup = coin(5, 200_000n);
     const provider = providerWith({ [receive3.address]: [setup, coin(6, 100_000n)], [change2.address]: [coin(7, 50_000n)] });
