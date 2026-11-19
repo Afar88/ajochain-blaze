@@ -1,5 +1,6 @@
 import {
   binToHex,
+  decodeCashAddress,
   decodeTransactionBCH,
   hashTransaction,
   hexToBin,
@@ -227,6 +228,14 @@ export interface MainnetScriptHistorySnapshot {
   records: MainnetScriptHistoryRecord[];
 }
 
+function mainnetAddressLockingBytecode(address: string): string {
+  const decoded = decodeCashAddress(address.trim());
+  if (typeof decoded === "string" || decoded.prefix !== "bitcoincash" || decoded.type !== "p2pkh") {
+    throw new Error("Mainnet wallet gathering accepts only valid BCH Mainnet P2PKH addresses.");
+  }
+  return "76a914" + binToHex(decoded.payload).toLowerCase() + "88ac";
+}
+
 function scriptHashForLockingBytecode(lockingBytecode: Uint8Array | string): string {
   const bytes = typeof lockingBytecode === "string" ? hexToBin(lockingBytecode) : lockingBytecode;
   if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
@@ -380,10 +389,20 @@ export class MainnetQuorumNetworkProvider implements NetworkProvider {
         new Set(addresses.map((address) => address.trim().toLowerCase())).size !== addresses.length) {
       throw new Error("Mainnet wallet scan requires 1–100 unique BCH addresses.");
     }
+    const expectedScripts = addresses.map(mainnetAddressLockingBytecode);
     await this.verifyTip();
     const providerSnapshots = await Promise.all(this.providers.map(async (provider) =>
       Promise.all(addresses.map((address) => provider.getUtxos(address))),
     ));
+    for (const snapshot of providerSnapshots) {
+      for (let addressIndex = 0; addressIndex < snapshot.length; addressIndex += 1) {
+        for (const utxo of snapshot[addressIndex]) {
+          if (utxo.lockingBytecode.toLowerCase() !== expectedScripts[addressIndex]) {
+            throw new Error("Mainnet Electrum returned a UTXO under an address whose P2PKH locking script does not match that address.");
+          }
+        }
+      }
+    }
     const combinedSnapshots = providerSnapshots.map((snapshot) => snapshot.flat());
     const agreed = await this.verifyUtxos(combinedSnapshots);
 
