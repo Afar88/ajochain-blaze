@@ -80,15 +80,22 @@ describe("wallet coin consolidation", () => {
       index: 2,
       address: deriveWizardConnectAddress("hdwalletv1", getPubkey, "mainnet", "change", 2)!,
     };
+    let batchedScans = 0;
     const provider = Object.assign(
       new MainnetQuorumNetworkProvider([{} as never, {} as never]),
       {
         getBlockHeight: async () => 900_000,
-        getUtxos: async (address: string) => {
-          const utxos = address === mainnetChange.address ? [coin(8, 120_000n)] : [];
-          const encoded = cashAddressToLockingBytecode(address);
-          if (typeof encoded === "string") throw new Error(encoded);
-          return utxos.map((utxo) => ({ ...utxo, lockingBytecode: binToHex(encoded.bytecode) }));
+        getUtxosForAddresses: async (addresses: readonly string[]) => {
+          batchedScans += 1;
+          return addresses.map((address) => {
+            const utxos = address === mainnetChange.address ? [coin(8, 120_000n)] : [];
+            const encoded = cashAddressToLockingBytecode(address);
+            if (typeof encoded === "string") throw new Error(encoded);
+            return {
+              address,
+              utxos: utxos.map((utxo) => ({ ...utxo, lockingBytecode: binToHex(encoded.bytecode) })),
+            };
+          });
         },
       },
     ) as unknown as NetworkProvider;
@@ -103,6 +110,7 @@ describe("wallet coin consolidation", () => {
     expect(plan.inputCount).toBe(1);
     expect(plan.totalSatoshis).toBe(120_000n);
     expect(plan.destination).toBe(mainnetReceive.address);
+    expect(batchedScans).toBe(1);
 
     const chipnetOnly = providerWith({});
     await expect(planWalletConsolidation(
