@@ -360,7 +360,8 @@ export default function V2FeeBchWorkspace({
         "Gross round pot: " + formatBch(grossPot) + ".\\n" +
         "Project fee: " + formatBch(projectFee) + " (1%), paid to " + draft.treasury + ".\\n" +
         "Miner fee is separate and capped at " + draft.maxFee.toString() + " sats.\\n\\n" +
-        "No one must pre-fund the entire cycle. Each recipient carries one next contribution forward from their payout to cover the following round.\\n" +
+        "No one must pre-fund the entire cycle. Each recipient carries one next contribution forward from their payout to cover the following round.\\n\\n" +
+        "Public on-chain discovery notice: this transaction permanently links every member BCH address to this circle in public Chipnet history. Each member receives a 546-sat marker; circle settings are public, but the circle name is not. Only proceed if every listed address owner agrees to this public association.\\n" +
         "Experimental Chipnet software only; no real funds.",
       )) return;
       const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Create AjoChain V2 fee circle: " + draft.name);
@@ -527,7 +528,7 @@ export default function V2FeeBchWorkspace({
                 : "Connect your Selene wallet and it will be registered automatically."}
             </div>
             <label>Other members' Chipnet BCH addresses · one per line<textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder="bchtest:…\nbchtest:…" required /></label>
-            <p className="field-hint">Each member, including you, receives a 546-sat marker, and the circle settings (not the name) are written on Chipnet. That lets members' wallets find the circle automatically, without an invite link.</p>
+            <p className="field-hint">The genesis transaction permanently links every member BCH address to this circle on the public Chipnet blockchain. Each member receives a 546-sat marker; the settings are public, but the circle name is not. Only add addresses whose owners agree to this public association.</p>
             <button className="primary-button" type="submit" disabled={busy || network !== "chipnet" || !walletConnected}>
               {busy ? "Creating circle…" : network !== "chipnet" ? "Switch to Chipnet" : !walletConnected ? "Connect wallet first" : "Create fee circle"}
             </button>

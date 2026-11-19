@@ -34,7 +34,7 @@ function uint64le(value: bigint): Uint8Array {
 /** OP_RETURN "AJOD" <version | covenant | members | contribution | maxFee | initiator pkh | treasury script>. */
 export function encodeV2FeeDiscoveryNote(note: V2FeeDiscoveryNote): Uint8Array {
   const treasury = note.treasuryLockingBytecode;
-  if (note.initiatorPkh.length !== 20 || treasury.length < 1 || treasury.length > 40) throw new Error('Invalid discovery note details');
+  if (note.initiatorPkh.length !== 20 || treasury.length < 1 || treasury.length > 35) throw new Error('Invalid discovery note details');
   const payload = new Uint8Array([
     NOTE_VERSION,
     V2_FEE_DISCOVERY_COVENANT_CODES[note.covenant],

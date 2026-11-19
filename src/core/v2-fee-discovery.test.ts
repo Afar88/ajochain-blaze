@@ -67,6 +67,16 @@ describe("on-chain circle discovery", () => {
     expect(note.maxFee).toBe(10_000n);
     expect(binToHex(note.initiatorPkh)).toBe(binToHex(pkh(1)));
     expect(decodeV2FeeDiscoveryNote(script.slice(0, -1))).toBeNull();
+
+    const maxDirectPushNote = encodeV2FeeDiscoveryNote({
+      covenant: "fee-v3-auto-reserve-closing", memberCount: 3, contribution: 200_000n, maxFee: 10_000n,
+      initiatorPkh: pkh(1), treasuryLockingBytecode: new Uint8Array(35),
+    });
+    expect(decodeV2FeeDiscoveryNote(maxDirectPushNote)).not.toBeNull();
+    expect(() => encodeV2FeeDiscoveryNote({
+      covenant: "fee-v3-auto-reserve-closing", memberCount: 3, contribution: 200_000n, maxFee: 10_000n,
+      initiatorPkh: pkh(1), treasuryLockingBytecode: new Uint8Array(36),
+    })).toThrow("Invalid discovery note details");
   });
 
   it("rebuilds the exact circle from its genesis transaction", () => {
