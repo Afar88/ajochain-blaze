@@ -849,13 +849,13 @@ export default function App() {
               <div className="circle-choice-grid">
                 {network === "mainnet" && <>
                 <button type="button" className={circleWorkspace === "bch-mainnet" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-mainnet"} onClick={() => { setCircleWorkspace("bch-mainnet"); document.getElementById("bch-mainnet-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>
-                  <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status locked">Mainnet · preview</span></span>
+                  <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status">Mainnet · live</span></span>
                   <b>BCH automatic-reserve circle</b>
                   <span>For groups saving in Bitcoin Cash. Tracks member contributions and reserves the next installment for each non-final payout.</span>
                   <small>Best when your group wants native BCH and individual member accounting.</small>
                 </button>
                 <button type="button" className={circleWorkspace === "pusd-mainnet" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "pusd-mainnet"} onClick={() => { setCircleWorkspace("pusd-mainnet"); document.getElementById("pusd-mainnet-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>
-                  <span className="circle-choice-top"><span className="circle-choice-symbol pusd">PUSD</span><span className="circle-choice-status locked">Mainnet · preview</span></span>
+                  <span className="circle-choice-top"><span className="circle-choice-symbol pusd">PUSD</span><span className="circle-choice-status">Mainnet · live</span></span>
                   <b>PUSD stable-value circle</b>
                   <span>For groups that prefer ParyonUSD instead of BCH. Contributions and payouts are denominated in PUSD, with BCH needed separately for network fees.</span>
                   <small>Choose this if your group wants a stable-value token rather than BCH price exposure.</small>
@@ -876,7 +876,7 @@ export default function App() {
                 </button>
                 </>}
               </div>
-              <p className="circle-choice-disclaimer"><ShieldCheck size={15} /> {network === "mainnet" ? "BCH Mainnet circles use real BCH and an unaudited contract; start small. PUSD Mainnet circles are still previews only." : "Chipnet is a testing network only. Use test BCH; it has no real-money value and cannot be used as Mainnet funds."}</p>
+              <p className="circle-choice-disclaimer"><ShieldCheck size={15} /> {network === "mainnet" ? "BCH and PUSD Mainnet circles use real funds and unaudited contracts; start small." : "Chipnet is a testing network only. Use test BCH; it has no real-money value and cannot be used as Mainnet funds."}</p>
             </section>
             <Suspense fallback={<div className="workspace-loading"><span className="loading-orb" />Loading Mainnet asset workspaces…</div>}>
               {network === "mainnet" && <>
@@ -932,11 +932,11 @@ export default function App() {
               <div className="asset-detail-heading">
                 <span className="asset-symbol">B</span>
                 <div><span className="section-kicker">BITCOIN CASH</span><h2>BCH</h2><p>Native BCH for circle reserves, miner fees and payouts.</p></div>
-                <span className="asset-state neutral">Mainnet preview only</span>
+                <span className="asset-state neutral">Mainnet live</span>
               </div>
               <div className="asset-detail-row"><span>Chipnet circle tests</span><b>Available</b></div>
-              <div className="asset-detail-row"><span>Mainnet V3 genesis preview</span><b>Unsigned only</b></div>
-              <div className="asset-detail-row"><span>Mainnet transaction broadcast</span><b className="locked-state">Locked</b></div>
+              <div className="asset-detail-row"><span>Mainnet V3 circles</span><b>Enabled</b></div>
+              <div className="asset-detail-row"><span>Mainnet circle broadcast</span><b>Enabled</b></div>
             </article>
             <article className="asset-detail-card">
               <div className="asset-detail-heading">

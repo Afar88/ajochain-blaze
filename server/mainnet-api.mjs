@@ -26,6 +26,10 @@ export const BCH_MAINNET_CIRCLE_BROADCAST_ENABLED = true;
 // Every spend still requires a Selene signature, quorum verification and
 // the shared durable input-reservation ledger before a one-time relay.
 export const BCH_MAINNET_GATHER_BROADCAST_ENABLED = true;
+// Separate gate for PUSD Mainnet V3 circle transactions (genesis, deposit, payout, cancel).
+// Every spend is Selene-signed, quorum-verified against the exact covenant, and
+// relayed once through the shared durable input-reservation ledger.
+export const PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED = true;
 export const MAINNET_GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f";
 export const BCH_MAINNET_FORK_CHECKPOINT_HEIGHT = 478_559;
 export const BCH_MAINNET_FORK_CHECKPOINT_HASH =
@@ -2699,6 +2703,83 @@ export async function broadcastBchMainnetGatherTransaction(
 }
 
 /**
+ * Broadcast a PUSD Mainnet V3 circle transaction only after the full
+ * verifyPusdMainnetCircleTransaction checks pass. Uses the same durable
+ * input-reservation ledger as other Mainnet relays: reserved once, relayed
+ * once, ambiguous results recorded as unknown and never retried.
+ */
+export async function broadcastPusdMainnetCircleTransaction(
+  sessions,
+  tip,
+  body,
+  enabled = PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED,
+) {
+  if (enabled !== true) {
+    throw new Error("PUSD Mainnet circle broadcast is disabled until the release is approved.");
+  }
+  let verification;
+  try {
+    verification = await verifyPusdMainnetCircleTransaction(sessions, tip, body);
+  } catch (cause) {
+    // A retry after a successful relay fails the unspent-input check. Recover
+    // the recorded result from the durable ledger instead of reporting the
+    // spent inputs as a new error.
+    const txid = typeof body?.signedTransactionHex === "string" && isHex(body.signedTransactionHex)
+      ? hashTransaction(hexToBin(body.signedTransactionHex)).toLowerCase()
+      : null;
+    if (txid) {
+      const record = await createUpstashPusdBroadcastLedger().get(txid);
+      if (record && (record.status === "accepted" || record.status === "already-known")) {
+        return {
+          network: "mainnet",
+          operation: body.operation,
+          txid,
+          verified: true,
+          broadcast: true,
+          relayStatus: record.relayStatus ?? record.status,
+          message: "This PUSD Mainnet circle transaction was already relayed (" +
+            (record.relayStatus ?? record.status) + "). It is not confirmed yet.",
+        };
+      }
+    }
+    throw cause;
+  }
+  const ledger = createUpstashPusdBroadcastLedger();
+  const reservation = await ledger.reserve(verification.txid, body.signedTransactionHex);
+  let relay;
+  if (!reservation.acquired) {
+    if (reservation.record.status === "accepted" ||
+        reservation.record.status === "already-known") {
+      relay = {
+        txid: verification.txid,
+        relayStatus: reservation.record.relayStatus ?? reservation.record.status,
+      };
+    } else {
+      throw new Error(
+        "PUSD Mainnet circle ledger already records this transaction as " +
+        reservation.record.status + ". It was not relayed again; reconcile the exact transaction ID before proceeding.",
+      );
+    }
+  } else {
+    try {
+      relay = await broadcastPusdTransactionOnce(sessions, body.signedTransactionHex, verification.txid);
+      await ledger.complete(verification.txid, body.signedTransactionHex, relay.relayStatus);
+    } catch (cause) {
+      try { await ledger.complete(verification.txid, body.signedTransactionHex, "unknown"); }
+      catch { /* Permanent submitting reservation continues to block another relay. */ }
+      throw cause;
+    }
+  }
+  return {
+    ...verification,
+    broadcast: true,
+    relayStatus: relay.relayStatus,
+    message: "All PUSD Mainnet V3 circle checks passed and the transaction was relayed (" +
+      relay.relayStatus + "). It is not confirmed yet.",
+  };
+}
+
+/**
  * Broadcast a BCH Mainnet circle transaction only after the full
  * verifyBchMainnetCircleTransaction checks pass. Relays once; an ambiguous
  * relay result is reported as unknown and never retried automatically.
@@ -2948,6 +3029,19 @@ export function createMainnetApiServer() {
         await withElectrumSessions(async (sessions) => {
           const tip = await getTipQuorum(sessions);
           const result = await verifyPusdMainnetCircleTransaction(sessions, tip, body);
+          sendJson(response, 200, result);
+        });
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/api/pusd/circle/broadcast") {
+        if (!PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED) {
+          sendJson(response, 403, { error: "PUSD Mainnet circle broadcast is disabled until the release is approved." });
+          return;
+        }
+        const body = await readJson(request);
+        await withElectrumSessions(async (sessions) => {
+          const tip = await getTipQuorum(sessions);
+          const result = await broadcastPusdMainnetCircleTransaction(sessions, tip, body);
           sendJson(response, 200, result);
         });
         return;

@@ -176,6 +176,16 @@ export interface PusdMainnetCircleVerificationResult {
   message: string;
 }
 
+export interface PusdMainnetCircleBroadcastResult {
+  network: "mainnet";
+  operation: PusdMainnetCircleVerificationOperation;
+  txid: string;
+  relayStatus: "accepted" | "already-known";
+  verified: true;
+  broadcast: true;
+  message: string;
+}
+
 /**
  * Send Selene-signed PUSD circle bytes to the read-only backend verifier.
  * This endpoint independently authenticates prevouts and contract execution;
@@ -196,6 +206,32 @@ export async function verifyPusdMainnetCircleSignedTransaction(
       result.broadcast !== false || result.verified !== true ||
       !/^[0-9a-f]{64}$/i.test(result.txid)) {
     throw new Error("PUSD Mainnet server verification returned an inconsistent or unsafe result.");
+  }
+  return result;
+}
+
+/**
+ * Send Selene-signed PUSD circle bytes for server verification and one-time relay.
+ * The backend re-authenticates prevouts and covenant execution, then reserves
+ * the inputs in its durable ledger before broadcasting; ambiguous relays are
+ * reported, never retried.
+ */
+export async function broadcastPusdMainnetCircleSignedTransaction(
+  request: PusdMainnetCircleVerificationRequest,
+): Promise<PusdMainnetCircleBroadcastResult> {
+  if (request.operation === "deposit" &&
+      (!Number.isSafeInteger(request.memberIndex) || typeof request.amount !== "string")) {
+    throw new Error("PUSD circle deposit broadcast requires its member index and raw PUSD amount.");
+  }
+  const result = await requestJson<PusdMainnetCircleBroadcastResult>(
+    "/api/pusd/circle/broadcast",
+    { method: "POST", body: JSON.stringify(request) },
+  );
+  if (result.network !== "mainnet" || result.operation !== request.operation ||
+      result.broadcast !== true || result.verified !== true ||
+      typeof result.relayStatus !== "string" ||
+      !/^[0-9a-f]{64}$/i.test(result.txid)) {
+    throw new Error("PUSD Mainnet circle broadcast returned an incomplete result. Check the transaction before trying again.");
   }
   return result;
 }
