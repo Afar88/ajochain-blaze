@@ -516,6 +516,10 @@ export default function App() {
   const gatherWalletCoins = async () => {
     const gatherNetwork = network;
     if (!walletClient || walletClient.state !== "connected" || !walletAddress) return;
+    if (gatherNetwork === "mainnet" && !walletClient.isReceiveAddressConfirmed("mainnet")) {
+      setGatherMessage("Sync the Mainnet receive address currently shown in Selene under Wallet Details before gathering real BCH.");
+      return;
+    }
     setGatherBusy(true);
     setGatherMessage("Scanning this wallet's " + (gatherNetwork === "mainnet" ? "Mainnet" : "Chipnet") + " receive and change addresses…");
     try {
@@ -971,8 +975,12 @@ export default function App() {
                 }}>Sync Selene address</button>
                 {addressMatchMessage && <p className="wallet-match-message" role="status">{addressMatchMessage}</p>}
                 {(network === "chipnet" || network === "mainnet") && walletAddress && <>
-                  <button className="secondary-button" disabled={gatherBusy} onClick={() => void gatherWalletCoins()}>
-                    {gatherBusy ? "Scanning and preparing coins…" : network === "mainnet" ? "Gather Mainnet BCH coins to this address" : "Gather Selene coins to this address"}
+                  <button className="secondary-button"
+                    disabled={gatherBusy || (network === "mainnet" && !walletClient?.isReceiveAddressConfirmed("mainnet"))}
+                    onClick={() => void gatherWalletCoins()}>
+                    {gatherBusy ? "Scanning and preparing coins…" : network === "mainnet" && !walletClient?.isReceiveAddressConfirmed("mainnet")
+                      ? "Sync Selene address before gathering"
+                      : network === "mainnet" ? "Gather Mainnet BCH coins to this address" : "Gather Selene coins to this address"}
                   </button>
                   {network === "mainnet" && <small className="field-hint">Mainnet gathering uses real BCH and requires Selene approval. Only plain BCH is consolidated back into your own wallet; CashTokens are left untouched.</small>}
                   {gatherMessage && <p className="wallet-match-message" role="status">{gatherMessage}</p>}
