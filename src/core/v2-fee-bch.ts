@@ -111,6 +111,18 @@ const isFeeV3AutoReserveCovenant = (c: V2FeeCovenant) => c === "fee-v3-auto-rese
 export const v2FeeCovenantClosesOnCompletion = (c: V2FeeCovenant) => c === "fee-v3-auto-reserve-closing" || c === "fee-v3-auto-reserve-mainnet";
 const feeEstimate = (memberCount: number) => 6_000n + BigInt(memberCount) * 500n;
 
+/**
+ * Estimate genesis miner fee including discovery marker/note serialization overhead.
+ * Kept separate from general circle validation so older saved circles remain readable.
+ */
+export function requireV2FeeGenesisMaxFee(memberCount: number, maxFee: bigint, discoverable: boolean): bigint {
+  const estimate = feeEstimate(memberCount) + (discoverable ? BigInt(memberCount) * 40n + 100n : 0n);
+  if (estimate > maxFee) {
+    throw new Error(`This circle's genesis transaction needs maxFee of at least ${estimate.toString()} sats because on-chain discovery outputs are included. Increase the maximum miner fee before signing.`);
+  }
+  return estimate;
+}
+
 function validate(p: V2FeeCircleDraft | V2FeeCircleParams): void {
   if (p.version !== 2 ||
       !['fee-v1', 'fee-v2-escrow', 'fee-v3-auto-reserve', 'fee-v1-guarded', 'fee-v2-escrow-guarded', 'fee-v3-auto-reserve-guarded', 'fee-v3-auto-reserve-closing', 'fee-v3-auto-reserve-mainnet'].includes(p.covenant) ||
@@ -503,6 +515,13 @@ export function requireV2FeeGenesisUtxo(
 export async function planV2FeeGenesis(draft: V2FeeCircleDraft, walletAddress: string) {
   const paramsBase = { ...draft, initiator: walletAddress };
   validate({ ...paramsBase, stateCategory: '00'.repeat(32) });
+  // Enforce the discovery-inclusive creation fee before reading UTXOs or asking Selene to sign.
+  // Do not move this into validate(): older saved circles may have the pre-discovery maxFee.
+  const fee = requireV2FeeGenesisMaxFee(
+    draft.members.length,
+    draft.maxFee,
+    isV2FeeDiscoverableCovenant(draft.covenant),
+  );
   const provider = await getProvider(draft.network);
   const coins = (await provider.getUtxos(walletAddress))
     .filter(u => !u.token && u.satoshis > 0n)
@@ -518,7 +537,6 @@ export async function planV2FeeGenesis(draft: V2FeeCircleDraft, walletAddress: s
     ? v2FeeDiscoveryOutputs({ ...params, covenant: params.covenant, initiatorPkh: addressToPkh(params.initiator, params.network) })
     : [];
   const discoveryCost = discoveryOutputs.reduce((sum, output) => sum + output.valueSatoshis, 0n);
-  const fee = feeEstimate(params.members.length) + (discoveryOutputs.length ? BigInt(params.members.length) * 40n + 100n : 0n);
   for (const coin of coins) {
     if (coin.txid === genesis.txid && coin.vout === genesis.vout) continue;
     if (total >= STATE_DUST + BigInt(params.members.length) * RECEIPT_DUST + discoveryCost + fee + CHANGE_DUST) break;
