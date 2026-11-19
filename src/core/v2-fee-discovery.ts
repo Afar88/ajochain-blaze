@@ -67,9 +67,9 @@ export function parseV2FeeDiscoveryTransaction(tx: Transaction, provider: Networ
     ? { prefix: 'bitcoincash', bytecode: note.treasuryLockingBytecode, tokenSupport: true }
     : { prefix: 'bchtest', bytecode: note.treasuryLockingBytecode });
   if (typeof treasury === 'string') return null;
-  // The creator is required to be member 1. This is the member order used by
-  // circle creation and by the UI's initiator-only cancellation permissions.
-  if (members[0] !== pkhToAddress(note.initiatorPkh, network)) return null;
+  // Chipnet creation keeps the creator first. Mainnet creation accepts any member order;
+  // the initiator is independently bound in the discovery note and exact covenant constructor.
+  if (network === 'chipnet' && members[0] !== pkhToAddress(note.initiatorPkh, network)) return null;
   let params: V2FeeCircleParams;
   try {
     params = {
