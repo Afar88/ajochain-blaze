@@ -15,9 +15,12 @@ pragma cashscript ^0.14.0;
 // Deposit inputs: state, member receipt, member escrow, member PUSD funding,
 //                 initiator BCH fee reserve.
 // Payout inputs: state, ordered receipts, ordered member escrows,
-//                initiator BCH fee reserve.
+//                caller BCH fee input (any token-free input; not only the initiator).
 // Payout outputs: state, updated receipts, updated escrows, treasury PUSD fee,
-//                 recipient PUSD net payout, initiator BCH fee change.
+//                 recipient PUSD net payout, BCH fee change to the fee input's script.
+// Final payout outputs: treasury PUSD fee, recipient PUSD net payout, one
+//                 receipt + escrow BCH refund per member, state BCH refund to the
+//                 initiator, BCH fee change. The state and receipt NFTs are burned.
 // Cancel inputs: state, ordered receipts, ordered member escrows,
 //                initiator BCH fee reserve.
 // Cancel outputs: one exact PUSD + BCH-backed refund per member, initiator change.
@@ -144,7 +147,6 @@ contract AjoCirclePUSDV3Mainnet(
         require(maxFee >= 0);
         require(this.activeInputIndex >= 0 && this.activeInputIndex <= 2 * memberCount);
         require(tx.inputs.length == 2 * memberCount + 2);
-        require(tx.outputs.length == 2 * memberCount + 4);
         require(tx.inputs[0].tokenCategory == stateCategory + 0x02);
         require(tx.inputs[0].tokenAmount == 0);
 
@@ -155,6 +157,12 @@ contract AjoCirclePUSDV3Mainnet(
         int round = int(stateRound);
         require(round >= 0 && round < memberCount);
         require((round == 0 && hasPaid == 0x00) || (round > 0 && hasPaid == 0x01));
+        bool closing = round + 1 == memberCount;
+        if (closing) {
+            require(tx.outputs.length == memberCount + 4);
+        } else {
+            require(tx.outputs.length == 2 * memberCount + 4);
+        }
 
         int totalCredits = 0;
         for (int i = 0; i < memberCount; i++) {
@@ -171,10 +179,11 @@ contract AjoCirclePUSDV3Mainnet(
             int credit = int(receiptCredit);
 
             bytes memberEscrowLock = escrowLock0;
-            if (i == 1) { memberEscrowLock = escrowLock1; }
-            if (i == 2) { memberEscrowLock = escrowLock2; }
-            if (i == 3) { memberEscrowLock = escrowLock3; }
-            if (i == 4) { memberEscrowLock = escrowLock4; }
+            bytes20 member = m0;
+            if (i == 1) { memberEscrowLock = escrowLock1; member = m1; }
+            if (i == 2) { memberEscrowLock = escrowLock2; member = m2; }
+            if (i == 3) { memberEscrowLock = escrowLock3; member = m3; }
+            if (i == 4) { memberEscrowLock = escrowLock4; member = m4; }
             require(tx.inputs[escrowInput].lockingBytecode == memberEscrowLock);
             require(credit >= contribution && credit <= 9223372036854775807 - totalCredits);
             totalCredits = totalCredits + credit;
@@ -182,33 +191,55 @@ contract AjoCirclePUSDV3Mainnet(
             require(tx.inputs[escrowInput].tokenAmount == credit);
             require(tx.inputs[escrowInput].nftCommitment == 0x);
 
-            int reserve = 0;
-            if (i == round && round + 1 < memberCount) { reserve = contribution; }
-            int nextCredit = credit - contribution + reserve;
-            require(tx.outputs[receiptInput].lockingBytecode == tx.inputs[receiptInput].lockingBytecode);
-            require(tx.outputs[receiptInput].tokenCategory == stateCategory);
-            require(tx.outputs[receiptInput].tokenAmount == 0);
-            require(tx.outputs[receiptInput].nftCommitment == 0x52 + toPaddedBytes(i, 1) + toPaddedBytes(nextCredit, 8));
-            require(tx.outputs[receiptInput].value == tx.inputs[receiptInput].value);
-
-            int escrowOutput = memberCount + i + 1;
-            require(tx.outputs[escrowOutput].lockingBytecode == tx.inputs[escrowInput].lockingBytecode);
-            require(tx.outputs[escrowOutput].tokenAmount == nextCredit);
-            require(tx.outputs[escrowOutput].nftCommitment == 0x);
-            if (nextCredit > 0) {
-                require(tx.outputs[escrowOutput].tokenCategory == pusdCategory);
+            if (closing) {
+                // Exact credit: every escrowed PUSD unit is paid to the treasury or recipient.
+                require(credit == contribution);
+                int refundOutput = i + 2;
+                require(tx.outputs[refundOutput].lockingBytecode == new LockingBytecodeP2PKH(member));
+                require(tx.outputs[refundOutput].tokenCategory == 0x);
+                require(tx.outputs[refundOutput].value == tx.inputs[escrowInput].value + tx.inputs[receiptInput].value);
             } else {
-                require(tx.outputs[escrowOutput].tokenCategory == 0x);
+                int reserve = 0;
+                if (i == round) { reserve = contribution; }
+                int nextCredit = credit - contribution + reserve;
+                require(tx.outputs[receiptInput].lockingBytecode == tx.inputs[receiptInput].lockingBytecode);
+                require(tx.outputs[receiptInput].tokenCategory == stateCategory);
+                require(tx.outputs[receiptInput].tokenAmount == 0);
+                require(tx.outputs[receiptInput].nftCommitment == 0x52 + toPaddedBytes(i, 1) + toPaddedBytes(nextCredit, 8));
+                require(tx.outputs[receiptInput].value == tx.inputs[receiptInput].value);
+
+                int escrowOutput = memberCount + i + 1;
+                require(tx.outputs[escrowOutput].lockingBytecode == tx.inputs[escrowInput].lockingBytecode);
+                require(tx.outputs[escrowOutput].tokenAmount == nextCredit);
+                require(tx.outputs[escrowOutput].nftCommitment == 0x);
+                if (nextCredit > 0) {
+                    require(tx.outputs[escrowOutput].tokenCategory == pusdCategory);
+                } else {
+                    require(tx.outputs[escrowOutput].tokenCategory == 0x);
+                }
+                require(tx.outputs[escrowOutput].value == tx.inputs[escrowInput].value);
             }
-            require(tx.outputs[escrowOutput].value == tx.inputs[escrowInput].value);
         }
 
         require(totalCredits >= memberCount * contribution);
-        require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
-        require(tx.outputs[0].tokenCategory == stateCategory + 0x02);
-        require(tx.outputs[0].tokenAmount == 0);
-        require(tx.outputs[0].nftCommitment == 0x54 + toPaddedBytes(round + 1, 1) + 0x01);
-        require(tx.outputs[0].value == tx.inputs[0].value);
+        int treasuryOutput = 2 * memberCount + 1;
+        int payoutOutput = 2 * memberCount + 2;
+        int feeChangeOutput = 2 * memberCount + 3;
+        if (closing) {
+            treasuryOutput = 0;
+            payoutOutput = 1;
+            feeChangeOutput = memberCount + 3;
+            int stateRefundOutput = memberCount + 2;
+            require(tx.outputs[stateRefundOutput].lockingBytecode == new LockingBytecodeP2PKH(initiator));
+            require(tx.outputs[stateRefundOutput].tokenCategory == 0x);
+            require(tx.outputs[stateRefundOutput].value == tx.inputs[0].value);
+        } else {
+            require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
+            require(tx.outputs[0].tokenCategory == stateCategory + 0x02);
+            require(tx.outputs[0].tokenAmount == 0);
+            require(tx.outputs[0].nftCommitment == 0x54 + toPaddedBytes(round + 1, 1) + 0x01);
+            require(tx.outputs[0].value == tx.inputs[0].value);
+        }
 
         bytes20 recipient = m0;
         if (round == 1) { recipient = m1; }
@@ -224,13 +255,10 @@ contract AjoCirclePUSDV3Mainnet(
         int recipientPayout = grossPot - projectFee - recipientReserve;
         require(recipientPayout > 0);
 
-        int treasuryOutput = 2 * memberCount + 1;
-        int payoutOutput = 2 * memberCount + 2;
-        int feeChangeOutput = 2 * memberCount + 3;
         int feeInput = 2 * memberCount + 1;
-        // A wallet-signed BCH input bound to the registered initiator authorizes this payout.
+        // Any caller may sponsor the miner fee once every member is fully funded,
+        // so an absent initiator cannot block payouts.
         require(tx.inputs[feeInput].tokenCategory == 0x);
-        require(tx.inputs[feeInput].lockingBytecode == new LockingBytecodeP2PKH(initiator));
 
         // The same shared project treasury is used by BCH and PUSD Mainnet circles.
         require(tx.outputs[treasuryOutput].lockingBytecode == new LockingBytecodeP2PKH(treasury));
@@ -245,7 +273,7 @@ contract AjoCirclePUSDV3Mainnet(
         require(tx.outputs[payoutOutput].nftCommitment == 0x);
         require(tx.outputs[payoutOutput].value >= 1000);
 
-        require(tx.outputs[feeChangeOutput].lockingBytecode == new LockingBytecodeP2PKH(initiator));
+        require(tx.outputs[feeChangeOutput].lockingBytecode == tx.inputs[feeInput].lockingBytecode);
         require(tx.outputs[feeChangeOutput].tokenCategory == 0x);
         require(tx.outputs[feeChangeOutput].value >= 546);
         require(tx.outputs[feeChangeOutput].value <= tx.inputs[feeInput].value -
