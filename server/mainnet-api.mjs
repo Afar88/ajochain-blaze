@@ -2031,6 +2031,11 @@ function validatePusdMainnetCircleForVerification(value) {
   };
 }
 
+/** Reconstruct the exact PUSD circle context from the reviewed V3 artifacts. */
+export function createPusdMainnetV3ContractContext(circleValue) {
+  return validatePusdMainnetCircleForVerification(circleValue);
+}
+
 function pusdReceiptCommitment(index, credit) {
   if (!Number.isSafeInteger(index) || index < 0 || index > 4 ||
       typeof credit !== "bigint" || credit < 0n || credit > PUSD_MAINNET_SCRIPT_INT_MAX) {
