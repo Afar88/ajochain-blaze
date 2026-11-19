@@ -583,7 +583,7 @@ export default function V2FeeBchWorkspace({
             : snapshot.completed
             ? <p className="classic-recipient"><b>Circle completed.</b> Every registered member received their scheduled payout. No further deposits or payouts are accepted.{snapshot.closedAs === "completed" ? " The circle tokens were closed and their BCH backing returned to the initiator, so nothing remains locked." : ""}</p>
             : <p className="classic-recipient">Next payout recipient: <b>Member {snapshot.round + 1}</b> · {snapshot.recipient}</p>}
-          <p className="field-hint">{snapshot.hasPaid ? "The first payout has happened. Cancellation is permanently locked; remaining escrow cannot be withdrawn." : "No payout has happened yet. Only the initiator may cancel and refund recorded member credit."}</p>
+          <p className="field-hint">{snapshot.closedAs ? "This circle is closed. No further actions are possible." : snapshot.hasPaid ? "The first payout has happened. Cancellation is permanently locked; remaining escrow cannot be withdrawn." : "No payout has happened yet. Only the initiator may cancel and refund recorded member credit."}</p>
         </> : <p className="classic-empty">Reading the state NFT and all member receipts from Chipnet. Refresh if the transaction is still confirming.</p>}
         <div className="member-payment-status">
           {memberIndex >= 0
@@ -600,7 +600,7 @@ export default function V2FeeBchWorkspace({
             {memberIndex < 0 ? "Connect a registered member wallet" : "Pay my share"}
           </button>
           <button type="button" className="primary-button" disabled={busy || !snapshot?.ready || snapshot?.completed || network !== "chipnet"} onClick={() => void payout()}>Pay out next round</button>
-          <button type="button" className="secondary-button" disabled={busy || !initiator || Boolean(snapshot?.hasPaid)} onClick={() => void cancel()}>Cancel before first payout</button>
+          <button type="button" className="secondary-button" disabled={busy || !initiator || Boolean(snapshot?.hasPaid) || Boolean(snapshot?.completed)} onClick={() => void cancel()}>Cancel before first payout</button>
         </div>
       </div>}
       {busy && <p className="classic-feedback" role="status">Preparing or verifying a Chipnet transaction…</p>}
