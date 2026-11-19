@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { encodeCashAddress, hexToBin } from "@bitauth/libauth";
 import pusdBroadcastHandler from "../api/pusd/broadcast.mjs";
+import pusdCircleVerifyHandler from "../api/pusd/circle/verify.mjs";
 import pusdUnspentHandler from "../api/pusd/unspent.mjs";
 import pusdSubmissionHandler from "../api/pusd/submission.mjs";
 import transactionStatusHandler from "../api/transaction/status.mjs";
@@ -1042,6 +1043,19 @@ test("PUSD submission-status route returns 503 when private ledger credentials a
     if (originalToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
     else process.env.UPSTASH_REDIS_REST_TOKEN = originalToken;
   }
+});
+
+test("nested PUSD circle verifier route rejects unknown operations before network access", async () => {
+  const response = await invokeServerlessRoute(
+    pusdCircleVerifyHandler,
+    {
+      ...mockApiRequest("POST", "/api/pusd/circle/verify"),
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ operation: "unknown" }),
+    },
+  );
+  assert.equal(response.statusCode, 400);
+  assert.match(JSON.parse(response.body).error, /Unsupported PUSD Mainnet circle verification operation/);
 });
 
 test("nested PUSD submission-status Vercel route validates the transaction ID before ledger access", async () => {
