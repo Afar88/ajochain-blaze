@@ -7,7 +7,7 @@ import { decodeV2FeeDiscoveryNote, encodeV2FeeDiscoveryNote, v2FeeDiscoveryOutpu
 import { discoverV2FeeCircles, parseV2FeeDiscoveryTransaction } from "./v2-fee-discovery";
 
 const pkh = (byte: number) => new Uint8Array(20).fill(byte);
-const CATEGORY = "ab".repeat(32);
+const CATEGORY = "0123456789abcdef".repeat(4);
 const params: V2FeeCircleParams = {
   version: 2,
   covenant: "fee-v3-auto-reserve-closing",
