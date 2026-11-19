@@ -1,114 +1,160 @@
-# AjoChain — BCH Mainnet Build
+![AjoChain BLAZE — Bitcoin Cash savings circles](docs/assets/ajochain-blaze-banner.svg)
 
-AjoChain is an independent, non-custodial rotating savings-circle application being built for Bitcoin Cash.
+<p align="center">
+  <strong>Non-custodial rotating savings circles built on Bitcoin Cash.</strong><br/>
+  Wallet-controlled transactions · member-owned credit · on-chain circle state
+</p>
 
-This repository is the **independent BCH BLAZE build**. It is not a copy, mirror, or continuation branch of the frozen V1 release. The V1 repository and its deployed website remain separate and unchanged.
+<p align="center">
+  <a href="https://ajochain-blaze.vercel.app">Open BLAZE</a> ·
+  <a href="https://github.com/Afar88/ajochain-blaze">Source code</a> ·
+  <a href="docs/QUICKSTART.md">Ready-to-run guide</a>
+</p>
 
-## Product direction
+---
 
-- Mainnet-first architecture for Bitcoin Cash.
-- WizardConnect wallet connection for compatible BCH wallets, including Selene.
-- BCH contributions have a tested Chipnet V3 auto-reserve prototype and a separate, guarded Mainnet V3 genesis-preview adapter. PUSD uses the real Mainnet CashToken category and a Mainnet V3 covenant prototype under development. Both Mainnet paths pin the same 1% project-fee treasury, with member-owned reserves and pre-payout cancellation rules.
-- Transparent circle schedules, member payment records, and per-member credit accounting.
-- Mobile-first, accessible fintech UX.
-- Clear transaction previews, fee visibility, and confirmation states.
+## What is AjoChain BLAZE?
 
-## Current application status
+AjoChain BLAZE is a non-custodial savings-circle application for people who want to contribute to a shared rotation and receive payouts according to transparent, enforceable rules.
 
-- Responsive dashboard and local circle-preview form.
-- Local circle drafts persist in the current browser and can be edited or deleted; they are not on-chain records.
-- WizardConnect dapp relay integration with encrypted saved-session resume, mobile focus/visibility recovery, overlap protection, Selene receive-index matching and signed-transaction intent verification.
-- BCH/Chipnet network selection and full CashAddress checksum + network-prefix validation.
-- Separate BCH and PUSD Mainnet circle workspaces are visible in Circles. They can validate drafts and prepare unsigned genesis previews only; Mainnet signing and broadcasting remain locked.
-- The current new-circle flow uses the `fee-v3-auto-reserve` covenant (`AjoCircleV3AutoReserve`): each member funds the current round, and each non-final recipient carries exactly one next contribution forward in their own receipt. The reserve is consumed on the following payout; later rounds still require fresh contributions. The older `fee-v2-escrow` covenant remains versioned separately and requires members to lock every remaining scheduled contribution before payout. Both are Chipnet-only prototypes. The workspace includes a member accountability ledger showing paid-in, member-owned credit, received payout, next-round shortfall and payout lock status.
-- Existing `fee-v1` invites remain on their original rolling-credit contract and are clearly marked as legacy; they do not gain the full-cycle default guarantee retroactively.
-- Ported BCH V2 member-receipt covenant source in `contracts/AjoCircleV2.cash`; each payout consumes one round contribution from every member receipt, including the previous payout recipient.
-- Unit tests are written for the member ledger, circle draft validation, checksummed network addresses and raw signed-transaction intent comparison. Their execution status, TypeScript build and CashScript compilation must be confirmed by a successful CI run.
-- Circle previews are local UI drafts only; they are not persisted to a contract or broadcast to the network.
+A circle has an ordered set of members, a contribution amount, a payout order and versioned covenant rules. Members connect a compatible Bitcoin Cash wallet, review transaction details and approve actions in that wallet. BLAZE provides the interface and verification tools; it does not take custody of member keys or act as the source of truth for on-chain payments.
 
-**Important:** the WizardConnect signing path compares the exact returned transaction with the approved inputs/outputs, requires the protocol's `0x61` sighash for wallet-owned P2PKH inputs, and evaluates the signed transaction against the exact supplied previous outputs using Libauth's BCH 2026 VM. The exact dependency is pinned to `@bitauth/libauth` `3.1.0-next.8`; this is an upstream prerelease, not a stable, independently audited verifier. The browser Mainnet reader and PUSD API now check the shared genesis, BCH's 2017 fork-specific block 478,559 checkpoint, and BCH's post-BSV-split block 556,767 checkpoint before trusting tips or UTXO state. They then cross-check tips, UTXO snapshots and raw previous-transaction bytes across two Electrum endpoints. This separates BCH from BTC and BSV endpoints that share earlier history, but it still does not prove provider-operator independence or SPV/chainwork validity. Mainnet remains read-only: the BCH quorum provider rejects broadcasting and the BCH/PUSD hard locks remain closed. CI now runs a targeted set of upstream BCH 2026 VMB vectors covering bitwise operations, functions, bounded loops, Pay-to-Script, and flow control; this is not the complete BCHN/VMB suite. Before real-value release, BLAZE still needs full consensus-vector evidence, independent review of the exact covenant artifacts, a dedicated idempotent BCH broadcaster with confirmation/reorg reconciliation, verified provider operators, shared operational controls, and live Selene/WizardConnect end-to-end testing.
+BLAZE supports separate BCH and ParyonUSD (PUSD) workspaces. They use different token and contract paths and must not be treated as interchangeable.
 
-## Requirements
+## Product principles
 
-- Node.js 22 or later
-- npm
+- **The blockchain is the source of truth.** Circle identity, covenant state, receipts, escrow outputs and confirmed payments are derived from Bitcoin Cash transactions and UTXOs—not from a central circle database.
+- **Members retain wallet control.** Selene connects through WizardConnect. A connected session is not payment authorization; the user must review and approve wallet actions.
+- **Credit belongs to the member.** Each member's receipt/escrow records that member's own contribution credit. One member's surplus does not cover another member's shortfall.
+- **Contract versions stay distinct.** Existing Classic, V1, V2 and V3 circles keep the covenant rules and scripts they were created with. A new version does not silently upgrade an old circle.
+- **Mainnet is guarded.** A preview, test, local signature check or passing CI run is not approval to move real funds.
 
-## Run locally
+## How the system fits together
 
-```bash
+![AjoChain BLAZE architecture](docs/assets/ajochain-architecture.svg)
+
+The browser application connects to the member's wallet and reads chain data through BCH network providers. The PUSD circle verification API adds a server-side check of the exact signed transaction, its authenticated previous outputs and covenant execution. The API is read-only: it does not relay or broadcast the verified bytes.
+
+### On-chain discovery
+
+For the newer guarded BCH V3 Chipnet circles, discovery is performed from the connected wallet's own derived receive/change address history. BLAZE downloads candidate raw transactions, checks their transaction IDs, validates the genesis/category relationship, verifies the ordered receipt and member markers, and rebuilds the exact covenant scripts before accepting a match.
+
+There is no central registry required to discover these new Chipnet circles. Shared server discovery and registration remain disabled. Older circles can still be restored using their existing invite links.
+
+The configured Electrum providers are a read quorum, not a substitute for a locally validated SPV/chainwork client. Different endpoint names do not prove independent operators or infrastructure. See [the circle-discovery security gate](docs/BLAZE_CIRCLE_DISCOVERY_BACKEND.md).
+
+## Circle lifecycle and member accounting
+
+The following graphic describes the PUSD V3 prototype flow. It is a contract/workflow explanation, not a statement that PUSD Mainnet spending is enabled.
+
+![PUSD V3 circle lifecycle](docs/assets/pusd-v3-circle-lifecycle.svg)
+
+### Contribution and payout rules
+
+For the current V3 automatic-reserve design:
+
+1. Genesis creates the circle state NFT, one ordered receipt NFT per member, and one member escrow output per member.
+2. A member deposit is credited to that member's own receipt and escrow. The verifier checks the exact member, amount, category and output layout.
+3. At payout, every member receipt is debited by exactly one contribution. The project fee is a separate **1% of the gross round pot** (member count × contribution) on every payout, including the final payout.
+4. A non-final scheduled recipient carries exactly one next-round contribution into their own receipt/escrow. That reserve is consumed at the next payout; it does not cover later instalments. The final recipient receives no future-round reserve.
+5. Before the first payout, the initiator may cancel. Each member's own recorded credit and associated BCH backing are returned according to the covenant. Cancellation is unavailable after the first payout.
+
+Miner fees and CashToken carrier satoshis are accounted for separately from the PUSD project fee. The shared Mainnet fee destination committed by the Mainnet covenant is:
+
+**bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q**
+
+Read [BCH, PUSD and member accounting](docs/BCH_PUSD_MEMBER_ACCOUNTING.md) for the detailed accounting model and version-specific rules.
+
+## Current feature and release status
+
+| Area | Current state | What that means |
+|---|---|---|
+| BCH V3 automatic-reserve circles | **Chipnet prototype** | The guarded V3 path is the active new-circle flow on Chipnet. Its on-chain discovery and member receipt rules are test-network functionality. |
+| Classic / V1 / V2 circles | **Versioned compatibility** | Existing circles retain their original covenant and accounting rules; they are not silently migrated to V3. |
+| BCH Mainnet circles | **Read-only / preview** | The Mainnet workspace validates drafts and prepares an unsigned genesis preview. Mainnet circle signing and broadcast are not approved. |
+| PUSD Mainnet V3 circles | **Engineering / read-only verification** | The workspace and lifecycle planners cover genesis, deposit, payout and pre-first-payout cancellation. PR [#78](https://github.com/Afar88/ajochain-blaze/pull/78) adds server-side signed-byte verification; it does not add a broadcast path or enable spending. |
+| Shared circle registry | **Disabled** | BLAZE does not rely on a server registry for new Chipnet V3 discovery. Existing invite restoration remains available. |
+
+### PUSD verification status
+
+The PUSD server verifier in [PR #78](https://github.com/Afar88/ajochain-blaze/pull/78) reconstructs the circle and member escrow scripts from the checked-in compiled artifacts, authenticates raw previous transactions against the configured Electrum quorum, validates lifecycle-specific inputs and outputs, checks wallet 0x61 sighashes, and executes the signed transaction using the BCH 2026 VM.
+
+It covers genesis, member deposit, payout (including final close) and pre-first-payout cancellation. The endpoint is **POST /api/pusd/circle/verify**. It returns verification information only; signed transaction bytes are discarded after the response and are not reserved, relayed or broadcast.
+
+**Verification is not spending approval.** The PUSD Mainnet spending guard remains hard-coded to false, and the Mainnet broadcast guard remains closed. No real PUSD or BCH should be sent to prototype circle scripts.
+
+## Get running
+
+The complete [Ready-to-run setup guide](docs/QUICKSTART.md) covers local installation, optional local API setup, tests, Vercel deployment, required environment variables and troubleshooting.
+
+Quick local start:
+
+~~~bash
+git clone https://github.com/Afar88/ajochain-blaze.git
+cd ajochain-blaze
 npm install
 npm run dev
-```
+~~~
 
-Vite prints the local development URL in the terminal.
+Requirements: Node.js 22 or later and npm. The development command compiles the CashScript artifacts and starts Vite. Development defaults to Chipnet. The repository currently has no npm lockfile, so use npm install rather than npm ci.
 
-## Quality checks
+Run the core checks:
 
-Run these before submitting changes:
-
-```bash
+~~~bash
 npm run typecheck
 npm test
 npm run build
-```
+~~~
 
-The GitHub Actions workflow runs the same checks on pushes to `main` and pull requests targeting `main`.
+## Architecture and technology
 
-## Vercel deployment
+| Layer | Implementation |
+|---|---|
+| Web client | React 18, TypeScript, Vite |
+| Wallet connection | WizardConnect, including Selene-compatible flows |
+| Contracts | CashScript and versioned BCH covenant artifacts |
+| Assets | BCH and ParyonUSD CashTokens |
+| Chain reads | Electrum Cash providers, raw-transaction and UTXO verification |
+| Transaction verification | Libauth BCH 2026 VM checks and exact input/output intent validation |
+| API / deployment | Vercel serverless API and the dedicated ajochain-blaze project |
 
-The active BLAZE application is deployed from this repository through the dedicated Vercel project **`ajochain-blaze`**, linked only to `Afar88/ajochain-blaze`. Its stable URL is https://ajochain-blaze.vercel.app. Use this project for BLAZE previews and release verification; check the deployed commit SHA before testing.
+BLAZE is separate from the legacy AjoChain deployment. It has no Neon/PostgreSQL connection and does not use the legacy database as a source of circle identity or payment truth. Browser-local storage is used for local drafts, saved preferences and convenience state; those records are not proof of an on-chain circle or contribution.
 
-The legacy app is isolated in the separate Vercel project **`ajochain-legacy`** (legacy recovery preview: **`ajochain-legacy-recovery`**), both linked only to `Afar88/Ajochain`. Their domains and environment-variable stores are separate from BLAZE. Never use a legacy deployment as evidence that BLAZE has shipped.
+## Mainnet safety gates
 
-Backend separation is enforced too: BLAZE runs its own Vercel serverless API and has only its own `ELECTRUM_SERVERS` read-quorum configuration; it has no Neon/PostgreSQL connection. The legacy Vercel project alone has the legacy Neon/PostgreSQL integration. Never reuse its `DATABASE_URL`, `POSTGRES_*`, `PG*` or `NEON_*` variables for BLAZE. If BLAZE needs persistence later, provision a separate Neon project for BLAZE rather than pointing it at the legacy database. The legacy registry/recovery API remains design-only until implemented.
+Before any real-value PUSD or BCH circle release, the project still needs:
 
-See [legacy porting and deployment boundaries](docs/LEGACY_REPO_PORTING_AND_DEPLOYMENTS.md) for the project-to-repository map and compatibility decisions. See [Mainnet readiness audit (16 Nov 2026)](docs/MAINNET_READINESS_AUDIT_2026-11-16.md) for the current findings and BCH launch sequence. See [shared Mainnet project-fee treasury](docs/PROJECT_FEE_TREASURY.md) and [PUSD CashToken integration status](docs/PUSD_CASHTOKEN_INTEGRATION.md) for the verified ParyonUSD category, two-decimal base-unit rules, and the still-blocked token-aware covenant work. See [WizardConnect and Selene integration](docs/WIZARDCONNECT_SELENE_PORT.md) for the mobile reconnect behaviour and signing safeguards. See [member accounting and circle completion](docs/MEMBER_ACCOUNTING_AND_CIRCLE_COMPLETION.md) for member contribution and payout rules. See [dual-asset Mainnet pathway audit (18 Nov 2026)](docs/MAINNET_DUAL_ASSET_PATH_AUDIT_2026-11-18.md) for production-path verification, BCH/PUSD route gaps and joint go-live requirements.
+- Independent security review of the exact covenant source, constructor arguments and compiled artifact hashes.
+- Issuer-controlled confirmation of the PUSD category, decimals and token policy.
+- Evidence that Electrum providers are independently operated and separated by fault domain; provider quorum alone does not prove independence or validate chainwork locally.
+- Real Selene/WizardConnect lifecycle testing with independent member wallets.
+- A dedicated, idempotent transaction-submission path, conflict handling, confirmation tracking and reorganisation recovery.
+- Monitoring, incident response, rollback procedures and written release-owner approval for the exact deployed commit.
 
-## Mainnet launch status
+The CI suite includes typechecking, artifact fingerprinting, unit tests, production build and a targeted BCH 2026 VM vector suite. The targeted vector suite is not the complete BCHN/VMB consensus corpus. CI success is necessary engineering evidence, not an external audit or Mainnet launch approval.
 
-The current deployment is a **Mainnet read-only release**, not an approved real-value circles release. Classic BCH Mainnet signing/broadcast and PUSD Mainnet spending remain fail-closed; the V2 full-cycle escrow remains Chipnet-only. BCH V3 has a separate Mainnet unsigned genesis-preview adapter, but Mainnet signing and broadcasting remain locked. The server cannot be switched to PUSD broadcasting with an environment variable. See [Mainnet release checklist](docs/MAINNET_RELEASE_CHECKLIST.md) and [PUSD Mainnet spending checklist](docs/PUSD_MAINNET_RELEASE_CHECKLIST.md) for the evidence required before any real-value release.
+See the [BCH 2026 VM compatibility notes](docs/BCH_2026_VM_COMPATIBILITY.md), [Mainnet release checklist](docs/MAINNET_RELEASE_CHECKLIST.md) and [PUSD Mainnet spending checklist](docs/PUSD_MAINNET_RELEASE_CHECKLIST.md).
 
-## Network and safety policy
+## Deployment
 
-Mainnet compatibility is a product goal; it is not permission to expose users to unaudited contracts or unsafe transactions.
+The active BLAZE application is deployed through the dedicated Vercel project **ajochain-blaze**:
 
-- Use test networks for development and automated tests.
-- Do not enable real-value circle creation, deposits, payouts, or contract deployment until the relevant contract and transaction flows have passed independent security review and end-to-end testing.
-- Validate every input, output, token commitment, NFT commitment, amount, fee, and change output in the final signed transaction before broadcast.
-- Never request, store, log, or transmit seed phrases or private keys.
-- Clearly distinguish wallet connection from transaction authorization.
-- Require explicit user confirmation for every transaction.
+- Application: https://ajochain-blaze.vercel.app
+- Repository: https://github.com/Afar88/ajochain-blaze
 
-## Mainnet server provider configuration
+Keep this project isolated from the legacy AjoChain projects and their database resources. The deployment guide documents the BLAZE-only Electrum provider manifest and private Upstash settings. Never put server credentials in browser variables or reuse the legacy database.
 
-The Mainnet API is read-only and requires an ordered endpoint/operator manifest and a private Upstash REST connection before production requests are served. In Vercel, the shared Redis-backed rate limiter fails closed if those credentials are missing or unavailable. The same private database holds durable spend-submission records. Never expose its write token to browser code. Configure these only in the server environment (never in browser variables):
+## Documentation map
 
-```env
-ELECTRUM_SERVERS=wss://provider-a.example:50004,wss://provider-b.example:50004
-ELECTRUM_PROVIDER_OPERATORS=provider-a,provider-b
-```
+- [Ready-to-run setup and deployment](docs/QUICKSTART.md)
+- [Circle discovery backend and security gate](docs/BLAZE_CIRCLE_DISCOVERY_BACKEND.md)
+- [BCH, PUSD and member accounting](docs/BCH_PUSD_MEMBER_ACCOUNTING.md)
+- [PUSD Mainnet release checklist](docs/PUSD_MAINNET_RELEASE_CHECKLIST.md)
+- [Mainnet release checklist](docs/MAINNET_RELEASE_CHECKLIST.md)
+- [BCH 2026 VM compatibility](docs/BCH_2026_VM_COMPATIBILITY.md)
+- [WizardConnect and Selene integration](docs/WIZARDCONNECT_SELENE_PORT.md)
+- [Legacy repository and deployment boundaries](docs/LEGACY_REPO_PORTING_AND_DEPLOYMENTS.md)
 
-Each operator ID corresponds positionally to one endpoint and must be unique. The IDs are administrative declarations, not proof that operators are independent. Attach evidence of ownership, infrastructure and fault-domain separation to the release review before treating the quorum as independent. The health endpoint explicitly reports that provider independence has not been verified and that Mainnet release approval is false.
+---
 
-## Release gates
-
-A mainnet-ready release requires all of the following:
-
-1. Reproducible install, typecheck, test and production build.
-2. Full CashAddress checksum and network validation using a maintained BCH library.
-3. WizardConnect/Selene tests covering pairing, app switching, refresh, reconnect and relay interruption.
-4. Independent decoding of the exact signed transaction bytes, including inputs, outputs, fee, change, CashToken and NFT data.
-5. Compile and adversarially test the ported V2 member-receipt covenant, including post-payout obligations and member-specific carry-forward.
-6. Independent contract review and accounting-invariant tests.
-7. PUSD token category/decimals verification and wallet compatibility tests.
-8. Independent end-to-end testing, monitoring and a documented incident/rollback plan.
-
-Until those gates pass, transaction signing, broadcasting and real-value circle operations remain disabled.
-
-
-## BCH, PUSD and member accounting
-
-See [BCH, PUSD and member accounting](docs/BCH_PUSD_MEMBER_ACCOUNTING.md) for the 1% fee covenant, member-owned round-credit rules, verified receipt ledger, PUSD read-only balance API and current Mainnet safety gates.
-
-
-The shared Mainnet project-fee destination for BCH and PUSD is `bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q`. Chipnet circles retain their separate Chipnet fee address. PUSD Mainnet V3 contract and fee/reserve/cancellation tests are under active development; PUSD circle drafts remain local-only and Mainnet transaction signing/broadcast remains disabled pending the full planner, verifier, independent security review and operational release evidence.
+**Safety note:** AjoChain BLAZE is active development software. Treat Chipnet as the test environment. Do not fund prototype contracts or enable Mainnet spending until all required reviews and release gates have been independently completed.
