@@ -1956,9 +1956,10 @@ function validatePusdMainnetCircleForVerification(value) {
       cashAddressToLockingBytecode(value.treasury) !== PUSD_MAINNET_TREASURY_SCRIPT) {
     throw new Error("PUSD Mainnet circle treasury does not match the immutable AjoChain treasury.");
   }
-  const projectFee = (BigInt(members.length) * contribution) / 100n;
-  if (projectFee < 1n || BigInt(members.length) * contribution - projectFee <= maxFee) {
-    throw new Error("PUSD Mainnet circle economics do not leave a positive payout after the project fee.");
+  const grossPot = BigInt(members.length) * contribution;
+  const projectFee = grossPot / 100n;
+  if (projectFee < 1n || grossPot - projectFee - contribution <= 0n) {
+    throw new Error("PUSD Mainnet circle economics do not leave a positive non-final payout after the project fee and reserve.");
   }
 
   // The derivation provider is deliberately network-isolated. Reconstruct the
@@ -2003,12 +2004,14 @@ function validatePusdMainnetCircleForVerification(value) {
   ], { provider, contractType: "p2sh32" });
   const contractLockingBytecode = String(contract.lockingBytecode).toLowerCase();
   if (!/^aa20[0-9a-f]{64}87$/.test(contractLockingBytecode) ||
+      cashAddressToLockingBytecode(contract.address) !== contractLockingBytecode ||
       cashAddressToLockingBytecode(contract.tokenAddress) !== contractLockingBytecode) {
     throw new Error("Server-derived PUSD V3 circle address and P2SH32 locking script do not match.");
   }
   for (const [index, lockingBytecode] of escrowLockingBytecodes.entries()) {
     if (!/^aa20[0-9a-f]{64}87$/.test(lockingBytecode) ||
-        cashAddressToLockingBytecode(escrowContracts[index].address) !== lockingBytecode) {
+        cashAddressToLockingBytecode(escrowContracts[index].address) !== lockingBytecode ||
+        cashAddressToLockingBytecode(escrowContracts[index].tokenAddress) !== lockingBytecode) {
       throw new Error("Server-derived PUSD member escrow " + (index + 1) + " address and locking script do not match.");
     }
   }
