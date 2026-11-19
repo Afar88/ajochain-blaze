@@ -15,7 +15,7 @@ import {
   type PusdMainnetCircleParams,
   type PusdMainnetCircleSnapshot,
 } from "../core/pusd-mainnet-circle";
-import { verifyPusdMainnetCircleSignedTransaction } from "../core/pusd-api";
+import { broadcastPusdMainnetCircleSignedTransaction, verifyPusdMainnetCircleSignedTransaction } from "../core/pusd-api";
 import { wallet } from "../core/wizard-wallet";
 import type { NetworkId } from "../core/network-config";
 
@@ -243,7 +243,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
     }
   };
 
-  const verifyMainnetSignature = async (target: "genesis" | "action") => {
+  const verifyMainnetSignature = async (target: "genesis" | "action", send = false) => {
     const signingPlan = target === "genesis" ? genesisSigningPlan : actionSigningPlan;
     if (!signingPlan) return;
     if (network !== "mainnet" || !walletConnected || wallet.state !== "connected") {
@@ -265,9 +265,9 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
       const locallyVerified = await wallet.signAndVerify(
         signingPlan.wc,
         signingPlan.walletInputs,
-        signingPlan.prompt + " (independent server verification only; never broadcast)",
+        signingPlan.prompt + (send ? " (verify and relay on BCH Mainnet)" : " (independent server verification only; never broadcast)"),
       );
-      const serverVerified = await verifyPusdMainnetCircleSignedTransaction({
+      const circleRequest = {
         operation: signingPlan.operation,
         circle: {
           ...signingPlan.circle,
@@ -279,7 +279,18 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
         ...(signingPlan.operation === "deposit"
           ? { memberIndex: signingPlan.memberIndex, amount: signingPlan.amount }
           : {}),
-      });
+      };
+      if (send) {
+        const relayed = await broadcastPusdMainnetCircleSignedTransaction(circleRequest);
+        if (target === "genesis") setGenesisSigningPlan(null);
+        else setActionSigningPlan(null);
+        setNotice(
+          "PUSD Mainnet " + signingPlan.operation + " transaction sent. Transaction: " +
+          relayed.txid + " (relay: " + relayed.relayStatus + "). It is not confirmed yet; refresh the circle state after it confirms.",
+        );
+        return;
+      }
+      const serverVerified = await verifyPusdMainnetCircleSignedTransaction(circleRequest);
       if (target === "genesis") setGenesisSigningPlan(null);
       else setActionSigningPlan(null);
       setNotice(
@@ -511,6 +522,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
           <div><span>Estimated transaction size</span><strong>{preparedPlan.transactionSizeBytes} bytes</strong></div>
           <small>No contract has been deployed. This preview is not a payment or deployment.</small>
           {genesisSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis")}>Verify Selene signature · no broadcast</button>}
+          {genesisSigningPlan && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis", true)}>Sign and send on Mainnet</button>}
         </div>
       )}
       {activeCircle && (
@@ -548,8 +560,9 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
               <div><span>Estimated BCH miner fee</span><strong>{actionPreview.feeEstimate} sats</strong></div>
               <div><span>Estimated transaction size</span><strong>{actionPreview.size} bytes</strong></div>
               <div><span>Wallet-owned inputs requiring signatures</span><strong>{actionPreview.walletInputCount}</strong></div>
-              <small>No transaction is broadcast by this workspace. Re-read state before each new review.</small>
+              <small>Verified transactions are relayed to BCH Mainnet. Re-read state before each new action.</small>
               {actionSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action")}>Verify Selene signature · no broadcast</button>}
+              {actionSigningPlan && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action", true)}>Sign and send on Mainnet</button>}
             </div>
           )}
         </div>
