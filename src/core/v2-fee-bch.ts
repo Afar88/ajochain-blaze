@@ -789,7 +789,7 @@ async function findV2FeeClosingTransaction(
 ): Promise<V2FeeClosedAs | null> {
   const electrum = provider as NetworkProvider & { performRequest?: (name: string, ...args: string[]) => Promise<unknown> };
   if (typeof electrum.performRequest !== 'function') return null;
-  const scriptHash = binToHex(sha256.hash(contract.lockingBytecode).reverse());
+  const scriptHash = binToHex(sha256.hash(typeof contract.lockingBytecode === "string" ? hexToBin(contract.lockingBytecode) : contract.lockingBytecode).reverse());
   const history = await electrum.performRequest('blockchain.scripthash.get_history', scriptHash);
   if (!Array.isArray(history)) return null;
   for (const entry of [...history].reverse()) {
