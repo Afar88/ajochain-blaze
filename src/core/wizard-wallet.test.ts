@@ -8,6 +8,7 @@ import {
   assertRequiredWalletSighash,
   readPushOnlyUnlockingScript,
   deriveWizardConnectReceiveAddress,
+  findWizardConnectReceiveIndex,
   WIZARDCONNECT_RECEIVE_CHILD_INDEX,
 } from "./wizard-wallet";
 
@@ -282,5 +283,36 @@ describe("WizardConnect sign-request serialization", () => {
       "Create Ajo circle",
       123,
     )).toThrow(/Invalid wallet signing input index/);
+  });
+});
+
+describe("WizardConnect Selene address matching", () => {
+  const keyFor = (index: bigint) => Uint8Array.from([0x02, ...new Uint8Array(32).fill(Number(index) + 1)]);
+  const getPubkey = (_child: number, index: bigint) => keyFor(index);
+  const chipnetAt = (index: number) => deriveWizardConnectReceiveAddress("hdwalletv1", getPubkey, "chipnet", index)!;
+  const mainnetAt = (index: number) => deriveWizardConnectReceiveAddress("hdwalletv1", getPubkey, "mainnet", index)!;
+
+  it("finds a rotated receive address", () => {
+    expect(findWizardConnectReceiveIndex(chipnetAt(4), "hdwalletv1", getPubkey, "chipnet")).toBe(4);
+  });
+
+  it("accepts an address pasted without its prefix or in upper case", () => {
+    expect(findWizardConnectReceiveIndex(chipnetAt(3).split(":")[1], "hdwalletv1", getPubkey, "chipnet")).toBe(3);
+    expect(findWizardConnectReceiveIndex(" " + chipnetAt(2).toUpperCase() + " ", "hdwalletv1", getPubkey, "chipnet")).toBe(2);
+  });
+
+  it("explains a network mismatch instead of reporting no match", () => {
+    expect(() => findWizardConnectReceiveIndex(chipnetAt(1), "hdwalletv1", getPubkey, "mainnet"))
+      .toThrow(/Chipnet address, but the site is set to Mainnet/);
+    expect(() => findWizardConnectReceiveIndex(mainnetAt(1), "hdwalletv1", getPubkey, "chipnet"))
+      .toThrow(/Mainnet address, but the site is set to Chipnet/);
+  });
+
+  it("rejects invalid input and returns null for another wallet", () => {
+    expect(() => findWizardConnectReceiveIndex("bchtest:notanaddress", "hdwalletv1", getPubkey, "chipnet"))
+      .toThrow(/not a valid Bitcoin Cash address/);
+    const otherWallet = deriveWizardConnectReceiveAddress("hdwalletv1", () => Uint8Array.from([0x03, ...new Uint8Array(32).fill(0xee)]), "chipnet", 0)!;
+    expect(findWizardConnectReceiveIndex(otherWallet, "hdwalletv1", getPubkey, "chipnet", 10)).toBeNull();
+    expect(findWizardConnectReceiveIndex("", "hdwalletv1", getPubkey, "chipnet")).toBeNull();
   });
 });
