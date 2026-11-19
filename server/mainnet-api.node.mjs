@@ -37,7 +37,10 @@ import {
   normalizeElectrumUnspent,
   MAINNET_BROADCAST_ENABLED,
   BCH_MAINNET_CIRCLE_BROADCAST_ENABLED,
+  BCH_MAINNET_GATHER_BROADCAST_ENABLED,
   broadcastBchMainnetCircleTransaction,
+  broadcastBchMainnetGatherTransaction,
+  validateBchMainnetGatherLayout,
   createMainnetApiServer,
 } from "./mainnet-api.mjs";
 
@@ -161,6 +164,64 @@ test("Mainnet Electrum provider manifest requires unique operator identities", (
     "wss://user:password@node-a.example:50004,wss://node-b.example:50004",
     "provider-a,provider-b",
   ), /without embedded credentials/i);
+});
+
+test("Mainnet BCH gather accepts only one token-free output back to a wallet-derived address", () => {
+  const walletAddress = createMainnetTestAddress(21);
+  const otherAddress = createMainnetTestAddress(22);
+  const walletScript = cashAddressToLockingBytecode(walletAddress);
+  const otherScript = cashAddressToLockingBytecode(otherAddress);
+  const input = {
+    outpointTransactionHash: Buffer.alloc(32, 0xab),
+    outpointIndex: 1,
+    unlockingBytecode: Buffer.from([0x01, 0x01]),
+  };
+  const makeTransaction = (output) => ({ inputs: [input], outputs: [output] });
+  const walletOutput = {
+    valueSatoshis: 50_000n,
+    lockingBytecode: Buffer.from(walletScript, "hex"),
+  };
+  const layout = validateBchMainnetGatherLayout(
+    makeTransaction(walletOutput),
+    [walletScript],
+    walletScript,
+    180,
+  );
+  assert.equal(layout.outputSatoshis, 50_000n);
+  assert.deepEqual(layout.inputOutpoints, ["ab".repeat(32) + ":1"]);
+
+  assert.throws(() => validateBchMainnetGatherLayout(
+    makeTransaction({ ...walletOutput, lockingBytecode: Buffer.from(otherScript, "hex") }),
+    [walletScript],
+    walletScript,
+    180,
+  ), /return all BCH to the selected wallet address/i);
+  assert.throws(() => validateBchMainnetGatherLayout(
+    makeTransaction({ ...walletOutput, token: { category: "cd".repeat(32), amount: 1n } }),
+    [walletScript],
+    walletScript,
+    180,
+  ), /without CashTokens/i);
+  assert.throws(() => validateBchMainnetGatherLayout(
+    { inputs: [input], outputs: [walletOutput, walletOutput] },
+    [walletScript],
+    walletScript,
+    220,
+  ), /exactly one consolidation output/i);
+  assert.throws(() => validateBchMainnetGatherLayout(
+    makeTransaction(walletOutput),
+    [walletScript],
+    otherScript,
+    180,
+  ), /wallet's derived P2PKH addresses/i);
+});
+
+test("Mainnet BCH gather has a separate explicit broadcast gate", async () => {
+  assert.equal(BCH_MAINNET_GATHER_BROADCAST_ENABLED, true);
+  await assert.rejects(
+    broadcastBchMainnetGatherTransaction([], {}, {}, false),
+    /wallet gathering is disabled/i,
+  );
 });
 
 test("BCH Mainnet V3 verifier parses exact three-byte state NFT commitments", () => {
