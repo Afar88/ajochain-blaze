@@ -1,66 +1,47 @@
-# Mainnet transaction flow and release gates
+# Mainnet transaction flow and per-path release gates
 
 ## Product rule
 
-Mainnet is a separate, explicitly gated operating mode—not a network label that turns on transaction actions. Until all release evidence is independently recorded, the app must remain read-only on mainnet. Wallet connection, a selected Mainnet tab, a locally saved circle, or a successful transaction simulation is never sufficient authorization.
+BLAZE reads circle identity and current state from BCH. On-chain discovery is not dependent on a central server registry or application database. Wallet connection, a selected Mainnet tab, a locally saved circle or a successful simulation is never proof of membership, payment or confirmation.
 
-The executable fail-closed policy is in `src/core/mainnet-flow.ts`. It is a readiness guard, not a replacement for wallet, chain, contract, or transaction verification.
+Mainnet transaction paths are version-specific and have separate gates. Do not use the Classic BCH gate to disable or describe the dedicated BCH V3 path, and do not confuse BCH V3 status with the separately gated PUSD path.
+
+## Current path status
+
+- **BCH V3 Mainnet:** on-chain discovery plus a dedicated Selene signing and broadcast path. The client `BCH_MAINNET_CIRCLE_SEND_ENABLED` and API `BCH_MAINNET_CIRCLE_BROADCAST_ENABLED` gates are enabled in the current code.
+- **Classic BCH Mainnet:** controlled by `BCH_MAINNET_OPERATIONS_ENABLED`; this generic legacy path remains disabled.
+- **PUSD Mainnet:** lifecycle planning and signed-byte preflight are present; `PUSD_MAINNET_SPENDING_ENABLED` and the API `MAINNET_BROADCAST_ENABLED` remain false.
+
+An enabled code path is not the same as an independent security audit or complete operational assurance. Validate the exact action and contract version, but do not accidentally disable a separate working path through an unrelated guard.
 
 ## Required user journey
 
-1. **Select network** — display Bitcoin Cash Mainnet explicitly. Verify the shared genesis header, the BCH-specific checkpoint at height 478,559, and the post-BSV-split BCH checkpoint at height 556,767, then verify the current tip against independent sources. The PUSD API must perform the same identity checks before returning UTXO or unspent-state responses; never infer chain identity from the address prefix or shared genesis alone.
-2. **Connect wallet** — use WizardConnect, confirm the active session and wallet identity, derive the correct receive/change paths, and verify the address/network shown in Selene. A reconnecting or stale session blocks progress.
-3. **Load circle** — discover the circle contract and its state/receipt NFTs from confirmed chain data. Validate contract bytecode/version, token category, NFT commitments, member order, contribution amount, fee policy, and current round. Browser storage is only a cache.
-4. **Reconcile member accounting** — reconcile every member receipt against confirmed deposits and prior payouts. Check payment uniqueness, ownership, per-member credit, current-round due, carry-forward credit, and payout order. Any missing, duplicated, or inconsistent receipt blocks the circle.
-5. **Calculate the action** — distinguish contribution, payout, circle creation, and closure. Calculate in integer base units. Produce a deterministic plan including every input, prevout, output, token, NFT commitment, fee, and change output.
-6. **Human transaction review** — show the action, network, contract, recipient, amount, fees, change, token details, and consequences in plain language. The user must explicitly approve this exact plan.
-7. **Wallet signature** — ask WizardConnect/Selene to sign only the reviewed transaction. Do not request or retain seed phrases or private keys.
-8. **Inspect exact signed bytes** — independently decode the returned raw transaction. Verify network context, all input outpoints and prevout scripts/values, input sequence, signatures and sighash policy, contract bytecode, every BCH/CashToken output, NFT category/capability/commitment, fee, and change. Compare byte-for-byte semantic intent with the reviewed plan. Any mismatch fails closed.
-9. **Broadcast** — only after all release gates pass. Broadcast once with an idempotency key; never auto-retry a possibly accepted transaction without checking the chain first.
-10. **Confirm and reconcile** — fetch the transaction independently, verify txid and confirmation status, then update the activity feed and member ledger from confirmed chain facts. Pending, failed, replaced, and confirmed states must remain distinct.
+1. **Select network** — display Bitcoin Cash Mainnet explicitly. Verify the shared genesis header, the BCH-specific checkpoint at height 478,559, and the post-BSV-split BCH checkpoint at height 556,767, then compare the current tip against the configured sources.
+2. **Connect wallet** — use WizardConnect, confirm the active session and wallet identity, derive the correct receive/change paths, and verify the address/network shown in Selene. A stale session blocks signing.
+3. **Discover/load circle** — read wallet script history and candidate transaction data from BCH through Electrum. Check raw transaction bytes against their TXIDs, parse the discovery note, validate token category/state/receipt/member-marker outputs, rebuild the expected covenant and confirm that the connected wallet is an on-chain member. Invite links are convenience references, not source-of-truth records.
+4. **Reconcile circle state** — derive contract version, state/receipt NFTs, escrow outputs, confirmed contributions and prior payouts from chain data. Browser storage is a cache only.
+5. **Calculate the action** — distinguish create, contribution, payout and closure. Calculate in integer base units and build a deterministic plan with inputs, previous outputs, token commitments, recipient outputs, fee and change.
+6. **Human transaction review** — show the action, network, contract, recipient, amount, fees, change, token details and consequences in plain language. The user must approve the exact plan.
+7. **Wallet signature** — ask Selene/WizardConnect to sign only the reviewed transaction. Do not request or retain seed phrases or private keys.
+8. **Inspect exact signed bytes** — decode the returned raw transaction and compare the signed transaction with the approved plan, including prevouts, scripts, values, signatures/sighashes, contract bytecode, token outputs, fees and change.
+9. **Broadcast through the matching path** — BCH V3 uses its dedicated Mainnet route and gate. Classic BCH and PUSD must continue to use their own separate guards. Never bypass a failed exact-byte verification.
+10. **Confirm and reconcile** — fetch the transaction independently, verify its TXID and chain status, then update activity and member accounting from confirmed BCH facts. A wallet response or relay acceptance alone is not confirmation.
 
-## Release gates
+## Chain-provider role
 
-All keys in `MAINNET_GATE_KEYS` must be true before broadcast eligibility:
+Electrum endpoints provide history, UTXOs, raw transactions, fee estimates and tip data. They are chain-data providers, not a circle database, registry or application backend. A provider quorum improves consistency checks but does not prove independent operator ownership or local SPV/chainwork validation.
 
-- `networkIdentityVerified`
-- `consensusVmVerified`
-- `walletSessionVerified`
-- `circleStateReconciled`
-- `memberAccountingVerified`
-- `contractAuditApproved`
-- `tokenPolicyVerified`
-- `transactionPlanReviewed`
-- `signedTransactionInspected`
-- `relayAndConfirmationVerified`
+## PUSD verification and submission
 
-These are evidence requirements, not checkboxes that a user can toggle. Evidence must come from the corresponding independent verification step. The initial state is all gates closed.
-
-## Scope and safety limits
-
-- Current BCH and PUSD Mainnet workspaces can validate drafts, prepare unsigned genesis previews, and read chain state for saved circle identities. Their lifecycle planners can prepare unsigned deposit, payout and pre-payout cancellation previews. They do not deploy, sign or broadcast transactions. A saved circle identity is a local reference, not proof that a contract exists.
-- The WizardConnect adapter can request signatures for supported experimental paths and inspect selected transaction intent. Mainnet circle preview buttons do not call it. A complete Mainnet signed-byte verifier for every prevout, script, value, fee/change rule, token output and covenant invariant is still outstanding.
-- Mainnet broadcast remains disabled by the BCH and PUSD fail-closed guards.
-- The BCH V2 contract is experimental and not independently audited. PUSD is not implemented by that covenant.
-- Never label the app mainnet-ready until the contract, wallet, chain reconciliation, signed-transaction inspection, and operational gates have evidence and independent review.
-
-## Read-only transaction confirmation endpoint
-
-The Mainnet API now exposes `GET /api/transaction/status?txid=<64-hex-txid>`.
-
-- Every configured Electrum provider must return identical raw transaction bytes whose computed txid matches the request.
-- A transaction is reported as `confirmed` only when every provider returns the same confirmation height, position and merkle branch, every provider returns the same block header for that height, and the merkle proof verifies against the header's serialized merkle root.
-- A transaction is reported as `pending` only when every provider knows the same raw transaction and every provider returns a narrowly recognized ordinary no-inclusion-proof response; unsupported RPC methods and other provider errors remain `unknown`.
-- Provider disagreement, missing raw bytes, malformed proofs, or lookup failures return `unknown`. An unknown result is not proof of failure and must not trigger an automatic replacement or rebroadcast.
-- The endpoint recalculates status from current provider observations. A transaction previously reported as confirmed can later return pending or unknown after a reorganisation or provider disagreement.
-
-The proof is an Electrum quorum merkle-inclusion check, not local SPV/chainwork validation. The endpoint does not persist historical status, detect all conflicting/replacement spends, or guarantee durable confirmation monitoring. It improves the read-side lifecycle, but does not satisfy the full release gate for broadcaster idempotency, mempool conflict resolution, durable event history, or reorg recovery.
+The optional PUSD verifier API checks the exact signed transaction against authenticated previous outputs, compiled circle/escrow artifacts and BCH VM execution. Its verification route discards signed bytes and does not broadcast. The PUSD spend route remains separately disabled. A PUSD transaction-submission ledger, where used, is an idempotency/reconciliation safeguard only; it is never the source of circle identity or member state.
 
 ## Operational failure handling
 
-- **Wallet disconnect before signing:** discard the pending plan and require fresh session verification.
-- **Wallet disconnect after signing:** retain the raw signed transaction only for safe local inspection; do not broadcast automatically.
-- **Unknown broadcast result:** the PUSD API submits the exact signed bytes to one relay endpoint only. If its response is ambiguous, it queries the transaction ID across the configured providers and accepts an exact raw-transaction match as `already-known`. If no provider can prove the exact transaction is known, the API returns an explicit `UNKNOWN` result and does not relay to another endpoint. The read-only `/api/transaction/status` endpoint can then verify current provider-quorum raw bytes and, when available, a block-inclusion merkle proof. The user/operator must still reconcile unknown results and mempool conflicts before any manual retry. A relay-accepted or already-known result is **not** a confirmation.
-- **Chain reorganization:** mark affected activity as unconfirmed/reorged and rebuild the view from chain data.
-- **State mismatch or stale UTXO:** invalidate the plan and restart from circle-state reconciliation.
-- **Any verification exception:** fail closed, explain the failed check, and keep broadcast unavailable.
+- **Wallet disconnect before signing:** discard the pending plan and require a fresh wallet session.
+- **Wallet disconnect after signing:** do not silently mutate the reviewed transaction or broadcast a different one.
+- **Unknown broadcast result:** query the exact TXID and raw transaction across providers before any manual retry. An unknown result is not proof of failure.
+- **Chain reorganisation:** mark affected activity unconfirmed/reorged and rebuild the view from chain data.
+- **State mismatch or stale UTXO:** invalidate the plan and restart from on-chain state reconciliation.
+- **Verification exception:** explain the failed check and do not submit that transaction.
+
+This document distinguishes the BCH V3, Classic BCH and PUSD Mainnet paths. Their gates and current status must never be merged into one global on/off statement.
