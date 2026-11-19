@@ -26,13 +26,12 @@ The issuer-maintained [ParyonUSD withdrawal contract source](https://github.com/
 
 ## Durable broadcast idempotency
 
-- [ ] Provision a dedicated private Upstash Redis database (or an independently reviewed equivalent) for BLAZE; do not reuse the legacy AjoChain/Neon store.
-- [ ] Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` only in the BLAZE Vercel server environment. This private database backs durable submission records and the atomic cross-instance API rate limiter. Never expose the write token to the browser.
+- [ ] Keep PUSD submission idempotency and ambiguous-broadcast reconciliation separate from circle discovery. The durable submission ledger is only a transaction-submission safeguard; it is not a registry or source of truth for circles. No Redis service is required for chain discovery or read-only verification.
 - [ ] Verify the exact signed-transaction ID/digest can be reserved only once across concurrent serverless instances and that `submitting`, `accepted`, `already-known`, and `unknown` states persist across cold starts.
 - [ ] Verify that a missing/unavailable ledger or an ambiguous prior submission blocks a second relay; reconcile the exact transaction through the read-only status endpoints before manual recovery.
 - [ ] Define retention, archival and incident-recovery procedures for durable submission records before enabling any PUSD broadcast.
 
-The server now contains a fail-closed Upstash Redis REST adapter and a read-only `GET /api/pusd/submission?txid=<64-hex-txid>` endpoint. The adapter is not active until dedicated private credentials are provisioned. The Mainnet broadcast kill-switch remains hard-coded false.
+The API contains a durable PUSD submission-ledger adapter and a read-only `GET /api/pusd/submission?txid=<64-hex-txid>` endpoint for transaction-submission reconciliation only. This is not used for circle discovery; the Mainnet broadcast kill-switch remains hard-coded false.
 
 ## Transaction construction and verification
 
