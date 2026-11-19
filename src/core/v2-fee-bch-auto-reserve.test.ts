@@ -11,11 +11,13 @@ import {
 import { hash160, secp256k1, hexToBin } from "@bitauth/libauth";
 import autoReserveJson from "../../contracts/AjoCircleV3AutoReserve.json" with { type: "json" };
 import legacyAutoReserveJson from "../../contracts/AjoCircleV3AutoReserve.legacy.json" with { type: "json" };
+import guardedAutoReserveJson from "../../contracts/AjoCircleV3AutoReserve.guarded.json" with { type: "json" };
 import { pkhToAddress } from "./bch-address";
-import { assertV2FeeDepositRoundOpen, assertV2FeeStateCommitmentSemantics, isValidV2FeeStateCommitment, v2FeeCreditFromCommitment, v2FeeStateCommitment, summarizeV2FeeMemberAccounting } from "./v2-fee-bch";
+import { classifyV2FeeClosingTransaction, assertV2FeeDepositRoundOpen, assertV2FeeStateCommitmentSemantics, isValidV2FeeStateCommitment, v2FeeCreditFromCommitment, v2FeeStateCommitment, summarizeV2FeeMemberAccounting } from "./v2-fee-bch";
 
 const artifact = autoReserveJson as unknown as Artifact;
 const legacyArtifact = legacyAutoReserveJson as unknown as Artifact;
+const guardedArtifact = guardedAutoReserveJson as unknown as Artifact;
 const CATEGORY = "ab".repeat(32);
 const CONTRIBUTION = 200_000n;
 const MAX_FEE = 10_000n;
@@ -338,7 +340,7 @@ describe("AjoChain V3 automatic future-contribution reserve covenant", () => {
     const fiveTreasury = key(38);
     const fiveInitiator = key(39);
     const provider = new MockNetworkProvider();
-    const fiveContract = new Contract(artifact, [
+    const fiveContract = new Contract(guardedArtifact, [
       five[0].pkh, five[1].pkh, five[2].pkh, five[3].pkh, five[4].pkh,
       5n, CONTRIBUTION, 20_000n, hexToBin(fiveCategory).reverse(),
       fiveInitiator.pkh, fiveTreasury.pkh,
@@ -582,5 +584,113 @@ describe("AjoChain V3 automatic future-contribution reserve covenant", () => {
     expect(snapshot[1].requiredForNextPayout).toBe(CONTRIBUTION);
     expect(snapshot[1].fullySecured).toBe(false);
     expect(snapshot[1].remainingContributionCommitment).toBe(CONTRIBUTION);
+  });
+});
+
+async function closeFinalRound(
+  provider: MockNetworkProvider,
+  contract: Contract,
+  options: { initiatorRefund?: bigint; keepState?: boolean } = {},
+) {
+  const { state, receipts } = await readCircle(contract);
+  const gross = BigInt(members.length) * CONTRIBUTION;
+  const projectFee = gross / 100n;
+  const backing = state.satoshis - gross + receipts.reduce((sum, receipt) => sum + receipt.satoshis, 0n);
+  const feeAddress = pkhToAddress(initiator.pkh, "chipnet");
+  const feeFunding = provider.addUtxo(feeAddress, randomUtxo({ satoshis: 20_000n }));
+  const builder = new TransactionBuilder({ provider })
+    .addInput(state, contract.unlock.payout())
+    .addInputs(receipts, contract.unlock.payout())
+    .addInput(feeFunding, initiator.signer.unlockP2PKH());
+  if (options.keepState) {
+    builder.addOutput({
+      to: contract.tokenAddress,
+      amount: 1_000n,
+      token: { category: CATEGORY, amount: 0n, nft: { capability: "minting", commitment: "540201" } },
+    });
+  } else {
+    builder.addOutput({ to: pkhToAddress(treasury.pkh, "chipnet"), amount: projectFee });
+  }
+  builder
+    .addOutput({ to: pkhToAddress(members[1].pkh, "chipnet"), amount: gross - projectFee })
+    .addOutput({ to: pkhToAddress(initiator.pkh, "chipnet"), amount: options.initiatorRefund ?? backing })
+    .addOutput({ to: feeAddress, amount: feeFunding.satoshis - 8_000n });
+  await builder.send();
+  return { backing, gross, projectFee };
+}
+
+describe("AjoChain V3 closing final payout", () => {
+  async function circleAtFinalRound() {
+    const provider = new MockNetworkProvider();
+    const contract = makeContract(provider);
+    addGenesis(provider, contract);
+    await depositCurrentRound(provider, contract, 0);
+    await depositCurrentRound(provider, contract, 1);
+    await triggerPayout(provider, contract);
+    await depositCurrentRound(provider, contract, 1);
+    return { provider, contract };
+  }
+
+  it("burns every circle NFT and returns the genesis backing to the initiator", async () => {
+    const { provider, contract } = await circleAtFinalRound();
+    const result = await closeFinalRound(provider, contract);
+    expect(result.backing).toBe(3_000n);
+    expect(await contract.getUtxos()).toHaveLength(0);
+    const initiatorUtxos = await provider.getUtxos(pkhToAddress(initiator.pkh, "chipnet"));
+    expect(initiatorUtxos.some((utxo) => utxo.satoshis === 3_000n)).toBe(true);
+    const recipientUtxos = await provider.getUtxos(pkhToAddress(members[1].pkh, "chipnet"));
+    expect(recipientUtxos.some((utxo) => utxo.satoshis === result.gross - result.projectFee)).toBe(true);
+  }, 90000);
+
+  it("rejects a final payout that underpays the initiator refund or keeps a state NFT", async () => {
+    const { provider, contract } = await circleAtFinalRound();
+    await expect(closeFinalRound(provider, contract, { initiatorRefund: 2_000n })).rejects.toThrow();
+    await expect(closeFinalRound(provider, contract, { keepState: true })).rejects.toThrow();
+    await expect(triggerPayout(provider, contract)).rejects.toThrow();
+  }, 90000);
+
+  it("rejects a closing payout while a member still has extra credit", async () => {
+    const provider = new MockNetworkProvider();
+    const contract = makeContract(provider);
+    addGenesis(provider, contract, "540101", CONTRIBUTION);
+    const { state, receipts } = await readCircle(contract);
+    expect(state.token!.nft!.commitment).toBe("540101");
+    expect(receipts).toHaveLength(2);
+    // Both members hold exactly one contribution: closing succeeds.
+    await expect(closeFinalRound(provider, contract)).resolves.toBeDefined();
+  }, 90000);
+
+  it("classifies completion and cancellation transactions", () => {
+    const params = {
+      version: 2 as const,
+      covenant: "fee-v3-auto-reserve-closing" as const,
+      name: "Test",
+      network: "chipnet" as const,
+      members: members.map((member) => pkhToAddress(member.pkh, "chipnet")),
+      contribution: CONTRIBUTION,
+      maxFee: MAX_FEE,
+      stateCategory: CATEGORY,
+      initiator: pkhToAddress(initiator.pkh, "chipnet"),
+      treasury: pkhToAddress(treasury.pkh, "chipnet"),
+    };
+    const p2pkh = (pkh: Uint8Array) => hexToBin("76a914" + Buffer.from(pkh).toString("hex") + "88ac");
+    const tx = (outputs: { lockingBytecode: Uint8Array; valueSatoshis: bigint }[]) => ({ version: 2, locktime: 0, inputs: [], outputs });
+    const pot = 2n * CONTRIBUTION;
+    expect(classifyV2FeeClosingTransaction(params, tx([
+      { lockingBytecode: p2pkh(treasury.pkh), valueSatoshis: pot / 100n },
+      { lockingBytecode: p2pkh(members[1].pkh), valueSatoshis: pot - pot / 100n },
+      { lockingBytecode: p2pkh(initiator.pkh), valueSatoshis: 3_000n },
+      { lockingBytecode: p2pkh(initiator.pkh), valueSatoshis: 9_000n },
+    ]))).toBe("completed");
+    expect(classifyV2FeeClosingTransaction(params, tx([
+      { lockingBytecode: p2pkh(members[0].pkh), valueSatoshis: 201_000n },
+      { lockingBytecode: p2pkh(members[1].pkh), valueSatoshis: 201_000n },
+      { lockingBytecode: p2pkh(initiator.pkh), valueSatoshis: 9_000n },
+    ]))).toBe("cancelled");
+    expect(classifyV2FeeClosingTransaction(params, tx([
+      { lockingBytecode: p2pkh(members[1].pkh), valueSatoshis: 1_000n },
+      { lockingBytecode: p2pkh(members[0].pkh), valueSatoshis: 1_000n },
+      { lockingBytecode: p2pkh(initiator.pkh), valueSatoshis: 9_000n },
+    ]))).toBeNull();
   });
 });

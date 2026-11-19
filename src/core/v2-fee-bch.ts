@@ -8,13 +8,14 @@ import {
   type NetworkProvider,
   type SpendableUtxo,
 } from 'cashscript';
-import { hexToBin } from '@bitauth/libauth';
+import { binToHex, cashAddressToLockingBytecode, decodeTransaction, hexToBin, sha256, type Transaction } from '@bitauth/libauth';
 import artifactJson from '../../contracts/AjoCircleV2Fee.json' with { type: 'json' };
 import escrowArtifactJson from '../../contracts/AjoCircleV2FeeEscrow.json' with { type: 'json' };
 import autoReserveArtifactJson from '../../contracts/AjoCircleV3AutoReserve.json' with { type: 'json' };
 import legacyArtifactJson from '../../contracts/AjoCircleV2Fee.legacy.json' with { type: 'json' };
 import legacyEscrowArtifactJson from '../../contracts/AjoCircleV2FeeEscrow.legacy.json' with { type: 'json' };
 import legacyAutoReserveArtifactJson from '../../contracts/AjoCircleV3AutoReserve.legacy.json' with { type: 'json' };
+import guardedAutoReserveArtifactJson from '../../contracts/AjoCircleV3AutoReserve.guarded.json' with { type: 'json' };
 import { CashTokensGenesisUtxoMissingError, classicAddressToPkh, getClassicProvider, type ClassicNetwork } from "./classic-bch";
 import { selectCashTokensGenesisUtxo } from "./cash-token-genesis";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "./project-treasury";
@@ -33,6 +34,7 @@ const autoReserveArtifact = autoReserveArtifactJson as unknown as Artifact;
 const legacyArtifact = legacyArtifactJson as unknown as Artifact;
 const legacyEscrowArtifact = legacyEscrowArtifactJson as unknown as Artifact;
 const legacyAutoReserveArtifact = legacyAutoReserveArtifactJson as unknown as Artifact;
+const guardedAutoReserveArtifact = guardedAutoReserveArtifactJson as unknown as Artifact;
 const STATE_DUST = 1_000n;
 const RECEIPT_DUST = 1_000n;
 const CHANGE_DUST = 546n;
@@ -48,6 +50,7 @@ export interface V2FeeCircleParams {
     | 'fee-v1-guarded'
     | 'fee-v2-escrow-guarded'
     | 'fee-v3-auto-reserve-guarded'
+    | 'fee-v3-auto-reserve-closing'
     | 'fee-v3-auto-reserve-mainnet';
   name: string;
   network: ClassicNetwork;
@@ -69,7 +72,7 @@ export function decodeV2FeeCircle(encoded: string): V2FeeCircleParams {
   const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
   const value = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
   if (value.version !== 2 || typeof value.covenant !== "string" ||
-      !["fee-v1", "fee-v2-escrow", "fee-v3-auto-reserve", "fee-v1-guarded", "fee-v2-escrow-guarded", "fee-v3-auto-reserve-guarded"].includes(value.covenant) ||
+      !["fee-v1", "fee-v2-escrow", "fee-v3-auto-reserve", "fee-v1-guarded", "fee-v2-escrow-guarded", "fee-v3-auto-reserve-guarded", "fee-v3-auto-reserve-closing"].includes(value.covenant) ||
       typeof value.name !== "string" ||
       (value.network !== "chipnet" && value.network !== "mainnet") ||
       !Array.isArray(value.members) || !value.members.every((member) => typeof member === "string") ||
@@ -100,12 +103,14 @@ const hex = (v: Uint8Array) => Array.from(v, b => b.toString(16).padStart(2, '0'
 type V2FeeCovenant = V2FeeCircleParams['covenant'];
 const isFeeV1Covenant = (c: V2FeeCovenant) => c === "fee-v1" || c === "fee-v1-guarded";
 const isFeeV2EscrowCovenant = (c: V2FeeCovenant) => c === "fee-v2-escrow" || c === "fee-v2-escrow-guarded";
-const isFeeV3AutoReserveCovenant = (c: V2FeeCovenant) => c === "fee-v3-auto-reserve" || c === "fee-v3-auto-reserve-guarded" || c === "fee-v3-auto-reserve-mainnet";
+const isFeeV3AutoReserveCovenant = (c: V2FeeCovenant) => c === "fee-v3-auto-reserve" || c === "fee-v3-auto-reserve-guarded" || c === "fee-v3-auto-reserve-closing" || c === "fee-v3-auto-reserve-mainnet";
+/** The final payout burns every circle NFT and returns the genesis backing, leaving nothing locked. */
+export const v2FeeCovenantClosesOnCompletion = (c: V2FeeCovenant) => c === "fee-v3-auto-reserve-closing" || c === "fee-v3-auto-reserve-mainnet";
 const feeEstimate = (memberCount: number) => 6_000n + BigInt(memberCount) * 500n;
 
 function validate(p: V2FeeCircleDraft | V2FeeCircleParams): void {
   if (p.version !== 2 ||
-      !['fee-v1', 'fee-v2-escrow', 'fee-v3-auto-reserve', 'fee-v1-guarded', 'fee-v2-escrow-guarded', 'fee-v3-auto-reserve-guarded', 'fee-v3-auto-reserve-mainnet'].includes(p.covenant) ||
+      !['fee-v1', 'fee-v2-escrow', 'fee-v3-auto-reserve', 'fee-v1-guarded', 'fee-v2-escrow-guarded', 'fee-v3-auto-reserve-guarded', 'fee-v3-auto-reserve-closing', 'fee-v3-auto-reserve-mainnet'].includes(p.covenant) ||
       !p.name.trim()) throw new Error('Invalid V2 fee-circle details');
   if (p.network === 'mainnet') {
     if (p.covenant !== 'fee-v3-auto-reserve-mainnet') {
@@ -206,7 +211,8 @@ export function v2FeeArtifactForCovenant(covenant: V2FeeCovenant): Artifact {
     case 'fee-v3-auto-reserve': return legacyAutoReserveArtifact;
     case 'fee-v1-guarded': return artifact;
     case 'fee-v2-escrow-guarded': return escrowArtifact;
-    case 'fee-v3-auto-reserve-guarded': return autoReserveArtifact;
+    case 'fee-v3-auto-reserve-guarded': return guardedAutoReserveArtifact;
+    case 'fee-v3-auto-reserve-closing': return autoReserveArtifact;
     case 'fee-v3-auto-reserve-mainnet': return autoReserveArtifact;
   }
   throw new Error('Unsupported V2 fee covenant.');
@@ -631,8 +637,27 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
   const feeCoins = (await provider.getUtxos(feePayerAddress)).filter((u) => !u.token);
   const feeFunding = pickFunding(feeCoins, minerFee + CHANGE_DUST);
   const feeChange = feeFunding.satoshis - minerFee;
+  const closing = v2FeeCovenantClosesOnCompletion(params.covenant) && round === params.members.length - 1;
+  if (closing && credits.some((credit) => credit !== params.contribution)) {
+    throw new Error("Final payout blocked: every member receipt must hold exactly one contribution so nothing is stranded when the circle closes.");
+  }
+  const genesisBackingRefund = closing
+    ? state.satoshis - pot + receipts.reduce((sum, receipt) => sum + receipt.satoshis, 0n)
+    : 0n;
 
-  const builder = new TransactionBuilder({ provider })
+  const builder = new TransactionBuilder({ provider });
+  if (closing) {
+    builder
+      .addInput(state, contract.unlock.payout())
+      .addInputs(receipts, contract.unlock.payout())
+      .addInput(feeFunding, placeholderP2PKHUnlocker(feePayerAddress))
+      .addOutput({ to: params.treasury, amount: projectFee })
+      .addOutput({ to: params.members[round], amount: recipientPayout })
+      // State and receipt NFTs are burned; their genesis-funded BCH returns to the initiator.
+      .addOutput({ to: params.initiator, amount: genesisBackingRefund })
+      .addOutput({ to: feePayerAddress, amount: feeChange });
+  } else {
+  builder
     .addInput(state, contract.unlock.payout())
     .addInputs(receipts, contract.unlock.payout())
     .addInput(feeFunding, placeholderP2PKHUnlocker(feePayerAddress))
@@ -659,6 +684,7 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
   builder.addOutput({ to: params.members[round], amount: recipientPayout });
   // Miner fee is separately funded by the caller and change returns to that wallet.
   builder.addOutput({ to: feePayerAddress, amount: feeChange });
+  }
 
   return {
     wc: builder.generateWcTransactionObject({
@@ -681,6 +707,8 @@ export async function planV2FeePayout(params: V2FeeCircleParams, feePayerAddress
     requiredCredits,
     remainingRounds,
     hasAutomaticFutureReserve: isFeeV3AutoReserveCovenant(params.covenant),
+    closesCircle: closing,
+    genesisBackingRefund,
   };
 }
 
@@ -720,12 +748,97 @@ export async function planV2FeeCancel(params: V2FeeCircleParams, walletAddress: 
   return { wc, walletInputs: v2FeeCancelWalletInputIndexes(params.members.length), minerFee, refunds: credits };
 }
 
+export type V2FeeClosedAs = 'completed' | 'cancelled';
+
+function p2pkhBytecodeHex(address: string): string {
+  const result = cashAddressToLockingBytecode(address);
+  if (typeof result === 'string') throw new Error(result);
+  return binToHex(result.bytecode);
+}
+
+/**
+ * Recognise the covenant-enforced transaction that closed a circle: either the
+ * final payout (treasury fee, final recipient, initiator backing refund, caller
+ * change) or the initiator cancellation (one refund per member, initiator change).
+ */
+export function classifyV2FeeClosingTransaction(params: V2FeeCircleParams, tx: Transaction): V2FeeClosedAs | null {
+  const memberCount = params.members.length;
+  const outputs = tx.outputs;
+  if (outputs.some((output) => output.token !== undefined)) return null;
+  const script = (index: number) => binToHex(outputs[index].lockingBytecode);
+  const pot = BigInt(memberCount) * params.contribution;
+  const projectFee = pot / 100n;
+  if (v2FeeCovenantClosesOnCompletion(params.covenant) && outputs.length === 4 &&
+      script(0) === p2pkhBytecodeHex(params.treasury) && outputs[0].valueSatoshis === projectFee &&
+      script(1) === p2pkhBytecodeHex(params.members[memberCount - 1]) && outputs[1].valueSatoshis === pot - projectFee &&
+      script(2) === p2pkhBytecodeHex(params.initiator)) {
+    return 'completed';
+  }
+  if (outputs.length === memberCount + 1 &&
+      params.members.every((member, index) => script(index) === p2pkhBytecodeHex(member)) &&
+      script(memberCount) === p2pkhBytecodeHex(params.initiator)) {
+    return 'cancelled';
+  }
+  return null;
+}
+
+async function findV2FeeClosingTransaction(
+  provider: NetworkProvider,
+  contract: Contract,
+  params: V2FeeCircleParams,
+): Promise<V2FeeClosedAs | null> {
+  const electrum = provider as NetworkProvider & { performRequest?: (name: string, ...args: string[]) => Promise<unknown> };
+  if (typeof electrum.performRequest !== 'function') return null;
+  const scriptHash = binToHex(sha256.hash(typeof contract.lockingBytecode === "string" ? hexToBin(contract.lockingBytecode) : contract.lockingBytecode).reverse());
+  const history = await electrum.performRequest('blockchain.scripthash.get_history', scriptHash);
+  if (!Array.isArray(history)) return null;
+  for (const entry of [...history].reverse()) {
+    const txid = (entry as { tx_hash?: unknown })?.tx_hash;
+    if (typeof txid !== 'string') continue;
+    const decoded = decodeTransaction(hexToBin(await provider.getRawTransaction(txid)));
+    if (typeof decoded === 'string') continue;
+    const closedAs = classifyV2FeeClosingTransaction(params, decoded);
+    if (closedAs) return closedAs;
+  }
+  return null;
+}
+
 /** Read and validate the complete V2 fee state before showing balances or actions. */
 export async function readV2FeeCircle(params: V2FeeCircleParams) {
   validate(params);
   const provider = await getProvider(params.network);
   const contract = createV2FeeCircleContract(params, provider);
   const utxos = await getV2FeeCircleTokenUtxos(contract);
+  if (v2FeeCovenantClosesOnCompletion(params.covenant) &&
+      !utxos.some((utxo) => utxo.token?.category === params.stateCategory)) {
+    const closedAs = await findV2FeeClosingTransaction(provider, contract, params);
+    if (closedAs) {
+      const memberCount = params.members.length;
+      const accounting = summarizeV2FeeMemberAccounting(params, memberCount, params.members.map(() => 0n));
+      return {
+        provider,
+        contract,
+        utxos,
+        round: memberCount,
+        hasPaid: closedAs === 'completed',
+        completed: true,
+        closedAs: closedAs as V2FeeClosedAs | null,
+        stateSatoshis: 0n,
+        credits: params.members.map(() => 0n),
+        memberAccounting: closedAs === 'completed' ? accounting : accounting.map((account) => ({
+          ...account,
+          totalPaidIn: null,
+          payoutReceived: false,
+          payoutAmountReceived: 0n,
+          status: 'Circle cancelled · credit refunded',
+        })),
+        requiredPerMember: 0n,
+        remainingRounds: 0,
+        ready: false,
+        recipient: null,
+      };
+    }
+  }
   assertUtxoSet(utxos, params.stateCategory, params.members.length, params.covenant, params.network, contract.tokenAddress);
   const state = findState(utxos, params.stateCategory, params.covenant, params.members.length);
   const round = Number.parseInt(state.token!.nft!.commitment.slice(2, 4), 16);
@@ -750,6 +863,7 @@ export async function readV2FeeCircle(params: V2FeeCircleParams) {
     round,
     hasPaid,
     completed,
+    closedAs: null as V2FeeClosedAs | null,
     stateSatoshis: state.satoshis,
     credits,
     memberAccounting,

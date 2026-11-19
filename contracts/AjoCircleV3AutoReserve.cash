@@ -14,6 +14,9 @@ pragma cashscript ^0.14.0;
 // payout inputs: 0 state NFT, 1..N receipt NFTs, N+1 token-free caller fee input
 // payout outputs: 0 state, 1..N updated receipts, N+1 treasury fee,
 //                 N+2 recipient net of project fee and future-contribution reserve, N+3 caller fee change
+// final payout outputs (state and receipt NFTs are burned, nothing stays locked):
+//                 0 treasury fee, 1 final recipient, 2 initiator refund of the
+//                 genesis state/receipt backing, 3 caller fee change
 //
 // Network-neutral script template. Network-specific adapters bind member,
 // initiator and treasury PKHs and select the matching BCH provider. The V3
@@ -106,7 +109,6 @@ contract AjoCircleV3AutoReserve(
         require(maxFee >= 0);
         require(this.activeInputIndex >= 0 && this.activeInputIndex <= memberCount);
         require(tx.inputs.length == memberCount + 2);
-        require(tx.outputs.length == memberCount + 4);
         require(tx.inputs[0].lockingBytecode == tx.inputs[this.activeInputIndex].lockingBytecode);
         require(tx.inputs[0].tokenCategory == stateCategory + 0x02);
         require(tx.inputs[0].tokenAmount == 0);
@@ -127,6 +129,13 @@ contract AjoCircleV3AutoReserve(
         // Withhold exactly one next contribution from each recipient's payout,
         // except the final recipient, whose cycle ends with this payout.
         if (round + 1 < memberCount) { recipientReserve = contribution; }
+        bool closing = round + 1 == memberCount;
+        if (closing) {
+            require(tx.outputs.length == 4);
+        } else {
+            require(tx.outputs.length == memberCount + 4);
+        }
+        int receiptBacking = 0;
         for (int i = 0; i < memberCount; i++) {
             int receiptInput = i + 1;
             require(tx.inputs[receiptInput].lockingBytecode == tx.inputs[0].lockingBytecode);
@@ -144,30 +153,46 @@ contract AjoCircleV3AutoReserve(
             require(int(receiptCredit) >= contribution);
             require(int(receiptCredit) <= 9223372036854775807 - totalCredits);
             totalCredits = totalCredits + int(receiptCredit);
+            receiptBacking = receiptBacking + tx.inputs[receiptInput].value;
 
-            require(tx.outputs[receiptInput].lockingBytecode == tx.inputs[receiptInput].lockingBytecode);
-            require(tx.outputs[receiptInput].tokenCategory == stateCategory);
-            require(tx.outputs[receiptInput].tokenAmount == 0);
-            int nextCredit = int(receiptCredit) - contribution;
-            // Exactly one next contribution is reserved
-            // from this payout and credited to their own receipt atomically.
-            if (i == round) { nextCredit = nextCredit + recipientReserve; }
-            require(tx.outputs[receiptInput].nftCommitment == 0x52 + toPaddedBytes(i, 1) + toPaddedBytes(nextCredit, 8));
-            require(tx.outputs[receiptInput].value == tx.inputs[receiptInput].value);
+            if (closing) {
+                // The final round consumes exactly one contribution per member,
+                // so no member credit can be stranded when the receipt is burned.
+                require(int(receiptCredit) == contribution);
+            } else {
+                require(tx.outputs[receiptInput].lockingBytecode == tx.inputs[receiptInput].lockingBytecode);
+                require(tx.outputs[receiptInput].tokenCategory == stateCategory);
+                require(tx.outputs[receiptInput].tokenAmount == 0);
+                int nextCredit = int(receiptCredit) - contribution;
+                // Exactly one next contribution is reserved
+                // from this payout and credited to their own receipt atomically.
+                if (i == round) { nextCredit = nextCredit + recipientReserve; }
+                require(tx.outputs[receiptInput].nftCommitment == 0x52 + toPaddedBytes(i, 1) + toPaddedBytes(nextCredit, 8));
+                require(tx.outputs[receiptInput].value == tx.inputs[receiptInput].value);
+            }
         }
 
         require(tx.inputs[0].value == totalCredits + 1000);
-        require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
-        require(tx.outputs[0].tokenCategory == stateCategory + 0x02);
-        require(tx.outputs[0].tokenAmount == 0);
-        if (round + 1 == memberCount) {
-            // Terminal state: round == memberCount and hasPaid == 1.
-            require(tx.outputs[0].nftCommitment == 0x54 + toPaddedBytes(memberCount, 1) + 0x01);
+        int treasuryOutput = memberCount + 1;
+        int recipientOutput = memberCount + 2;
+        int feeChangeOutput = memberCount + 3;
+        if (closing) {
+            // Burn the state and receipt NFTs and return their genesis-funded
+            // BCH backing to the initiator, so a completed circle holds nothing.
+            treasuryOutput = 0;
+            recipientOutput = 1;
+            feeChangeOutput = 3;
+            require(tx.outputs[2].lockingBytecode == new LockingBytecodeP2PKH(initiator));
+            require(tx.outputs[2].tokenCategory == 0x);
+            require(tx.outputs[2].value == tx.inputs[0].value - pot + receiptBacking);
         } else {
+            require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
+            require(tx.outputs[0].tokenCategory == stateCategory + 0x02);
+            require(tx.outputs[0].tokenAmount == 0);
             require(tx.outputs[0].nftCommitment == 0x54 + toPaddedBytes(round + 1, 1) + 0x01);
+            require(tx.outputs[0].value == tx.inputs[0].value - pot + recipientReserve);
+            require(tx.outputs[0].value >= 1000);
         }
-        require(tx.outputs[0].value == tx.inputs[0].value - pot + recipientReserve);
-        require(tx.outputs[0].value >= 1000);
 
         bytes20 recipient = m0;
         if (round == 1) { recipient = m1; }
@@ -178,17 +203,16 @@ contract AjoCircleV3AutoReserve(
         require(projectFee >= 546);
         int recipientPayout = pot - projectFee - recipientReserve;
         require(recipientPayout >= 546);
-        require(tx.outputs[memberCount + 1].lockingBytecode == new LockingBytecodeP2PKH(treasury));
-        require(tx.outputs[memberCount + 1].tokenCategory == 0x);
-        require(tx.outputs[memberCount + 1].value == projectFee);
-        require(tx.outputs[memberCount + 2].lockingBytecode == new LockingBytecodeP2PKH(recipient));
-        require(tx.outputs[memberCount + 2].tokenCategory == 0x);
-        require(tx.outputs[memberCount + 2].value == recipientPayout);
+        require(tx.outputs[treasuryOutput].lockingBytecode == new LockingBytecodeP2PKH(treasury));
+        require(tx.outputs[treasuryOutput].tokenCategory == 0x);
+        require(tx.outputs[treasuryOutput].value == projectFee);
+        require(tx.outputs[recipientOutput].lockingBytecode == new LockingBytecodeP2PKH(recipient));
+        require(tx.outputs[recipientOutput].tokenCategory == 0x);
+        require(tx.outputs[recipientOutput].value == recipientPayout);
 
         // Miner fee is paid by the caller from a separate token-free BCH input.
         // It must not be deducted from the member pot or the fixed 1% project fee.
         int feeInput = memberCount + 1;
-        int feeChangeOutput = memberCount + 3;
         require(tx.inputs[feeInput].tokenCategory == 0x);
         require(tx.outputs[feeChangeOutput].lockingBytecode == tx.inputs[feeInput].lockingBytecode);
         require(tx.outputs[feeChangeOutput].tokenCategory == 0x);

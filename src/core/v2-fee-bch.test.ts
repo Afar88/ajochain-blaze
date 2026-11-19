@@ -199,6 +199,7 @@ describe('V2 fee covenant artifact version routing', () => {
       ['fee-v1', 'fee-v1-guarded'],
       ['fee-v2-escrow', 'fee-v2-escrow-guarded'],
       ['fee-v3-auto-reserve', 'fee-v3-auto-reserve-guarded'],
+      ['fee-v3-auto-reserve-guarded', 'fee-v3-auto-reserve-closing'],
     ] as const;
     for (const [legacy, guarded] of pairs) {
       const legacyContract = new Contract(v2FeeArtifactForCovenant(legacy), args, {
