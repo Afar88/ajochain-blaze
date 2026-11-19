@@ -90,6 +90,8 @@ export default function App() {
   const [gatherBusy, setGatherBusy] = useState(false);
   const [gatherMessage, setGatherMessage] = useState("");
   const [discoveryMessage, setDiscoveryMessage] = useState("");
+  const [discoveryRun, setDiscoveryRun] = useState(0);
+  const [discoveryBusy, setDiscoveryBusy] = useState(false);
   const [walletView, setWalletView] = useState<WalletView>({
     state: "idle", uri: null, qrUri: null, walletName: null, error: null, receiveIndex: 0,
   });
@@ -426,6 +428,8 @@ export default function App() {
     // Chipnet addresses from the connected WizardConnect wallet.
     if (!walletClient || walletView.state !== "connected" || walletClient.state !== "connected") return;
     let cancelled = false;
+    setDiscoveryBusy(true);
+    setDiscoveryMessage("Checking Chipnet for circles that include this wallet…");
     void (async () => {
       try {
         const [{ getClassicProvider }, { discoverV2FeeCircles, encodeV2FeeCircleParams }, { dedupeSavedV2FeeCircleRecords, getV2FeeCircleRecordIdentity }] = await Promise.all([
@@ -454,14 +458,16 @@ export default function App() {
           setMenuCircles(readSavedV2MenuCircles());
           setDiscoveryMessage(`Found ${added} circle${added === 1 ? "" : "s"} for this wallet on Chipnet. Open it from Your circles.`);
         } else {
-          setDiscoveryMessage("Checked Chipnet. No new circles were found for this wallet.");
+          setDiscoveryMessage("Checked Chipnet. No new circles were found for this wallet. A just-created circle appears after its first confirmation (usually under 10 minutes); check again then.");
         }
       } catch {
         if (!cancelled) setDiscoveryMessage("Couldn't check Chipnet for circles that include this wallet. Invite links still work.");
+      } finally {
+        if (!cancelled) setDiscoveryBusy(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [walletClient, walletView.state]);
+  }, [walletClient, walletView.state, discoveryRun]);
 
   const gatherWalletCoins = async () => {
     if (!walletClient || walletClient.state !== "connected" || network !== "chipnet" || !walletAddress) return;
@@ -871,6 +877,7 @@ export default function App() {
                   <button className="secondary-button" disabled={gatherBusy} onClick={() => void gatherWalletCoins()}>Gather Selene coins to this address</button>
                   {gatherMessage && <p className="wallet-match-message" role="status">{gatherMessage}</p>}
                 </>}
+                <button className="secondary-button" disabled={discoveryBusy} onClick={() => setDiscoveryRun((run) => run + 1)}>Check for my circles</button>
                 {discoveryMessage && <p className="wallet-match-message" role="status">{discoveryMessage}</p>}
                 <button className="secondary-button" onClick={() => void walletClient?.disconnect()}>Disconnect wallet</button>
               </div>
