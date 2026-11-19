@@ -965,7 +965,7 @@ export default function App() {
                   try {
                     const index = walletClient?.confirmReceiveAddress(seleneAddress, network, 250) ?? null;
                     setAddressMatchMessage(index === null
-                      ? "No match in receive indices 0–250. Confirm this is the address on Selene's Receive screen and that both apps use the same network."
+                      ? "No match in receive indices 0–250 of this connected receive key. Check Selene's Mainnet Receive screen and network. If it still does not match, this session may expose a different receive path; do not create a circle with the stale address."
                       : "Confirmed Selene's current receive address (index " + index + "). Mainnet circle creation will now use this exact address as Member 1.");
                   } catch (cause) { setAddressMatchMessage(cause instanceof Error ? cause.message : "Could not match address."); }
                 }}>Sync Selene address</button>
