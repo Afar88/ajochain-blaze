@@ -27,9 +27,10 @@ export function createBchMainnetCircleDraft(
 }
 
 /**
- * Prepare only an unsigned genesis preview. No wallet signing or broadcast
- * occurs here; the Mainnet quorum provider is read-only and the app guard stays
- * closed until independent review and wallet E2E evidence are complete.
+ * Prepare an unsigned BCH Mainnet genesis transaction plan.
+ * Signing and broadcasting are separate workspace actions; the server verifies
+ * the signed transaction before the one-shot BCH relay. This function itself
+ * does not sign or broadcast and does not alter the BCH/PUSD feature guards.
  */
 export async function prepareBchMainnetCircleGenesisPreview(
   input: BchMainnetCircleDraft,
