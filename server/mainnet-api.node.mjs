@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { encodeCashAddress } from "@bitauth/libauth";
+import { encodeCashAddress, hexToBin } from "@bitauth/libauth";
 import pusdBroadcastHandler from "../api/pusd/broadcast.mjs";
 import pusdUnspentHandler from "../api/pusd/unspent.mjs";
 import pusdSubmissionHandler from "../api/pusd/submission.mjs";
@@ -12,6 +12,7 @@ import {
   createUpstashMainnetRateLimiter,
   assertBchMainnetStateCommitment,
   createBchMainnetV3ContractContext,
+  assertBchMainnetPayoutLayout,
   verifyBchMainnetCircleTransaction,
   assertPusdTokenOutputCarrier,
   assertPusdBchChangeCarrier,
@@ -941,4 +942,40 @@ test("nested PUSD broadcast Vercel route remains hard-locked despite env overrid
     if (original === undefined) delete process.env.ENABLE_MAINNET_BROADCAST;
     else process.env.ENABLE_MAINNET_BROADCAST = original;
   }
+});
+
+test("BCH Mainnet payout verifier accepts the V3 final closing layout and its exact amounts", () => {
+  const context = createBchMainnetV3ContractContext(bchMainnetVerificationCircle);
+  const [m0, m1] = context.members;
+  const fee = cashAddressToLockingBytecode(createMainnetTestAddress(13));
+  const nft = (commitment, capability = "none") => ({ amount: 0n, category: hexToBin(context.stateCategory), nft: { capability, commitment: hexToBin(commitment) } });
+  const out = (script, valueSatoshis, token) => ({ lockingBytecode: hexToBin(script), valueSatoshis, ...(token ? { token } : {}) });
+  const credit = "400d030000000000";
+  const sourceOutputs = [
+    out(context.contractLockingBytecode, 401_000n, nft("540101", "minting")),
+    out(context.contractLockingBytecode, 1_000n, nft("5200" + credit)),
+    out(context.contractLockingBytecode, 1_000n, nft("5201" + credit)),
+    out(fee, 50_000n),
+  ];
+  const inputScripts = [context.contractLockingBytecode, context.contractLockingBytecode, context.contractLockingBytecode, fee];
+  const tx = (outputs) => ({ inputs: new Array(4).fill({}), outputs });
+  const closing = [
+    out(context.treasuryScript, 4_000n),
+    out(m1, 396_000n),
+    out(context.initiatorScript, 3_000n),
+    out(fee, 49_000n),
+  ];
+  assert.doesNotThrow(() => assertBchMainnetPayoutLayout(tx(closing), sourceOutputs, inputScripts, [fee], context));
+  const shortRefund = closing.slice();
+  shortRefund[2] = out(context.initiatorScript, 2_000n);
+  assert.throws(() => assertBchMainnetPayoutLayout(tx(shortRefund), sourceOutputs, inputScripts, [fee], context), /exact state and receipt backing/);
+  const wrongRecipient = closing.slice();
+  wrongRecipient[1] = out(m0, 396_000n);
+  assert.throws(() => assertBchMainnetPayoutLayout(tx(wrongRecipient), sourceOutputs, inputScripts, [fee], context), /not the expected token-free recipient/);
+  const keptState = closing.slice();
+  keptState[2] = out(context.initiatorScript, 3_000n, nft("540201", "minting"));
+  assert.throws(() => assertBchMainnetPayoutLayout(tx(keptState), sourceOutputs, inputScripts, [fee], context), /not the expected token-free recipient/);
+  const nonFinalSource = sourceOutputs.slice();
+  nonFinalSource[0] = out(context.contractLockingBytecode, 401_000n, nft("540000", "minting"));
+  assert.throws(() => assertBchMainnetPayoutLayout(tx(closing), nonFinalSource, inputScripts, [fee], context), /exact ordered state/);
 });

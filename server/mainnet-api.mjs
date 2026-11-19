@@ -1611,6 +1611,65 @@ export function assertBchMainnetStateCommitment(output, expectedRound, expectedP
  * Independently verify a Selene-signed BCH Mainnet V3 transaction.
  * This endpoint only verifies; it never reserves, relays, or broadcasts.
  */
+/**
+ * Check the exact V3 payout layout. Non-final rounds keep the state NFT and
+ * ordered receipts in the covenant; the final round burns them (closing branch).
+ */
+export function assertBchMainnetPayoutLayout(transaction, sourceOutputs, inputScripts, walletScripts, context) {
+  const memberCount = context.memberCount;
+  if (sourceOutputs[0].token.nft.capability !== "minting") {
+    throw new Error("BCH Mainnet V3 payout input 0 must be the minting state NFT.");
+  }
+  const stateCommitment = bchMainnetNftCommitment(sourceOutputs[0], "BCH Mainnet payout state");
+  if (!/^54(?:0[0-5])(?:00|01)$/.test(stateCommitment)) {
+    throw new Error("BCH Mainnet payout state commitment is malformed.");
+  }
+  const round = Number.parseInt(stateCommitment.slice(2, 4), 16);
+  if (round >= memberCount) throw new Error("BCH Mainnet V3 payout state is already complete.");
+  // The final payout burns the state and receipt NFTs (covenant closing branch).
+  const closing = round + 1 === memberCount;
+  if (transaction.inputs.length !== memberCount + 2 ||
+      transaction.outputs.length !== (closing ? 4 : memberCount + 4)) {
+    throw new Error("BCH Mainnet V3 payout must have the exact ordered state, receipt, fee-input and output layout.");
+  }
+  for (let index = 0; index < memberCount; index += 1) {
+    assertBchMainnetReceiptIndex(sourceOutputs[index + 1], index, "BCH Mainnet payout receipt input " + (index + 1));
+  }
+  const feeInputScript = inputScripts[memberCount + 1];
+  if (feeInputScript !== walletScripts[0]) {
+    throw new Error("BCH Mainnet payout fee input must belong to the connected fee-paying wallet.");
+  }
+  const pot = BigInt(memberCount) * context.contribution;
+  const projectFee = pot / 100n;
+  const reserve = round + 1 < memberCount ? context.contribution : 0n;
+  const recipientPayout = pot - projectFee - reserve;
+  let treasuryIndex = memberCount + 1;
+  if (closing) {
+    treasuryIndex = 0;
+    const backing = sourceOutputs.slice(0, memberCount + 1)
+      .reduce((sum, output) => sum + output.valueSatoshis, 0n) - pot;
+    assertBchMainnetPlainOutput(transaction.outputs[2], context.initiatorScript, 2);
+    if (transaction.outputs[2].valueSatoshis !== backing) {
+      throw new Error("BCH Mainnet V3 final payout must return the exact state and receipt backing to the initiator.");
+    }
+  }
+  for (let index = 0; !closing && index <= memberCount; index += 1) {
+    if (binToHex(transaction.outputs[index].lockingBytecode).toLowerCase() !== context.contractLockingBytecode ||
+        !transaction.outputs[index].token) {
+      throw new Error("BCH Mainnet V3 payout contract outputs must preserve the state NFT and ordered member receipts.");
+    }
+  }
+  const recipientIndex = treasuryIndex + 1;
+  const feeChangeIndex = closing ? 3 : memberCount + 3;
+  assertBchMainnetPlainOutput(transaction.outputs[treasuryIndex], context.treasuryScript, treasuryIndex);
+  assertBchMainnetPlainOutput(transaction.outputs[recipientIndex], context.members[round], recipientIndex);
+  assertBchMainnetPlainOutput(transaction.outputs[feeChangeIndex], feeInputScript, feeChangeIndex);
+  if (transaction.outputs[treasuryIndex].valueSatoshis !== projectFee ||
+      transaction.outputs[recipientIndex].valueSatoshis !== recipientPayout) {
+    throw new Error("BCH Mainnet V3 payout treasury fee or scheduled member amount does not match the immutable circle rules.");
+  }
+}
+
 export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
   const operation = body?.operation;
   if (!["genesis", "deposit", "payout", "cancel"].includes(operation)) {
@@ -1766,43 +1825,7 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
     }
     assertBchMainnetPlainOutput(transaction.outputs[2], inputScripts[2], 2);
   } else if (operation === "payout") {
-    if (transaction.inputs.length !== memberCount + 2 ||
-        transaction.outputs.length !== memberCount + 4) {
-      throw new Error("BCH Mainnet V3 payout must have the exact ordered state, receipt, fee-input and output layout.");
-    }
-    if (sourceOutputs[0].token.nft.capability !== "minting") {
-      throw new Error("BCH Mainnet V3 payout input 0 must be the minting state NFT.");
-    }
-    const stateCommitment = bchMainnetNftCommitment(sourceOutputs[0], "BCH Mainnet payout state");
-    if (!/^54(?:0[0-5])(?:00|01)$/.test(stateCommitment)) {
-      throw new Error("BCH Mainnet payout state commitment is malformed.");
-    }
-    const round = Number.parseInt(stateCommitment.slice(2, 4), 16);
-    if (round >= memberCount) throw new Error("BCH Mainnet V3 payout state is already complete.");
-    for (let index = 0; index < memberCount; index += 1) {
-      assertBchMainnetReceiptIndex(sourceOutputs[index + 1], index, "BCH Mainnet payout receipt input " + (index + 1));
-    }
-    const feeInputScript = inputScripts[memberCount + 1];
-    if (feeInputScript !== walletScripts[0]) {
-      throw new Error("BCH Mainnet payout fee input must belong to the connected fee-paying wallet.");
-    }
-    const pot = BigInt(memberCount) * context.contribution;
-    const projectFee = pot / 100n;
-    const reserve = round + 1 < memberCount ? context.contribution : 0n;
-    const recipientPayout = pot - projectFee - reserve;
-    for (let index = 0; index <= memberCount; index += 1) {
-      if (binToHex(transaction.outputs[index].lockingBytecode).toLowerCase() !== context.contractLockingBytecode ||
-          !transaction.outputs[index].token) {
-        throw new Error("BCH Mainnet V3 payout contract outputs must preserve the state NFT and ordered member receipts.");
-      }
-    }
-    assertBchMainnetPlainOutput(transaction.outputs[memberCount + 1], context.treasuryScript, memberCount + 1);
-    assertBchMainnetPlainOutput(transaction.outputs[memberCount + 2], context.members[round], memberCount + 2);
-    assertBchMainnetPlainOutput(transaction.outputs[memberCount + 3], feeInputScript, memberCount + 3);
-    if (transaction.outputs[memberCount + 1].valueSatoshis !== projectFee ||
-        transaction.outputs[memberCount + 2].valueSatoshis !== recipientPayout) {
-      throw new Error("BCH Mainnet V3 payout treasury fee or scheduled member amount does not match the immutable circle rules.");
-    }
+    assertBchMainnetPayoutLayout(transaction, sourceOutputs, inputScripts, walletScripts, context);
   } else {
     if (transaction.inputs.length !== memberCount + 2 ||
         transaction.outputs.length !== memberCount + 1 ||
