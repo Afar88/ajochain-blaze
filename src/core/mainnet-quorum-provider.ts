@@ -366,6 +366,51 @@ export class MainnetQuorumNetworkProvider implements NetworkProvider {
     return agreed;
   }
 
+  /**
+   * Read a wallet's receive/change address set under one verified tip and
+   * authenticate the combined UTXO snapshots together. This avoids repeating
+   * four chain-identity/tip RPCs and raw-prevout verification for every
+   * derivation address during wallet coin gathering.
+   */
+  async getUtxosForAddresses(
+    addresses: readonly string[],
+  ): Promise<{ address: string; utxos: SpendableUtxo[] }[]> {
+    if (!Array.isArray(addresses) || addresses.length === 0 || addresses.length > 100 ||
+        addresses.some((address) => typeof address !== "string" || !address.trim()) ||
+        new Set(addresses.map((address) => address.trim().toLowerCase())).size !== addresses.length) {
+      throw new Error("Mainnet wallet scan requires 1–100 unique BCH addresses.");
+    }
+    await this.verifyTip();
+    const providerSnapshots = await Promise.all(this.providers.map(async (provider) =>
+      Promise.all(addresses.map((address) => provider.getUtxos(address))),
+    ));
+    const combinedSnapshots = providerSnapshots.map((snapshot) => snapshot.flat());
+    const agreed = await this.verifyUtxos(combinedSnapshots);
+
+    const addressByOutpoint = new Map<string, string>();
+    for (const [index, addressUtxos] of providerSnapshots[0].entries()) {
+      for (const utxo of addressUtxos) {
+        const key = utxo.txid.toLowerCase() + ":" + utxo.vout;
+        if (addressByOutpoint.has(key)) {
+          throw new Error("Mainnet wallet scan returned the same UTXO under more than one address.");
+        }
+        addressByOutpoint.set(key, addresses[index]);
+      }
+    }
+    const utxosByAddress = new Map<string, SpendableUtxo[]>(
+      addresses.map((address) => [address, []]),
+    );
+    for (const utxo of agreed) {
+      const address = addressByOutpoint.get(utxo.txid.toLowerCase() + ":" + utxo.vout);
+      if (!address) throw new Error("Verified Mainnet UTXO could not be mapped to its requested wallet address.");
+      utxosByAddress.get(address)!.push(utxo);
+    }
+    return addresses.map((address) => ({
+      address,
+      utxos: utxosByAddress.get(address)!,
+    }));
+  }
+
   async getUtxos(address: string): Promise<SpendableUtxo[]> {
     await this.verifyTip();
     const snapshots = await Promise.all(this.providers.map((provider) => provider.getUtxos(address)));
