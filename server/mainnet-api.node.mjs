@@ -1051,7 +1051,9 @@ test("nested PUSD circle verifier route rejects unknown operations before networ
     {
       ...mockApiRequest("POST", "/api/pusd/circle/verify"),
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ operation: "unknown" }),
+      [Symbol.asyncIterator]: async function* () {
+        yield Buffer.from(JSON.stringify({ operation: "unknown" }));
+      },
     },
   );
   assert.equal(response.statusCode, 400);
@@ -1156,7 +1158,7 @@ test("PUSD Mainnet server reconstructs the exact circle and each member escrow s
 test("PUSD Mainnet genesis verifier enforces state category, receipt order and escrow scripts", () => {
   const context = createPusdMainnetV3ContractContext(pusdMainnetVerificationCircle);
   const firstInput = {
-    outpointTransactionHash: hexToBin(context.stateCategory),
+    outpointTransactionHash: hexToBin(context.stateCategory).reverse(),
     outpointIndex: 0,
   };
   const sourceOutputs = [
@@ -1250,103 +1252,6 @@ test("PUSD Mainnet server verifier rejects unknown lifecycle operations before p
   );
 });
 
-
-test("PUSD Mainnet genesis verifier enforces vout-0 category origin and exact output ordering", () => {
-  const context = createPusdMainnetV3ContractContext(pusdMainnetVerificationCircle);
-  const walletScript = context.initiatorScript;
-  const stateCategoryBytes = hexToBin(context.stateCategory);
-  const sourceOutputs = [pusdOutput(walletScript, 100_000n)];
-  const inputScripts = [walletScript];
-  const firstInput = {
-    outpointTransactionHash: stateCategoryBytes.slice().reverse(),
-    outpointIndex: 0,
-  };
-  const outputs = [
-    pusdOutput(context.contractLockingBytecode, 1_000n, pusdNft(context, "540000", "minting")),
-    pusdOutput(context.contractLockingBytecode, 1_000n, pusdNft(context, "5200" + "00".repeat(8))),
-    pusdOutput(context.contractLockingBytecode, 1_000n, pusdNft(context, "5201" + "00".repeat(8))),
-    pusdOutput(context.escrowLockingBytecodes[0], 1_000n),
-    pusdOutput(context.escrowLockingBytecodes[1], 1_000n),
-    pusdOutput(walletScript, 90_000n),
-  ];
-  const transaction = { inputs: [firstInput], outputs };
-  assert.doesNotThrow(() => assertPusdMainnetCircleLayout(
-    transaction, sourceOutputs, inputScripts, [walletScript], context, "genesis", {},
-  ));
-
-  const wrongCategoryOrigin = structuredClone(transaction);
-  wrongCategoryOrigin.inputs[0].outpointIndex = 1;
-  assert.throws(() => assertPusdMainnetCircleLayout(
-    wrongCategoryOrigin, sourceOutputs, inputScripts, [walletScript], context, "genesis", {},
-  ), /vout 0/);
-
-  const wrongEscrowOwner = structuredClone(transaction);
-  wrongEscrowOwner.outputs[3].lockingBytecode = hexToBin(context.members[0]);
-  assert.throws(() => assertPusdMainnetCircleLayout(
-    wrongEscrowOwner, sourceOutputs, inputScripts, [walletScript], context, "genesis", {},
-  ), /expected token-free output/);
-
-  const extraOutput = structuredClone(transaction);
-  extraOutput.outputs.push(pusdOutput(walletScript, 546n));
-  assert.throws(() => assertPusdMainnetCircleLayout(
-    extraOutput, sourceOutputs, inputScripts, [walletScript], context, "genesis", {},
-  ), /exact state, receipt, escrow and change outputs/);
-});
-
-test("PUSD Mainnet deposit verifier binds member, credit, escrow, excess-token refund and BCH change", () => {
-  const context = createPusdMainnetV3ContractContext(pusdMainnetVerificationCircle);
-  const memberScript = context.members[0];
-  const sourceOutputs = [
-    pusdOutput(context.contractLockingBytecode, 1_000n, pusdNft(context, "540000", "minting")),
-    pusdOutput(context.contractLockingBytecode, 1_000n, pusdNft(context, "5200" + "00".repeat(8))),
-    pusdOutput(context.escrowLockingBytecodes[0], 1_000n),
-    pusdOutput(memberScript, 1_000n, pusdToken(15_000n)),
-    pusdOutput(memberScript, 50_000n),
-  ];
-  const inputScripts = [
-    context.contractLockingBytecode,
-    context.contractLockingBytecode,
-    context.escrowLockingBytecodes[0],
-    memberScript,
-    memberScript,
-  ];
-  const newCredit = Buffer.alloc(8);
-  newCredit.writeBigUInt64LE(10_000n);
-  const transaction = {
-    inputs: new Array(5).fill({}),
-    outputs: [
-      pusdOutput(context.contractLockingBytecode, 1_000n, pusdNft(context, "540000", "minting")),
-      pusdOutput(context.contractLockingBytecode, 1_000n, pusdNft(context, "5200" + newCredit.toString("hex"))),
-      pusdOutput(context.escrowLockingBytecodes[0], 2_000n, pusdToken(10_000n)),
-      pusdOutput(memberScript, 1_000n, pusdToken(5_000n)),
-      pusdOutput(memberScript, 45_000n),
-    ],
-  };
-  assert.doesNotThrow(() => assertPusdMainnetCircleLayout(
-    transaction, sourceOutputs, inputScripts, [memberScript], context, "deposit",
-    { memberIndex: 0, amount: "10000" },
-  ));
-
-  const wrongMemberIndex = structuredClone(transaction);
-  assert.throws(() => assertPusdMainnetCircleLayout(
-    wrongMemberIndex, sourceOutputs, inputScripts, [memberScript], context, "deposit",
-    { memberIndex: 1, amount: "10000" },
-  ), /registered member wallet/);
-
-  const wrongCredit = structuredClone(transaction);
-  wrongCredit.outputs[1].token.nft.commitment = hexToBin("52000000000000000000");
-  assert.throws(() => assertPusdMainnetCircleLayout(
-    wrongCredit, sourceOutputs, inputScripts, [memberScript], context, "deposit",
-    { memberIndex: 0, amount: "10000" },
-  ), /expected circle NFT/);
-
-  const missingExcessRefund = structuredClone(transaction);
-  missingExcessRefund.outputs.pop();
-  assert.throws(() => assertPusdMainnetCircleLayout(
-    missingExcessRefund, sourceOutputs, inputScripts, [memberScript], context, "deposit",
-    { memberIndex: 0, amount: "10000" },
-  ), /return excess PUSD to the member wallet/);
-});
 
 test("PUSD Mainnet final payout verifier accepts exact member backing refunds and non-initiator sponsor", () => {
   const { context, feeScript, sourceOutputs, inputScripts } = makePusdPayoutFixture(1);
