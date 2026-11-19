@@ -18,6 +18,8 @@ import {
 const PUSD_CATEGORY = "2469acc5afa4b10cb5b5c04afb89c3a3ffd61c5da9c01e26d00951cae2a02544";
 // Hard release gate: runtime environment variables must never activate real-value broadcasts.
 export const MAINNET_BROADCAST_ENABLED = false;
+// Separate gate for BCH Mainnet circle transactions (create, pay, payout, cancel).
+export const BCH_MAINNET_CIRCLE_BROADCAST_ENABLED = false;
 export const MAINNET_GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f";
 export const BCH_MAINNET_FORK_CHECKPOINT_HEIGHT = 478_559;
 export const BCH_MAINNET_FORK_CHECKPOINT_HASH =
@@ -1879,6 +1881,31 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
   };
 }
 
+/**
+ * Broadcast a BCH Mainnet circle transaction only after the full
+ * verifyBchMainnetCircleTransaction checks pass. Relays once; an ambiguous
+ * relay result is reported as unknown and never retried automatically.
+ */
+export async function broadcastBchMainnetCircleTransaction(
+  sessions,
+  tip,
+  body,
+  enabled = BCH_MAINNET_CIRCLE_BROADCAST_ENABLED,
+) {
+  if (enabled !== true) {
+    throw new Error("BCH Mainnet circle broadcast is disabled until the release is approved.");
+  }
+  const verification = await verifyBchMainnetCircleTransaction(sessions, tip, body);
+  const relay = await broadcastPusdTransactionOnce(sessions, body.signedTransactionHex, verification.txid);
+  return {
+    ...verification,
+    broadcast: true,
+    relayStatus: relay.relayStatus,
+    message: "All BCH Mainnet V3 checks passed and the transaction was relayed (" + relay.relayStatus +
+      "). It is not confirmed yet.",
+  };
+}
+
 function setCors(request, response) {
   const origin = request.headers.origin;
   if (!origin) return true;
@@ -2031,6 +2058,19 @@ export function createMainnetApiServer() {
         await withElectrumSessions(async (sessions) => {
           const tip = await getTipQuorum(sessions);
           const result = await verifyBchMainnetCircleTransaction(sessions, tip, body);
+          sendJson(response, 200, result);
+        });
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/api/bch/broadcast") {
+        if (!BCH_MAINNET_CIRCLE_BROADCAST_ENABLED) {
+          sendJson(response, 403, { error: "BCH Mainnet circle broadcast is disabled until the release is approved." });
+          return;
+        }
+        const body = await readJson(request);
+        await withElectrumSessions(async (sessions) => {
+          const tip = await getTipQuorum(sessions);
+          const result = await broadcastBchMainnetCircleTransaction(sessions, tip, body);
           sendJson(response, 200, result);
         });
         return;

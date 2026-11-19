@@ -36,6 +36,8 @@ import {
   lockingBytecodeToScriptHash,
   normalizeElectrumUnspent,
   MAINNET_BROADCAST_ENABLED,
+  BCH_MAINNET_CIRCLE_BROADCAST_ENABLED,
+  broadcastBchMainnetCircleTransaction,
   createMainnetApiServer,
 } from "./mainnet-api.mjs";
 
@@ -978,4 +980,19 @@ test("BCH Mainnet payout verifier accepts the V3 final closing layout and its ex
   const nonFinalSource = sourceOutputs.slice();
   nonFinalSource[0] = out(context.contractLockingBytecode, 401_000n, nft("540000", "minting"));
   assert.throws(() => assertBchMainnetPayoutLayout(tx(closing), nonFinalSource, inputScripts, [fee], context), /exact ordered state/);
+});
+
+test("BCH Mainnet circle broadcast is gated and refuses before any verification or relay", async () => {
+  assert.equal(BCH_MAINNET_CIRCLE_BROADCAST_ENABLED, false);
+  let called = false;
+  const sessions = [{ call: async () => { called = true; } }, { call: async () => { called = true; } }];
+  await assert.rejects(
+    broadcastBchMainnetCircleTransaction(sessions, { height: 1, hash: "00" }, { operation: "payout" }),
+    /disabled until the release is approved/,
+  );
+  await assert.rejects(
+    broadcastBchMainnetCircleTransaction(sessions, { height: 1, hash: "00" }, { operation: "bogus" }, true),
+    /Unsupported BCH Mainnet circle verification operation/,
+  );
+  assert.equal(called, false);
 });
