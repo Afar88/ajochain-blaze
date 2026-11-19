@@ -5,6 +5,7 @@ import { pkhToAddress } from "./bch-address";
 import { createV2FeeCircleContract, v2FeeReceiptCommitment, v2FeeStateCommitment, type V2FeeCircleParams } from "./v2-fee-bch";
 import { decodeV2FeeDiscoveryNote, encodeV2FeeDiscoveryNote, v2FeeDiscoveryOutputs } from "./v2-fee-discovery-note";
 import { discoverV2FeeCircles, parseV2FeeDiscoveryTransaction } from "./v2-fee-discovery";
+import { MAINNET_PROJECT_TREASURY_ADDRESS } from "./project-treasury";
 
 const pkh = (byte: number) => new Uint8Array(20).fill(byte);
 const CATEGORY = "0123456789abcdef".repeat(4);
@@ -43,7 +44,7 @@ function genesisTx(
       { lockingBytecode: contract, valueSatoshis: 1_000n, token: token("minting", v2FeeStateCommitment(0, false)) },
       ...p.members.map((_, i) => ({ lockingBytecode: contract, valueSatoshis: 1_000n, token: token("none", v2FeeReceiptCommitment(i, 0n)) })),
       ...v2FeeDiscoveryOutputs({
-        covenant: "fee-v3-auto-reserve-closing",
+        covenant: p.network === "mainnet" ? "fee-v3-auto-reserve-mainnet" : "fee-v3-auto-reserve-closing",
         members: p.members,
         contribution: p.contribution,
         maxFee: p.maxFee,
@@ -99,6 +100,27 @@ describe("on-chain circle discovery", () => {
     };
     const transaction = genesisTx(differentInitiator, contractBytecode(differentInitiator), pkh(9));
     expect(parseV2FeeDiscoveryTransaction(transaction, new MockNetworkProvider())).toBeNull();
+  });
+
+  it("discovers a Mainnet circle when the initiator is not the first member", () => {
+    const mainnetParams: V2FeeCircleParams = {
+      ...params,
+      covenant: "fee-v3-auto-reserve-mainnet",
+      network: "mainnet",
+      members: [
+        pkhToAddress(pkh(2), "mainnet"),
+        pkhToAddress(pkh(1), "mainnet"),
+        pkhToAddress(pkh(3), "mainnet"),
+      ],
+      initiator: pkhToAddress(pkh(1), "mainnet"),
+      treasury: MAINNET_PROJECT_TREASURY_ADDRESS,
+    };
+    const provider = new MockNetworkProvider();
+    const transaction = genesisTx(mainnetParams, contractBytecode(mainnetParams), pkh(1));
+    expect(parseV2FeeDiscoveryTransaction(transaction, provider, "mainnet")).toEqual({
+      ...mainnetParams,
+      name: "Found circle " + CATEGORY.slice(0, 8),
+    });
   });
 
   it("rejects incorrect genesis state and receipt BCH backing", () => {

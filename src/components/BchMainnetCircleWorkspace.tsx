@@ -25,6 +25,7 @@ const STORAGE_KEY = "ajochain-blaze:bch-mainnet-circle-drafts:v1";
 const ACTIVE_CIRCLE_KEY = "ajochain-blaze:bch-mainnet-circle-active:v1";
 const DEPLOYED_KEY = "ajochain-blaze:bch-mainnet-circles-deployed:v1";
 const INVITE_ROUTE = "#/bch-mainnet/";
+export const BCH_MAINNET_CIRCLES_CHANGED_EVENT = "ajochain:bch-mainnet-circles-changed";
 
 function readDeployedCircles(): V2FeeCircleParams[] {
   try {
@@ -125,6 +126,11 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
   const [activeCircle, setActiveCircle] = useState<V2FeeCircleParams | null>(readActiveCircle);
   const [deployedCircles, setDeployedCircles] = useState<V2FeeCircleParams[]>(readDeployedCircles);
   const [inviteInput, setInviteInput] = useState("");
+  useEffect(() => {
+    const refresh = () => setDeployedCircles(readDeployedCircles());
+    window.addEventListener(BCH_MAINNET_CIRCLES_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(BCH_MAINNET_CIRCLES_CHANGED_EVENT, refresh);
+  }, []);
   const [circleSnapshot, setCircleSnapshot] = useState<Awaited<ReturnType<typeof readV2FeeCircle>> | null>(null);
   const [depositAmount, setDepositAmount] = useState("0.002");
   const [lifecycleBusy, setLifecycleBusy] = useState(false);

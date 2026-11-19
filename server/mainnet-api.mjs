@@ -1773,8 +1773,23 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
     if (firstInputTxid !== context.stateCategory || firstInput.outpointIndex !== 0) {
       throw new Error("BCH Mainnet V3 genesis category must be derived from the first non-token input at vout 0.");
     }
-    if (transaction.outputs.length !== memberCount + 2) {
-      throw new Error("BCH Mainnet V3 genesis must contain exactly one state NFT, one receipt per member, and wallet change.");
+    const discoverable = transaction.outputs.length === 2 * memberCount + 3;
+    if (transaction.outputs.length !== memberCount + 2 && !discoverable) {
+      throw new Error("BCH Mainnet V3 genesis must contain one state NFT, one receipt per member, optional discovery outputs, and wallet change.");
+    }
+    if (discoverable) {
+      for (let index = 0; index < memberCount; index += 1) {
+        const marker = transaction.outputs[memberCount + 1 + index];
+        if (marker.token || marker.valueSatoshis !== 546n ||
+            binToHex(marker.lockingBytecode).toLowerCase() !== context.members[index]) {
+          throw new Error("BCH Mainnet V3 genesis discovery marker " + (index + 1) + " must pay exactly 546 satoshis to that member.");
+        }
+      }
+      const note = transaction.outputs[2 * memberCount + 1];
+      if (note.token || note.valueSatoshis !== 0n || note.lockingBytecode[0] !== 0x6a ||
+          binToHex(note.lockingBytecode.slice(2, 6)) !== "414a4f44") {
+        throw new Error("BCH Mainnet V3 genesis discovery note must be a zero-value AJOD OP_RETURN.");
+      }
     }
     if (sourceOutputs.some((output) => output.token)) {
       throw new Error("BCH Mainnet V3 genesis inputs must be non-token BCH UTXOs.");
@@ -1797,10 +1812,11 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
     if (inputScripts.some((script) => script !== context.initiatorScript)) {
       throw new Error("Every BCH Mainnet V3 genesis funding input must belong to the registered initiator wallet.");
     }
+    const changeIndex = transaction.outputs.length - 1;
     assertBchMainnetPlainOutput(
-      transaction.outputs[memberCount + 1],
+      transaction.outputs[changeIndex],
       context.initiatorScript,
-      memberCount + 1,
+      changeIndex,
     );
   } else if (operation === "deposit") {
     const memberIndex = body.memberIndex;
