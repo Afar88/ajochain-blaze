@@ -1,6 +1,7 @@
 import { hexToBin, binToHex, sha256 } from "@bitauth/libauth";
 import { TransactionBuilder, placeholderP2PKHUnlocker, type NetworkProvider, type SpendableUtxo } from "cashscript";
 import type { WalletAddressEntry, WalletInputPath } from "./wizard-wallet";
+import { MainnetQuorumNetworkProvider } from "./mainnet-quorum-provider";
 
 const DUST = 546n;
 const MAX_CONSOLIDATION_INPUTS = 80;
@@ -27,11 +28,10 @@ export async function assertProviderNetwork(provider: NetworkProvider, network: 
   if (network === "mainnet") {
     // The dedicated Mainnet reader proves BCH fork checkpoints and a fresh,
     // agreeing tip across independent Electrum providers.
-    const quorum = provider as NetworkProvider & { network?: string; getBlockHeight?: () => Promise<number> };
-    if (quorum.network !== "mainnet" || typeof quorum.getBlockHeight !== "function") {
+    if (!(provider instanceof MainnetQuorumNetworkProvider)) {
       throw new Error("Mainnet coin gathering requires the verified BCH Mainnet Electrum quorum. Nothing was prepared.");
     }
-    const height = await quorum.getBlockHeight();
+    const height = await provider.getBlockHeight();
     if (!Number.isSafeInteger(height) || height < 1) {
       throw new Error("The BCH Mainnet provider did not return a verified chain tip. Nothing was prepared.");
     }
