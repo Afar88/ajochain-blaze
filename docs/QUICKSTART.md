@@ -1,6 +1,6 @@
 # AjoChain BLAZE — Ready-to-run setup
 
-This guide takes you from a fresh clone to a running local app, an optional local read-only API, test commands, and the dedicated Vercel deployment. It describes the current repository; it does not enable Mainnet spending.
+This guide takes you from a fresh clone to a running local app, an optional Electrum-backed read/verification API adapter, test commands, and the dedicated Vercel deployment. Circle discovery itself is on-chain and does not require a central backend or database.
 
 ## 1. What you need
 
@@ -47,11 +47,11 @@ The dev command compiles the CashScript contract artifacts and starts Vite. Open
 
 Development defaults to **Bitcoin Cash Chipnet**. Use Chipnet for development and wallet experiments. Connect Selene through the app's wallet connection flow, confirm that the address and network shown by the app match Selene, and never enter a seed phrase or private key into BLAZE.
 
-The browser UI can be explored without running a local API. API-backed Mainnet reads and PUSD server verification need the optional API process described next.
+The browser UI and on-chain circle discovery run without a local API process. Only optional API-backed Mainnet reads and additional PUSD verification need the adapter described next. It is not a circle registry and does not hold circle state.
 
-## 4. Optional: run the read-only API locally
+## 4. Optional: run the Electrum read/verification adapter locally
 
-The Vite development server proxies /api requests to a local API process on port 3001. Start the API in a **second terminal** from the repository root.
+The Vite development server proxies optional /api requests to a local adapter process on port 3001. Start it in a **second terminal** from the repository root only when testing API-backed Mainnet reads or PUSD preflight.
 
 You need two secure WebSocket Electrum endpoints. Use real provider endpoints you control or have permission to use; do not copy the example hostnames literally. The operator labels must be unique and correspond to the endpoints in the same order.
 
@@ -63,9 +63,9 @@ PORT=3001 node server/mainnet-api.mjs
 
 Keep this terminal running, then use the app at http://localhost:5173. The API validates BCH Mainnet chain identity and provider agreement before serving Mainnet read/verification requests. A provider quorum is not proof of independent ownership, local SPV/chainwork validation, or a security audit.
 
-Local development uses an in-memory request limiter. The private Upstash Redis credentials required by the deployed Vercel server are not needed to start this local API process. Do not add private Redis credentials to Vite/browser environment variables.
+The adapter uses best-effort in-memory request throttling. Circle discovery does not depend on this adapter, hosted Redis, or an application database. Do not add service credentials to Vite/browser environment variables.
 
-If you do not have two suitable Electrum providers, skip this optional API step. The UI can still run, but Mainnet API-backed functions will not be available locally.
+If you do not have two suitable Electrum providers, skip this optional API step. The UI and on-chain discovery can still run; only optional API-backed Mainnet functions will be unavailable locally.
 
 ## 5. Run the checks
 
@@ -95,7 +95,7 @@ BLAZE must be deployed from **Afar88/ajochain-blaze** to the dedicated Vercel pr
 3. Use the repository root as the Root Directory.
 4. Use the detected Vite settings: install command npm install, build command npm run build, output directory dist.
 5. Set the Node.js runtime to Node 22.
-6. Add the server-only environment variables below to the BLAZE project. Use real endpoints and a dedicated private Upstash Redis database.
+6. Add the server-only Electrum environment variables below only when you need optional API-backed Mainnet read/verification routes. No database or Redis service is needed for circle discovery.
 7. Deploy a preview first. Check the exact commit SHA, build logs, /api/health response and browser console before promoting a reviewed commit to production.
 
 Required server-side variables:
@@ -103,13 +103,11 @@ Required server-side variables:
 ~~~env
 ELECTRUM_SERVERS=wss://your-provider-one.example:50004,wss://your-provider-two.example:50004
 ELECTRUM_PROVIDER_OPERATORS=operator-one,operator-two
-UPSTASH_REDIS_REST_URL=https://your-private-database.upstash.io
-UPSTASH_REDIS_REST_TOKEN=your-private-write-token
 ~~~
 
 The operator identifiers must be unique and positionally aligned with the endpoint list. They are declarations, not proof of provider independence. Verify provider ownership and fault-domain separation separately.
 
-The Upstash database must be dedicated to BLAZE. Keep its REST token server-side only. Never use the legacy AjoChain/Neon database, and never put any server secret in a VITE_ variable.
+The Electrum variables must remain server-side. They are for chain-provider access only; providers are not an application database or circle registry. Never put provider credentials in a VITE_ variable.
 
 The repository includes a Vercel catch-all API adapter at api/[...path].mjs. The API health endpoint is /api/health. It reports read-only status and explicitly reports that provider-operator independence and Mainnet release approval have not been verified.
 
@@ -132,15 +130,15 @@ Do not deploy prototype covenants or send real BCH/PUSD to prototype scripts. Do
 | API reports provider configuration errors | Ensure there are at least two secure WebSocket endpoints and exactly one unique operator label per endpoint, in matching order. |
 | Wallet pairing opens but does not finish | Confirm Selene is installed, approve the WizardConnect request in the wallet, keep the correct network selected, and retry a fresh pairing if the saved session is stale. |
 | App address differs from Selene | Stop before signing. Reconnect and explicitly match the selected network and receive address shown in Selene. |
-| Vercel API returns a rate-limiter or Upstash error | Check the BLAZE project's private Upstash URL/token and ensure they belong to its dedicated database. Do not use legacy project credentials. |
+| Vercel API returns an error | Check that the deployed commit includes the latest API change and that its optional Electrum provider manifest is configured correctly. Circle discovery itself does not depend on this API. |
 | A deployment is green but the app behaves differently | Verify the deployment belongs to project ajoChain-blaze, inspect the deployed commit SHA, and check the correct preview/production domain. |
 
 ## 9. Project map
 
 - src/ — React application, UI workspaces and client-side logic
 - contracts/ — versioned CashScript sources and compiled artifacts
-- api/ — Vercel serverless route adapter
-- server/ — BCH Mainnet read/verification API
+- api/ — optional Vercel serverless read/verification routes; no circle registry
+- server/ — optional BCH Mainnet Electrum read/verification adapter, not a central circle database
 - test/ — automated tests
 - docs/ — architecture, accounting, wallet, discovery and release documentation
 - docs/assets/ — README and architecture SVG graphics
