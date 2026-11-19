@@ -2717,7 +2717,33 @@ export async function broadcastPusdMainnetCircleTransaction(
   if (enabled !== true) {
     throw new Error("PUSD Mainnet circle broadcast is disabled until the release is approved.");
   }
-  const verification = await verifyPusdMainnetCircleTransaction(sessions, tip, body);
+  let verification;
+  try {
+    verification = await verifyPusdMainnetCircleTransaction(sessions, tip, body);
+  } catch (cause) {
+    // A retry after a successful relay fails the unspent-input check. Recover
+    // the recorded result from the durable ledger instead of reporting the
+    // spent inputs as a new error.
+    const txid = typeof body?.signedTransactionHex === "string" && isHex(body.signedTransactionHex)
+      ? hashTransaction(hexToBin(body.signedTransactionHex)).toLowerCase()
+      : null;
+    if (txid) {
+      const record = await createUpstashPusdBroadcastLedger().get(txid);
+      if (record && (record.status === "accepted" || record.status === "already-known")) {
+        return {
+          network: "mainnet",
+          operation: body.operation,
+          txid,
+          verified: true,
+          broadcast: true,
+          relayStatus: record.relayStatus ?? record.status,
+          message: "This PUSD Mainnet circle transaction was already relayed (" +
+            (record.relayStatus ?? record.status) + "). It is not confirmed yet.",
+        };
+      }
+    }
+    throw cause;
+  }
   const ledger = createUpstashPusdBroadcastLedger();
   const reservation = await ledger.reserve(verification.txid, body.signedTransactionHex);
   let relay;
