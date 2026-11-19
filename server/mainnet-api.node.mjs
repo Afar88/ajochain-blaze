@@ -81,7 +81,7 @@ const pusdMainnetVerificationCircle = {
   members: [createMainnetTestTokenAddress(31), createMainnetTestTokenAddress(32)],
   contribution: "200000",
   maxFee: "10000",
-  stateCategory: "ab".repeat(32),
+  stateCategory: "0123456789abcdef".repeat(4),
   initiator: createMainnetTestAddress(30),
   treasury: "bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q",
 };
@@ -1345,7 +1345,7 @@ test("PUSD Mainnet deposit verifier binds member, credit, escrow, excess-token r
   assert.throws(() => assertPusdMainnetCircleLayout(
     missingExcessRefund, sourceOutputs, inputScripts, [memberScript], context, "deposit",
     { memberIndex: 0, amount: "10000" },
-  ), /exact five-input lifecycle layout/);
+  ), /return excess PUSD to the member wallet/);
 });
 
 test("PUSD Mainnet final payout verifier accepts exact member backing refunds and non-initiator sponsor", () => {
