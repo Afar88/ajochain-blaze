@@ -62,6 +62,9 @@ export function parseV2FeeDiscoveryTransaction(tx: Transaction, provider: Networ
   if (tx.outputs[1 + 2 * memberCount] !== noteOutput) return null;
   const treasury = lockingBytecodeToCashAddress({ prefix: 'bchtest', bytecode: note.treasuryLockingBytecode });
   if (typeof treasury === 'string') return null;
+  // The creator is required to be member 1. This is the member order used by
+  // circle creation and by the UI's initiator-only cancellation permissions.
+  if (members[0] !== pkhToAddress(note.initiatorPkh, 'chipnet')) return null;
   let params: V2FeeCircleParams;
   try {
     params = {

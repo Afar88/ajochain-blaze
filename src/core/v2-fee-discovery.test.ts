@@ -27,7 +27,11 @@ function contractBytecode(p: V2FeeCircleParams) {
   return typeof bytecode === "string" ? hexToBin(bytecode) : bytecode;
 }
 
-function genesisTx(p: V2FeeCircleParams = params, contract = contractBytecode(p)): Transaction {
+function genesisTx(
+  p: V2FeeCircleParams = params,
+  contract = contractBytecode(p),
+  initiatorPkh: Uint8Array = pkh(1),
+): Transaction {
   const token = (capability: "minting" | "none", commitment: string) => ({
     amount: 0n, category: hexToBin(p.stateCategory), nft: { capability, commitment: hexToBin(commitment) },
   });
@@ -43,7 +47,7 @@ function genesisTx(p: V2FeeCircleParams = params, contract = contractBytecode(p)
         members: p.members,
         contribution: p.contribution,
         maxFee: p.maxFee,
-        initiatorPkh: pkh(1),
+        initiatorPkh,
         treasury: p.treasury,
       }),
       { lockingBytecode: (cashAddressToLockingBytecode(p.initiator) as { bytecode: Uint8Array }).bytecode, valueSatoshis: 50_000n },
@@ -86,6 +90,15 @@ describe("on-chain circle discovery", () => {
   it("rejects a genesis whose tokens are not held by the derived covenant", () => {
     const forged = genesisTx(params, new Uint8Array([0xaa, 0x20, ...new Uint8Array(32), 0x87]));
     expect(parseV2FeeDiscoveryTransaction(forged, new MockNetworkProvider())).toBeNull();
+  });
+
+  it("rejects a circle whose first member is not the recorded initiator", () => {
+    const differentInitiator = {
+      ...params,
+      initiator: pkhToAddress(pkh(9), "chipnet"),
+    };
+    const transaction = genesisTx(differentInitiator, contractBytecode(differentInitiator), pkh(9));
+    expect(parseV2FeeDiscoveryTransaction(transaction, new MockNetworkProvider())).toBeNull();
   });
 
   it("rejects incorrect genesis state and receipt BCH backing", () => {
