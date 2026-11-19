@@ -2133,7 +2133,7 @@ export function assertPusdMainnetCircleLayout(transaction, sourceOutputs, inputS
       throw new Error("PUSD Mainnet V3 genesis must be funded by the registered initiator and create the exact state, receipt, escrow and change outputs.");
     }
     const first = transaction.inputs[0];
-    if (binToHex(first.outpointTransactionHash).toLowerCase() !== context.stateCategory ||
+    if (reverseHex(binToHex(first.outpointTransactionHash)).toLowerCase() !== context.stateCategory ||
         first.outpointIndex !== 0) {
       throw new Error("PUSD Mainnet V3 genesis state category must come from the first token-free input at vout 0.");
     }
