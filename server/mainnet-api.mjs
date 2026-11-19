@@ -20,6 +20,10 @@ const PUSD_CATEGORY = "2469acc5afa4b10cb5b5c04afb89c3a3ffd61c5da9c01e26d00951cae
 export const MAINNET_BROADCAST_ENABLED = false;
 // Separate gate for BCH Mainnet circle transactions (create, pay, payout, cancel).
 export const BCH_MAINNET_CIRCLE_BROADCAST_ENABLED = true;
+// Wallet-only BCH consolidation is a separately guarded Mainnet operation.
+// Every spend still requires a Selene signature, quorum verification and
+// the shared durable input-reservation ledger before a one-time relay.
+export const BCH_MAINNET_GATHER_BROADCAST_ENABLED = true;
 export const MAINNET_GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f";
 export const BCH_MAINNET_FORK_CHECKPOINT_HEIGHT = 478_559;
 export const BCH_MAINNET_FORK_CHECKPOINT_HASH =
@@ -31,6 +35,8 @@ const DEFAULT_TIMEOUT_MS = 12_000;
 const MAX_TIP_AGE_MS = 30 * 60 * 1000;
 const MAX_UTXOS_PER_ADDRESS = 1_000;
 const MAX_WALLET_ADDRESSES = 20;
+const MAX_GATHER_WALLET_ADDRESSES = 80;
+const MAX_GATHER_INPUTS = 80;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const isHex = (value) => typeof value === "string" && /^(?:[0-9a-f]{2})+$/i.test(value);
 const reverseHex = (value) => value.match(/../g).reverse().join("").toLowerCase();
@@ -1898,6 +1904,218 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
 }
 
 /**
+ * Validate the transaction shape for wallet-only Mainnet BCH gathering.
+ * Consolidation is deliberately restricted to one token-free output owned by
+ * the same wallet; it cannot pay an external recipient or create token outputs.
+ */
+export function validateBchMainnetGatherLayout(transaction, walletScripts, destinationScript, transactionSizeBytes) {
+  if (!transaction || !Array.isArray(transaction.inputs) ||
+      transaction.inputs.length < 1 || transaction.inputs.length > MAX_GATHER_INPUTS ||
+      !Array.isArray(transaction.outputs) || transaction.outputs.length !== 1) {
+    throw new Error("Mainnet BCH gathering must contain 1–80 wallet inputs and exactly one consolidation output.");
+  }
+  if (!Array.isArray(walletScripts) || !walletScripts.includes(destinationScript) ||
+      !/^76a914[0-9a-f]{40}88ac$/.test(destinationScript)) {
+    throw new Error("Mainnet BCH gather destination must be one of the wallet's derived P2PKH addresses.");
+  }
+  const seen = new Set();
+  for (const [index, input] of transaction.inputs.entries()) {
+    const txid = binToHex(input.outpointTransactionHash).toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(txid) ||
+        !Number.isSafeInteger(input.outpointIndex) || input.outpointIndex < 0) {
+      throw new Error("Mainnet BCH gather input " + index + " has an invalid outpoint.");
+    }
+    const outpoint = txid + ":" + input.outpointIndex;
+    if (seen.has(outpoint)) throw new Error("Mainnet BCH gather contains a duplicate input outpoint.");
+    seen.add(outpoint);
+  }
+  const output = transaction.outputs[0];
+  if (!output || output.token ||
+      binToHex(output.lockingBytecode).toLowerCase() !== destinationScript) {
+    throw new Error("Mainnet BCH gather output must return all BCH to the selected wallet address without CashTokens.");
+  }
+  if (output.valueSatoshis < getDustThreshold(output)) {
+    throw new Error("Mainnet BCH gather output is below the consensus dust threshold.");
+  }
+  if (!Number.isSafeInteger(transactionSizeBytes) || transactionSizeBytes < 1) {
+    throw new Error("Mainnet BCH gather transaction size is invalid.");
+  }
+  return { outputSatoshis: output.valueSatoshis, inputOutpoints: [...seen] };
+}
+
+/** Normalize the full receive/change derivation window used by WizardConnect gathering. */
+function normalizeBchMainnetGatherWalletAddresses(value) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_GATHER_WALLET_ADDRESSES) {
+    throw new Error("Supply between 1 and " + MAX_GATHER_WALLET_ADDRESSES + " wallet-derived Mainnet addresses for gathering.");
+  }
+  const scripts = value.map((address) => {
+    const script = cashAddressToLockingBytecode(address);
+    if (!/^76a914[0-9a-f]{40}88ac$/.test(script)) {
+      throw new Error("Mainnet BCH gathering supports only wallet-derived P2PKH addresses.");
+    }
+    return script;
+  });
+  if (new Set(scripts).size !== scripts.length) {
+    throw new Error("Duplicate wallet addresses were supplied for Mainnet BCH gathering.");
+  }
+  return scripts;
+}
+
+/**
+ * Verify a Selene-signed Mainnet BCH consolidation and relay it once.
+ * Every input is checked against raw previous transactions and a fresh
+ * multi-provider unspent snapshot. CashTokens and contract/covenant inputs
+ * are never eligible.
+ */
+export async function verifyBchMainnetGatherTransaction(sessions, tip, body) {
+  if (!Array.isArray(sessions) || sessions.length < 2) {
+    throw new Error("Mainnet BCH gathering requires the configured Electrum quorum.");
+  }
+  if (!tip || !Number.isSafeInteger(tip.height) || tip.height < 1 ||
+      typeof tip.hash !== "string" || !/^[0-9a-f]{64}$/i.test(tip.hash)) {
+    throw new Error("A verified BCH Mainnet tip quorum is required for gathering.");
+  }
+  const walletScripts = normalizeBchMainnetGatherWalletAddresses(body?.walletAddresses);
+  const destinationScript = cashAddressToLockingBytecode(body?.destinationAddress);
+  if (!walletScripts.includes(destinationScript) ||
+      !/^76a914[0-9a-f]{40}88ac$/.test(destinationScript)) {
+    throw new Error("Mainnet BCH gather destination must be one of the connected wallet's derived P2PKH addresses.");
+  }
+  if (!isHex(body?.signedTransactionHex)) {
+    throw new Error("Signed Mainnet BCH gather transaction must be complete hexadecimal bytes.");
+  }
+  const signedHex = body.signedTransactionHex.toLowerCase();
+  const signedBytes = hexToBin(signedHex);
+  const transaction = decodeTransactionBCH(signedBytes);
+  if (typeof transaction === "string") {
+    throw new Error("Signed Mainnet BCH gather transaction failed CashTokens-aware decoding: " + transaction);
+  }
+  const layout = validateBchMainnetGatherLayout(
+    transaction,
+    walletScripts,
+    destinationScript,
+    signedBytes.length,
+  );
+  const previousByTxid = new Map();
+  const sourceOutputs = [];
+  const inputScripts = [];
+  let inputSatoshis = 0n;
+
+  for (const [index, input] of transaction.inputs.entries()) {
+    const previousTxid = binToHex(input.outpointTransactionHash).toLowerCase();
+    let previous = previousByTxid.get(previousTxid);
+    if (!previous) {
+      previous = await fetchQuorumPreviousTransaction(sessions, previousTxid);
+      previousByTxid.set(previousTxid, previous);
+    }
+    const sourceOutput = previous.decoded.outputs[input.outpointIndex];
+    if (!sourceOutput) {
+      throw new Error("Mainnet BCH gather input " + index + " references a missing previous output.");
+    }
+    const script = binToHex(sourceOutput.lockingBytecode).toLowerCase();
+    if (!walletScripts.includes(script) || !/^76a914[0-9a-f]{40}88ac$/.test(script)) {
+      throw new Error("Mainnet BCH gather input " + index + " is not a P2PKH output owned by one of the connected wallet's derived addresses.");
+    }
+    if (sourceOutput.token) {
+      throw new Error("Mainnet BCH gather cannot spend CashToken UTXOs. Token-bearing coins remain untouched.");
+    }
+    if (sourceOutput.valueSatoshis <= 0n) {
+      throw new Error("Mainnet BCH gather input " + index + " has no spendable BCH value.");
+    }
+    assertRequiredPusdSighash(input.unlockingBytecode, index);
+    sourceOutputs.push(sourceOutput);
+    inputScripts.push(script);
+    inputSatoshis += sourceOutput.valueSatoshis;
+  }
+
+  const fee = inputSatoshis - layout.outputSatoshis;
+  const maximumFee = BigInt(Math.min(100_000, Math.max(1_000, signedBytes.length * 2 + 100)));
+  if (fee <= 0n || fee > maximumFee) {
+    throw new Error("Mainnet BCH gather miner fee is outside the safe 1–2 sat/byte consolidation limit.");
+  }
+
+  const snapshots = await getUnspentSnapshots(sessions, [...new Set(inputScripts)]);
+  const currentUtxos = new Map(snapshots[0].map((utxo) => [
+    utxo.txid + ":" + utxo.vout,
+    utxo,
+  ]));
+  for (let index = 0; index < transaction.inputs.length; index += 1) {
+    const key = layout.inputOutpoints[index];
+    const current = currentUtxos.get(key);
+    if (!current || current.height <= 0 ||
+        BigInt(current.satoshis) !== sourceOutputs[index].valueSatoshis) {
+      throw new Error("Mainnet BCH gather input " + key + " is not confirmed and unspent across every configured Electrum provider.");
+    }
+  }
+
+  const vmResult = createVirtualMachineBch2026().verify({ transaction, sourceOutputs });
+  if (vmResult !== true) {
+    throw new Error("Signed Mainnet BCH gather transaction failed BCH 2026 virtual-machine verification: " + vmResult);
+  }
+
+  return {
+    network: "mainnet",
+    txid: hashTransaction(signedBytes).toLowerCase(),
+    feeSatoshis: fee.toString(),
+    inputSatoshis: inputSatoshis.toString(),
+    outputSatoshis: layout.outputSatoshis.toString(),
+    inputCount: transaction.inputs.length,
+    outputCount: transaction.outputs.length,
+    confirmedInputs: transaction.inputs.length,
+    tipHeight: tip.height,
+    tipHash: tip.hash,
+    providerConfidence: sessions.length,
+    verified: true,
+    broadcast: false,
+  };
+}
+
+export async function broadcastBchMainnetGatherTransaction(
+  sessions,
+  tip,
+  body,
+  enabled = BCH_MAINNET_GATHER_BROADCAST_ENABLED,
+) {
+  if (enabled !== true) {
+    throw new Error("BCH Mainnet wallet gathering is disabled until its release gate is approved.");
+  }
+  const verification = await verifyBchMainnetGatherTransaction(sessions, tip, body);
+  const ledger = createUpstashPusdBroadcastLedger();
+  const reservation = await ledger.reserve(verification.txid, body.signedTransactionHex);
+  let relay;
+  if (!reservation.acquired) {
+    if (reservation.record.status === "accepted" ||
+        reservation.record.status === "already-known") {
+      relay = {
+        txid: verification.txid,
+        relayStatus: reservation.record.relayStatus ?? reservation.record.status,
+      };
+    } else {
+      throw new Error(
+        "Mainnet BCH gather ledger already records this transaction as " +
+        reservation.record.status + ". It was not relayed again; reconcile the exact transaction ID before proceeding.",
+      );
+    }
+  } else {
+    try {
+      relay = await broadcastPusdTransactionOnce(sessions, body.signedTransactionHex, verification.txid);
+      await ledger.complete(verification.txid, body.signedTransactionHex, relay.relayStatus);
+    } catch (cause) {
+      try { await ledger.complete(verification.txid, body.signedTransactionHex, "unknown"); }
+      catch { /* Permanent submitting reservation continues to block another relay. */ }
+      throw cause;
+    }
+  }
+  return {
+    ...verification,
+    broadcast: true,
+    relayStatus: relay.relayStatus,
+    message: "Verified Mainnet BCH was consolidated back to the connected wallet and relayed (" +
+      relay.relayStatus + "). The transaction is not confirmed yet.",
+  };
+}
+
+/**
  * Broadcast a BCH Mainnet circle transaction only after the full
  * verifyBchMainnetCircleTransaction checks pass. Relays once; an ambiguous
  * relay result is reported as unknown and never retried automatically.
@@ -2034,6 +2252,7 @@ export function createMainnetApiServer() {
             tipHeight: tip.height,
             tipHash: tip.hash,
             broadcastEnabled: MAINNET_BROADCAST_ENABLED,
+            bchGatherBroadcastEnabled: BCH_MAINNET_GATHER_BROADCAST_ENABLED,
             mainnetReleaseApproved: false,
             pusdDurableSubmissionLedgerConfigured: isPusdBroadcastLedgerConfigured(),
           });
@@ -2074,6 +2293,19 @@ export function createMainnetApiServer() {
         await withElectrumSessions(async (sessions) => {
           const tip = await getTipQuorum(sessions);
           const result = await verifyBchMainnetCircleTransaction(sessions, tip, body);
+          sendJson(response, 200, result);
+        });
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/api/bch/gather") {
+        if (!BCH_MAINNET_GATHER_BROADCAST_ENABLED) {
+          sendJson(response, 403, { error: "BCH Mainnet wallet gathering is disabled until the release review is approved." });
+          return;
+        }
+        const body = await readJson(request);
+        await withElectrumSessions(async (sessions) => {
+          const tip = await getTipQuorum(sessions);
+          const result = await broadcastBchMainnetGatherTransaction(sessions, tip, body);
           sendJson(response, 200, result);
         });
         return;
