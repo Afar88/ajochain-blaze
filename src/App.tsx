@@ -89,6 +89,7 @@ export default function App() {
   const [walletClient, setWalletClient] = useState<WalletClient | null>(null);
   const [gatherBusy, setGatherBusy] = useState(false);
   const [gatherMessage, setGatherMessage] = useState("");
+  const [discoveryMessage, setDiscoveryMessage] = useState("");
   const [walletView, setWalletView] = useState<WalletView>({
     state: "idle", uri: null, qrUri: null, walletName: null, error: null, receiveIndex: 0,
   });
@@ -418,6 +419,49 @@ export default function App() {
     setPage(next);
     setMenuOpen(false);
   };
+
+  useEffect(() => {
+    // Circle discovery is always for Chipnet circles, even when production
+    // opens on the Mainnet workspace. It is read-only and derives only public
+    // Chipnet addresses from the connected WizardConnect wallet.
+    if (!walletClient || walletView.state !== "connected" || walletClient.state !== "connected") return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [{ getClassicProvider }, { discoverV2FeeCircles, encodeV2FeeCircleParams }, { dedupeSavedV2FeeCircleRecords, getV2FeeCircleRecordIdentity }] = await Promise.all([
+          import("./core/classic-bch"),
+          import("./core/v2-fee-discovery"),
+          import("./core/v2-fee-circle-records"),
+        ]);
+        const provider = await getClassicProvider("chipnet");
+        const addresses = walletClient.listWalletAddresses("chipnet").map((entry) => entry.address);
+        if (addresses.length === 0) throw new Error("No Chipnet receive/change addresses are available from this wallet.");
+        const found = await discoverV2FeeCircles(provider, addresses);
+        if (cancelled) return;
+        const stored: unknown = JSON.parse(window.localStorage.getItem(V2_MENU_STORAGE_KEY) || "[]");
+        const existing = dedupeSavedV2FeeCircleRecords(stored);
+        // A genesis category belongs to exactly one circle; never relabel or duplicate a saved circle.
+        const knownCategories = new Set(existing.flatMap((record) => {
+          const identity = getV2FeeCircleRecordIdentity(record.encoded);
+          return identity ? [identity.stateCategory.toLowerCase()] : [];
+        }));
+        const additions = found
+          .filter((params) => !knownCategories.has(params.stateCategory.toLowerCase()))
+          .map((params) => ({ encoded: encodeV2FeeCircleParams(params), savedAt: 0 }));
+        const added = additions.length;
+        if (added > 0) {
+          window.localStorage.setItem(V2_MENU_STORAGE_KEY, JSON.stringify([...existing, ...additions]));
+          setMenuCircles(readSavedV2MenuCircles());
+          setDiscoveryMessage(`Found ${added} circle${added === 1 ? "" : "s"} for this wallet on Chipnet. Open it from Your circles.`);
+        } else {
+          setDiscoveryMessage("Checked Chipnet. No new circles were found for this wallet.");
+        }
+      } catch {
+        if (!cancelled) setDiscoveryMessage("Couldn't check Chipnet for circles that include this wallet. Invite links still work.");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [walletClient, walletView.state]);
 
   const gatherWalletCoins = async () => {
     if (!walletClient || walletClient.state !== "connected" || network !== "chipnet" || !walletAddress) return;
@@ -827,6 +871,7 @@ export default function App() {
                   <button className="secondary-button" disabled={gatherBusy} onClick={() => void gatherWalletCoins()}>Gather Selene coins to this address</button>
                   {gatherMessage && <p className="wallet-match-message" role="status">{gatherMessage}</p>}
                 </>}
+                {discoveryMessage && <p className="wallet-match-message" role="status">{discoveryMessage}</p>}
                 <button className="secondary-button" onClick={() => void walletClient?.disconnect()}>Disconnect wallet</button>
               </div>
             ) : (

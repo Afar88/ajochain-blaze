@@ -1,5 +1,20 @@
 # Blaze Chipnet circle discovery: security gate
 
+## On-chain discovery (enabled for new Chipnet circles)
+
+New `fee-v3-auto-reserve-closing` circles are discoverable without any server, database or login. Their genesis transaction adds, after the receipt NFTs, one 546-sat P2PKH marker output per member (in member order) and an `OP_RETURN "AJOD"` note holding the version, covenant code, member count, contribution, maxFee, initiator PKH and treasury locking bytecode (`src/core/v2-fee-discovery-note.ts`).
+
+When a wallet connects, the browser checks Chipnet circle history even if the app is currently displaying the Mainnet workspace; discovery derives Chipnet public addresses and performs read-only lookups. It checks the Electrum history of the wallet's own receive (0–50) and change (0–20) addresses, ranks confirmed candidate transactions across all those addresses, and verifies up to the newest 300 (`src/core/v2-fee-discovery.ts`). It ignores mempool-only entries and checks that each downloaded raw transaction hashes to the history TXID. A circle is accepted only if:
+- input 0 spends output 0 of the transaction whose txid is the token category;
+- output 0 is the 1,000-sat fresh minting state and outputs 1..N are the 1,000-sat zero-credit receipts;
+- the rebuilt parameters derive the exact covenant script holding all of them;
+- one of the markers pays an address of the connected wallet.
+- markers are ordered exactly as the member receipt indices, and marker 0 matches the initiator PKH in the note.
+
+The server never learns which addresses are queried or which circles exist. The Electrum server already sees these addresses for balance lookups. Membership is public on-chain from genesis; covenant spends already revealed member PKHs. Circle names are not written on-chain, so a found circle is labelled "Found circle <category prefix>". Older circles still need their invite link.
+
+## Shared server discovery
+
 **Shared discovery, registration, and backfill are disabled.** Share the existing Chipnet circle invite link to add a circle on another device. The local circle menu and invite restoration do not depend on the discovery route.
 
 ## Why it is disabled

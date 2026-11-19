@@ -8,6 +8,7 @@ import {
   type NetworkProvider,
   type SpendableUtxo,
 } from 'cashscript';
+import { isV2FeeDiscoverableCovenant, v2FeeDiscoveryOutputs } from './v2-fee-discovery-note';
 import { binToHex, cashAddressToLockingBytecode, decodeTransaction, hexToBin, sha256, type Transaction } from '@bitauth/libauth';
 import artifactJson from '../../contracts/AjoCircleV2Fee.json' with { type: 'json' };
 import escrowArtifactJson from '../../contracts/AjoCircleV2FeeEscrow.json' with { type: 'json' };
@@ -35,8 +36,10 @@ const legacyArtifact = legacyArtifactJson as unknown as Artifact;
 const legacyEscrowArtifact = legacyEscrowArtifactJson as unknown as Artifact;
 const legacyAutoReserveArtifact = legacyAutoReserveArtifactJson as unknown as Artifact;
 const guardedAutoReserveArtifact = guardedAutoReserveArtifactJson as unknown as Artifact;
-const STATE_DUST = 1_000n;
-const RECEIPT_DUST = 1_000n;
+export const V2_FEE_STATE_OUTPUT_SATOSHIS = 1_000n;
+export const V2_FEE_RECEIPT_OUTPUT_SATOSHIS = 1_000n;
+const STATE_DUST = V2_FEE_STATE_OUTPUT_SATOSHIS;
+const RECEIPT_DUST = V2_FEE_RECEIPT_OUTPUT_SATOSHIS;
 const CHANGE_DUST = 546n;
 const CASH_SCRIPT_INT_MAX = 0x7fffffffffffffffn;
 
@@ -511,19 +514,25 @@ export async function planV2FeeGenesis(draft: V2FeeCircleDraft, walletAddress: s
   const contract = createV2FeeCircleContract(params, provider);
   const inputs: SpendableUtxo[] = [genesis];
   let total = genesis.satoshis;
-  const fee = feeEstimate(params.members.length);
+  const discoveryOutputs = isV2FeeDiscoverableCovenant(params.covenant)
+    ? v2FeeDiscoveryOutputs({ ...params, covenant: params.covenant, initiatorPkh: addressToPkh(params.initiator, params.network) })
+    : [];
+  const discoveryCost = discoveryOutputs.reduce((sum, output) => sum + output.valueSatoshis, 0n);
+  const fee = feeEstimate(params.members.length) + (discoveryOutputs.length ? BigInt(params.members.length) * 40n + 100n : 0n);
   for (const coin of coins) {
     if (coin.txid === genesis.txid && coin.vout === genesis.vout) continue;
-    if (total >= STATE_DUST + BigInt(params.members.length) * RECEIPT_DUST + fee + CHANGE_DUST) break;
+    if (total >= STATE_DUST + BigInt(params.members.length) * RECEIPT_DUST + discoveryCost + fee + CHANGE_DUST) break;
     inputs.push(coin);
     total += coin.satoshis;
   }
-  const change = total - STATE_DUST - BigInt(params.members.length) * RECEIPT_DUST - fee;
+  const change = total - STATE_DUST - BigInt(params.members.length) * RECEIPT_DUST - discoveryCost - fee;
   if (change < CHANGE_DUST) throw new Error('Not enough BCH to create the V2 fee state, receipts, and change.');
   const builder = new TransactionBuilder({ provider });
   inputs.forEach(u => builder.addInput(u, placeholderP2PKHUnlocker(walletAddress)));
   builder.addOutput({ to: contract.tokenAddress, amount: STATE_DUST, token: { category: params.stateCategory, amount: 0n, nft: { capability: 'minting', commitment: v2FeeStateCommitment(0, false) } } });
   for (let i = 0; i < params.members.length; i++) builder.addOutput({ to: contract.tokenAddress, amount: RECEIPT_DUST, token: { category: params.stateCategory, amount: 0n, nft: { capability: 'none', commitment: v2FeeReceiptCommitment(i, 0n) } } });
+  // Members' wallets find the circle from these markers and the settings note; see v2-fee-discovery.ts.
+  for (const output of discoveryOutputs) builder.addOutput({ to: output.lockingBytecode, amount: output.valueSatoshis });
   builder.addOutput({ to: walletAddress, amount: change });
   return { params, contract, wc: builder.generateWcTransactionObject({ broadcast: false, userPrompt: `Create V2 fee circle "${params.name}" and mint ${params.members.length} member receipts` }), walletInputs: inputs.map((_, i) => i), feeEstimate: fee, estimatedChange: change };
 }
