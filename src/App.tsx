@@ -519,13 +519,13 @@ export default function App() {
     setGatherBusy(true);
     setGatherMessage("Scanning this wallet's " + (gatherNetwork === "mainnet" ? "Mainnet" : "Chipnet") + " receive and change addresses…");
     try {
-      const [{ getClassicProvider, getMainnetDiscoveryProvider }, { planWalletConsolidation }] = await Promise.all([
+      const [{ getClassicProvider }, { planWalletConsolidation }] = await Promise.all([
         import("./core/classic-bch"),
         import("./core/wallet-consolidation"),
       ]);
-      const provider = gatherNetwork === "mainnet"
-        ? await getMainnetDiscoveryProvider()
-        : await getClassicProvider("chipnet");
+      // Mainnet gathering must use the fork-checkpointed multi-provider quorum,
+      // never the single-provider connection reserved for read-only discovery.
+      const provider = await getClassicProvider(gatherNetwork);
       const walletAddresses = walletClient.listWalletAddresses(gatherNetwork);
       if (walletAddresses.length === 0) throw new Error("No wallet receive/change addresses are available on " + gatherNetwork + ".");
       // Preserve any locally recorded, broadcast-but-unused V3 genesis input (vout 0).
