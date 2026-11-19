@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="630" viewBox="0 0 1440 630" role="img" aria-labelledby="title desc">
+  <title id="title">PUSD V3 circle lifecycle</title>
+  <desc id="desc">A PUSD V3 circle begins with state, receipt and escrow outputs. Members deposit into their own escrow. Each payout debits each member's credit, pays a one-percent project fee, and reserves one next-round contribution for a non-final recipient. The final payout closes the circle and returns backing. The initiator can cancel only before the first payout.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#07111f"/><stop offset="1" stop-color="#10283a"/></linearGradient>
+    <linearGradient id="a" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#134e4a"/><stop offset="1" stop-color="#0f766e"/></linearGradient>
+    <linearGradient id="b" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#172f54"/><stop offset="1" stop-color="#1d4ed8"/></linearGradient>
+    <linearGradient id="c" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#503b18"/><stop offset="1" stop-color="#92400e"/></linearGradient>
+    <marker id="arr" markerWidth="10" markerHeight="10" refX="7" refY="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#7dd3fc"/></marker>
+  </defs>
+  <rect width="1440" height="630" rx="28" fill="url(#bg)"/>
+  <text x="72" y="70" font-family="Inter,Arial,sans-serif" font-size="17" font-weight="700" letter-spacing="4" fill="#5eead4">PUSD MAINNET V3 · PROTOTYPE FLOW</text>
+  <text x="72" y="116" font-family="Inter,Arial,sans-serif" font-size="34" font-weight="800" fill="#f8fafc">A circle, from genesis to close</text>
+  <text x="72" y="150" font-family="Inter,Arial,sans-serif" font-size="17" fill="#9fb3c8">Member-owned credits and a fixed, inspectable transaction layout.</text>
+  <g font-family="Inter,Arial,sans-serif">
+    <rect x="64" y="208" width="286" height="240" rx="20" fill="#0d1b2b" stroke="#5eead4" stroke-width="2"/>
+    <circle cx="104" cy="252" r="23" fill="#123b42"/><text x="104" y="260" font-size="24" font-weight="800" fill="#99f6e4" text-anchor="middle">1</text>
+    <text x="142" y="259" font-size="21" font-weight="800" fill="#f8fafc">Genesis</text>
+    <text x="89" y="310" font-size="15" fill="#cbd5e1">• State minting NFT</text>
+    <text x="89" y="340" font-size="15" fill="#cbd5e1">• Ordered member receipts</text>
+    <text x="89" y="370" font-size="15" fill="#cbd5e1">• One escrow sidecar / member</text>
+    <text x="89" y="414" font-size="13" fill="#99f6e4">Initiator creates the circle</text>
+
+    <rect x="414" y="208" width="286" height="240" rx="20" fill="#0d1b2b" stroke="#60a5fa" stroke-width="2"/>
+    <circle cx="454" cy="252" r="23" fill="#172f54"/><text x="454" y="260" font-size="24" font-weight="800" fill="#bfdbfe" text-anchor="middle">2</text>
+    <text x="492" y="259" font-size="21" font-weight="800" fill="#f8fafc">Member deposit</text>
+    <text x="439" y="310" font-size="15" fill="#cbd5e1">• Deposit enters that member's</text>
+    <text x="455" y="334" font-size="15" fill="#cbd5e1">own PUSD escrow</text>
+    <text x="439" y="369" font-size="15" fill="#cbd5e1">• Receipt credit tracks the</text>
+    <text x="455" y="393" font-size="15" fill="#cbd5e1">member's funded amount</text>
+    <text x="439" y="425" font-size="13" fill="#bfdbfe">No pooled member credit</text>
+
+    <rect x="764" y="208" width="286" height="240" rx="20" fill="#0d1b2b" stroke="#fbbf24" stroke-width="2"/>
+    <circle cx="804" cy="252" r="23" fill="#503b18"/><text x="804" y="260" font-size="24" font-weight="800" fill="#fde68a" text-anchor="middle">3</text>
+    <text x="842" y="259" font-size="21" font-weight="800" fill="#f8fafc">Payout round</text>
+    <text x="789" y="310" font-size="15" fill="#cbd5e1">• Debit one contribution from</text>
+    <text x="805" y="334" font-size="15" fill="#cbd5e1">every member receipt</text>
+    <text x="789" y="369" font-size="15" fill="#cbd5e1">• Pay 1% of gross pot to treasury</text>
+    <text x="789" y="404" font-size="15" fill="#cbd5e1">• Non-final recipient reserves</text>
+    <text x="805" y="428" font-size="15" fill="#cbd5e1">one next-round contribution</text>
+
+    <rect x="1114" y="208" width="262" height="240" rx="20" fill="#0d1b2b" stroke="#a78bfa" stroke-width="2"/>
+    <circle cx="1154" cy="252" r="23" fill="#312e81"/><text x="1154" y="260" font-size="24" font-weight="800" fill="#ddd6fe" text-anchor="middle">4</text>
+    <text x="1192" y="259" font-size="21" font-weight="800" fill="#f8fafc">Final close</text>
+    <text x="1139" y="310" font-size="15" fill="#cbd5e1">• Final recipient gets no</text>
+    <text x="1155" y="334" font-size="15" fill="#cbd5e1">future-round reserve</text>
+    <text x="1139" y="369" font-size="15" fill="#cbd5e1">• Circle state closes</text>
+    <text x="1139" y="404" font-size="15" fill="#cbd5e1">• Remaining BCH backing is</text>
+    <text x="1155" y="428" font-size="15" fill="#cbd5e1">returned per verified layout</text>
+
+    <path d="M354 326H405" stroke="#7dd3fc" stroke-width="3" marker-end="url(#arr)"/>
+    <path d="M704 326H755" stroke="#7dd3fc" stroke-width="3" marker-end="url(#arr)"/>
+    <path d="M1054 326H1105" stroke="#7dd3fc" stroke-width="3" marker-end="url(#arr)"/>
+
+    <rect x="64" y="492" width="1312" height="92" rx="18" fill="url(#c)" stroke="#fbbf24" stroke-width="1.5"/>
+    <circle cx="110" cy="538" r="22" fill="#2b2111" stroke="#fcd34d"/>
+    <path d="M101 538a9 9 0 1 1 9 9M110 529v18" fill="none" stroke="#fde68a" stroke-width="2.5" stroke-linecap="round"/>
+    <text x="150" y="530" font-size="19" font-weight="800" fill="#fffbeb">Pre-first-payout cancellation</text>
+    <text x="150" y="559" font-size="15" fill="#fef3c7">Only the initiator can cancel before the first payout; each member receives their own recorded PUSD credit and associated BCH backing.</text>
+    <text x="1342" y="612" text-anchor="end" font-size="12" fill="#94a3b8">Conceptual lifecycle graphic — not a wallet approval or deployment instruction.</text>
+  </g>
+</svg>
