@@ -1,3 +1,4 @@
+import { hexToBin, binToHex, sha256 } from "@bitauth/libauth";
 import { TransactionBuilder, placeholderP2PKHUnlocker, type NetworkProvider, type SpendableUtxo } from "cashscript";
 import type { WalletAddressEntry, WalletInputPath } from "./wizard-wallet";
 
@@ -15,6 +16,19 @@ export interface WalletConsolidationPlan {
   destination: string;
 }
 
+/** Chipnet shares the testnet4 genesis block; Mainnet's genesis differs. */
+export const CHIPNET_GENESIS_BLOCK_HASH = "000000001dd410c49a788668ce26751718cc797474d3152a5fc073dd44fd9f7b";
+
+/** Refuse to plan unless the Electrum endpoint proves it serves Chipnet, so Mainnet coins can't be swept. */
+export async function assertChipnetProvider(provider: NetworkProvider): Promise<void> {
+  const electrum = provider as NetworkProvider & { performRequest?: (name: string, ...args: number[]) => Promise<unknown> };
+  if (typeof electrum.performRequest !== "function") throw new Error("Cannot verify that the BCH server is on Chipnet.");
+  const header = await electrum.performRequest("blockchain.block.header", 0);
+  if (typeof header !== "string" || !/^[0-9a-f]{160}$/i.test(header)) throw new Error("Cannot verify that the BCH server is on Chipnet.");
+  const hash = binToHex(sha256.hash(sha256.hash(hexToBin(header))).reverse());
+  if (hash !== CHIPNET_GENESIS_BLOCK_HASH) throw new Error("The BCH server is not on Chipnet. Nothing was prepared.");
+}
+
 function feeFor(builder: TransactionBuilder): bigint {
   return BigInt(Math.ceil(Number(builder.getTransactionSize()))) + 20n;
 }
@@ -27,7 +41,9 @@ export async function planWalletConsolidation(
   provider: NetworkProvider,
   addresses: readonly WalletAddressEntry[],
   destination: string,
+  excludeOutpoints: ReadonlySet<string> = new Set(),
 ): Promise<WalletConsolidationPlan> {
+  await assertChipnetProvider(provider);
   const target = destination.trim().toLowerCase();
   if (!addresses.some((entry) => entry.address.toLowerCase() === target)) {
     throw new Error("The destination is not one of this wallet's addresses.");
@@ -38,7 +54,7 @@ export async function planWalletConsolidation(
   for (const { entry, utxos } of results) {
     for (const utxo of utxos) {
       const key = utxo.txid + ":" + utxo.vout;
-      if (utxo.token || utxo.satoshis <= 0n || seen.has(key)) continue;
+      if (utxo.token || utxo.satoshis <= 0n || seen.has(key) || excludeOutpoints.has(key.toLowerCase())) continue;
       seen.add(key);
       coins.push({ utxo, entry });
     }

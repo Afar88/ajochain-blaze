@@ -15,9 +15,13 @@ const coin = (txByte: number, satoshis: bigint, token = false): SpendableUtxo =>
   ...(token ? { token: { category: "aa".repeat(32), amount: 0n, nft: { capability: "none", commitment: "" } } } : {}),
 } as SpendableUtxo);
 
-function providerWith(map: Record<string, SpendableUtxo[]>): NetworkProvider {
+const CHIPNET_GENESIS_HEADER = "0100000000000000000000000000000000000000000000000000000000000000000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4af1a93c5fffff001d01d3cd06";
+const MAINNET_GENESIS_HEADER = "0100000000000000000000000000000000000000000000000000000000000000000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a29ab5f49ffff001d1dac2b7c";
+
+function providerWith(map: Record<string, SpendableUtxo[]>, genesisHeader = CHIPNET_GENESIS_HEADER): NetworkProvider {
   return {
     network: "chipnet",
+    performRequest: async (name: string) => (name === "blockchain.block.header" ? genesisHeader : null),
     getUtxos: async (address: string) => {
       const encoded = cashAddressToLockingBytecode(address);
       if (typeof encoded === "string") throw new Error(encoded);
@@ -57,6 +61,18 @@ describe("wallet coin consolidation", () => {
     await expect(planWalletConsolidation(providerWith({}), addresses, receive0.address)).rejects.toThrow(/No plain BCH coins/);
     await expect(planWalletConsolidation(providerWith({ [receive0.address]: [coin(4, 50_000n)] }), addresses, receive0.address))
       .rejects.toThrow(/already in a single coin/);
+  });
+
+  it("refuses a server that is not on Chipnet", async () => {
+    const provider = providerWith({ [receive3.address]: [coin(1, 300_000n)] }, MAINNET_GENESIS_HEADER);
+    await expect(planWalletConsolidation(provider, addresses, receive0.address)).rejects.toThrow(/not on Chipnet/);
+  });
+
+  it("leaves a pending circle setup coin untouched", async () => {
+    const setup = coin(5, 200_000n);
+    const provider = providerWith({ [receive3.address]: [setup, coin(6, 100_000n)], [change2.address]: [coin(7, 50_000n)] });
+    const plan = await planWalletConsolidation(provider, addresses, receive0.address, new Set([setup.txid + ":0"]));
+    expect(plan.totalSatoshis).toBe(150_000n);
   });
 
   it("rejects a signing map that misses a wallet input", () => {

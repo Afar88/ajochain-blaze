@@ -429,7 +429,17 @@ export default function App() {
         import("./core/wallet-consolidation"),
       ]);
       const provider = await getClassicProvider("chipnet");
-      const plan = await planWalletConsolidation(provider, walletClient.listWalletAddresses("chipnet"), walletAddress);
+      // Keep a broadcast-but-unused circle setup coin (output 0) where the creation flow expects it.
+      const pendingSetupOutpoints = new Set<string>();
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (!key?.startsWith("ajochain:classic-genesis-setup:v1:chipnet:")) continue;
+        try {
+          const txid = JSON.parse(window.localStorage.getItem(key) ?? "null")?.txid;
+          if (typeof txid === "string") pendingSetupOutpoints.add(txid.toLowerCase() + ":0");
+        } catch { /* ignore malformed records */ }
+      }
+      const plan = await planWalletConsolidation(provider, walletClient.listWalletAddresses("chipnet"), walletAddress, pendingSetupOutpoints);
       if (!window.confirm(
         "Gather " + plan.inputCount + " Chipnet coin(s) into one coin at " + plan.destination + "?\n\n" +
         "Total " + plan.totalSatoshis.toString() + " sats, miner fee " + plan.fee.toString() + " sats. CashTokens are not moved.",
