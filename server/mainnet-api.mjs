@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { Contract } from "cashscript";
 import v3AutoReserveArtifact from "../contracts/AjoCircleV3AutoReserve.json" with { type: "json" };
+import pusdCircleArtifact from "../contracts/AjoCirclePUSDV3Mainnet.json" with { type: "json" };
+import pusdEscrowArtifact from "../contracts/AjoPUSDMemberEscrowV3.json" with { type: "json" };
 import { createServer } from "node:http";
 import { isIP } from "node:net";
 import { fileURLToPath } from "node:url";
@@ -1908,6 +1910,587 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
  * Consolidation is deliberately restricted to one token-free output owned by
  * the same wallet; it cannot pay an external recipient or create token outputs.
  */
+
+const PUSD_MAINNET_TREASURY_ADDRESS = "bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q";
+const PUSD_MAINNET_TREASURY_SCRIPT = "76a91417c8d3de33e0e229101f756dc5f189b123c1c83c88ac";
+const PUSD_MAINNET_CIRCLE_DUST = 1_000n;
+const PUSD_MAINNET_SCRIPT_INT_MAX = 0x7fffffffffffffffn;
+
+function requireTokenAwareMainnetP2pkh(address, label) {
+  const decoded = decodeCashAddress(String(address ?? "").trim());
+  if (typeof decoded === "string" || decoded.prefix !== "bitcoincash" ||
+      String(decoded.type).toLowerCase() !== "p2pkhwithtokens" ||
+      decoded.payload.length !== 20) {
+    throw new Error(label + " must be a token-aware Bitcoin Cash Mainnet P2PKH address.");
+  }
+  return {
+    script: "76a914" + binToHex(decoded.payload).toLowerCase() + "88ac",
+    pkh: decoded.payload,
+  };
+}
+
+function validatePusdMainnetCircleForVerification(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value) ||
+      value.version !== 3 || value.network !== "mainnet" ||
+      typeof value.name !== "string" || !value.name.trim() || value.name.length > 60 ||
+      !Array.isArray(value.members) || value.members.length < 2 || value.members.length > 5 ||
+      !/^[0-9a-f]{64}$/i.test(String(value.stateCategory ?? ""))) {
+    throw new Error("A valid PUSD Mainnet V3 circle context is required.");
+  }
+  const contribution = parsePositiveBigInt(value.contribution, "PUSD circle contribution");
+  const maxFee = parsePositiveBigInt(value.maxFee, "PUSD circle maximum fee");
+  if (contribution > PUSD_MAINNET_SCRIPT_INT_MAX ||
+      BigInt(value.members.length) * contribution > PUSD_MAINNET_SCRIPT_INT_MAX ||
+      maxFee < 1_000n || maxFee > PUSD_MAINNET_SCRIPT_INT_MAX) {
+    throw new Error("PUSD Mainnet circle contribution or maximum fee is outside the covenant integer limits.");
+  }
+  const members = value.members.map((address, index) =>
+    requireTokenAwareMainnetP2pkh(address, "PUSD circle member " + (index + 1)),
+  );
+  const memberScripts = members.map((member) => member.script);
+  if (new Set(memberScripts).size !== memberScripts.length) {
+    throw new Error("PUSD Mainnet circle member addresses must be unique.");
+  }
+  const initiatorScript = requireMainnetP2pkhScript(value.initiator, "PUSD circle initiator");
+  if (value.treasury !== PUSD_MAINNET_TREASURY_ADDRESS ||
+      cashAddressToLockingBytecode(value.treasury) !== PUSD_MAINNET_TREASURY_SCRIPT) {
+    throw new Error("PUSD Mainnet circle treasury does not match the immutable AjoChain treasury.");
+  }
+  const grossPot = BigInt(members.length) * contribution;
+  const projectFee = grossPot / 100n;
+  if (projectFee < 1n || grossPot - projectFee - contribution <= 0n) {
+    throw new Error("PUSD Mainnet circle economics do not leave a positive non-final payout after the project fee and reserve.");
+  }
+
+  // The derivation provider is deliberately network-isolated. Reconstruct the
+  // exact client constructor bindings from reviewed compiled artifacts only.
+  const provider = {
+    network: "mainnet",
+    getUtxos: async () => { throw new Error("PUSD Mainnet contract derivation must not access network providers."); },
+    getBlockHeight: async () => { throw new Error("PUSD Mainnet contract derivation must not access network providers."); },
+    getRawTransaction: async () => { throw new Error("PUSD Mainnet contract derivation must not access network providers."); },
+    sendRawTransaction: async () => { throw new Error("PUSD Mainnet contract derivation must never broadcast."); },
+  };
+  const stateCategory = String(value.stateCategory).toLowerCase();
+  const stateCategoryBytes = hexToBin(stateCategory).reverse();
+  const pusdCategoryBytes = hexToBin(PUSD_CATEGORY).reverse();
+  const memberPkhBytes = members.map((member) => member.pkh);
+  const escrowContracts = members.map((member, index) => new Contract(pusdEscrowArtifact, [
+    stateCategoryBytes,
+    pusdCategoryBytes,
+    BigInt(members.length),
+    BigInt(index),
+    contribution,
+    member.pkh,
+  ], { provider, contractType: "p2sh32" }));
+  const escrowLockingBytecodes = escrowContracts.map((contract) =>
+    String(contract.lockingBytecode).toLowerCase(),
+  );
+  const paddedMembers = [...memberPkhBytes];
+  const paddedEscrowLocks = [...escrowContracts.map((contract) => contract.lockingBytecode)];
+  while (paddedMembers.length < 5) paddedMembers.push(new Uint8Array(20));
+  while (paddedEscrowLocks.length < 5) paddedEscrowLocks.push(escrowContracts[0].lockingBytecode);
+  const contract = new Contract(pusdCircleArtifact, [
+    paddedMembers[0], paddedMembers[1], paddedMembers[2], paddedMembers[3], paddedMembers[4],
+    BigInt(members.length),
+    contribution,
+    maxFee,
+    stateCategoryBytes,
+    pusdCategoryBytes,
+    hexToBin(initiatorScript.slice(6, 46)),
+    hexToBin(PUSD_MAINNET_TREASURY_SCRIPT.slice(6, 46)),
+    paddedEscrowLocks[0], paddedEscrowLocks[1], paddedEscrowLocks[2],
+    paddedEscrowLocks[3], paddedEscrowLocks[4],
+  ], { provider, contractType: "p2sh32" });
+  const contractLockingBytecode = String(contract.lockingBytecode).toLowerCase();
+  if (!/^aa20[0-9a-f]{64}87$/.test(contractLockingBytecode) ||
+      cashAddressToLockingBytecode(contract.address) !== contractLockingBytecode ||
+      cashAddressToLockingBytecode(contract.tokenAddress) !== contractLockingBytecode) {
+    throw new Error("Server-derived PUSD V3 circle address and P2SH32 locking script do not match.");
+  }
+  for (const [index, lockingBytecode] of escrowLockingBytecodes.entries()) {
+    if (!/^aa20[0-9a-f]{64}87$/.test(lockingBytecode) ||
+        cashAddressToLockingBytecode(escrowContracts[index].address) !== lockingBytecode ||
+        cashAddressToLockingBytecode(escrowContracts[index].tokenAddress) !== lockingBytecode) {
+      throw new Error("Server-derived PUSD member escrow " + (index + 1) + " address and locking script do not match.");
+    }
+  }
+  return {
+    name: value.name.trim(),
+    memberCount: members.length,
+    members: memberScripts,
+    memberAddresses: value.members.slice(),
+    contribution,
+    maxFee,
+    stateCategory,
+    initiatorScript,
+    treasuryScript: PUSD_MAINNET_TREASURY_SCRIPT,
+    contractLockingBytecode,
+    contractAddress: contract.address,
+    escrowAddresses: escrowContracts.map((escrow) => escrow.address),
+    escrowLockingBytecodes,
+  };
+}
+
+/** Reconstruct the exact PUSD circle context from the reviewed V3 artifacts. */
+export function createPusdMainnetV3ContractContext(circleValue) {
+  return validatePusdMainnetCircleForVerification(circleValue);
+}
+
+function pusdReceiptCommitment(index, credit) {
+  if (!Number.isSafeInteger(index) || index < 0 || index > 4 ||
+      typeof credit !== "bigint" || credit < 0n || credit > PUSD_MAINNET_SCRIPT_INT_MAX) {
+    throw new Error("PUSD receipt commitment data is outside the covenant limits.");
+  }
+  const creditBytes = Buffer.alloc(8);
+  creditBytes.writeBigUInt64LE(credit);
+  return "52" + index.toString(16).padStart(2, "0") + creditBytes.toString("hex");
+}
+
+function pusdCreditFromReceipt(output, expectedIndex, context, label) {
+  if (!output?.token || bchTokenCategoryHex(output.token) !== context.stateCategory ||
+      output.token.amount !== 0n || output.token.nft?.capability !== "none") {
+    throw new Error(label + " is not a PUSD circle receipt NFT.");
+  }
+  const commitment = bchNftCommitmentHex(output.token);
+  const prefix = "52" + expectedIndex.toString(16).padStart(2, "0");
+  if (!commitment || !commitment.startsWith(prefix) || commitment.length !== 20) {
+    throw new Error(label + " does not contain the registered member receipt commitment.");
+  }
+  const credit = BigInt("0x" + commitment.slice(4).match(/../g).reverse().join(""));
+  if (credit > PUSD_MAINNET_SCRIPT_INT_MAX) {
+    throw new Error(label + " credit exceeds the CashScript integer limit.");
+  }
+  return credit;
+}
+
+function pusdStatePosition(output, context, label) {
+  if (!output?.token || bchTokenCategoryHex(output.token) !== context.stateCategory ||
+      output.token.amount !== 0n || output.token.nft?.capability !== "minting") {
+    throw new Error(label + " is not the PUSD circle minting state NFT.");
+  }
+  const commitment = bchNftCommitmentHex(output.token);
+  if (!commitment || !/^54(?:0[0-5])(?:00|01)$/.test(commitment)) {
+    throw new Error(label + " has a malformed PUSD circle state commitment.");
+  }
+  const round = Number.parseInt(commitment.slice(2, 4), 16);
+  const hasPaid = commitment.slice(4, 6) === "01";
+  if (round > context.memberCount || (round === 0 && hasPaid) || (round > 0 && !hasPaid)) {
+    throw new Error(label + " has an inconsistent PUSD round and payout marker.");
+  }
+  return { round, hasPaid, completed: round === context.memberCount };
+}
+
+function assertPusdCircleNftOutput(output, context, capability, commitment, index) {
+  if (binToHex(output.lockingBytecode).toLowerCase() !== context.contractLockingBytecode ||
+      !output.token || bchTokenCategoryHex(output.token) !== context.stateCategory ||
+      output.token.amount !== 0n || output.token.nft?.capability !== capability ||
+      bchNftCommitmentHex(output.token) !== commitment) {
+    throw new Error("PUSD Mainnet transaction output " + index + " does not match the expected circle NFT.");
+  }
+  if (output.valueSatoshis < getDustThreshold(output)) {
+    throw new Error("PUSD Mainnet circle NFT output " + index + " is below the CashTokens dust threshold.");
+  }
+}
+
+function assertPusdTokenOutput(output, expectedScript, expectedAmount, index) {
+  if (binToHex(output.lockingBytecode).toLowerCase() !== expectedScript ||
+      !output.token || bchTokenCategoryHex(output.token) !== PUSD_CATEGORY ||
+      output.token.amount !== expectedAmount || output.token.nft) {
+    throw new Error("PUSD Mainnet transaction output " + index + " is not the exact expected fungible PUSD output.");
+  }
+  assertPusdTokenOutputCarrier(output, index);
+}
+
+function assertPusdPlainOutput(output, expectedScript, index) {
+  if (binToHex(output.lockingBytecode).toLowerCase() !== expectedScript || output.token) {
+    throw new Error("PUSD Mainnet transaction output " + index + " is not the expected token-free output.");
+  }
+  assertPusdBchChangeCarrier(output, index);
+}
+
+function assertPusdEscrowOutput(output, context, memberIndex, credit, expectedValue, index) {
+  const expectedScript = context.escrowLockingBytecodes[memberIndex];
+  if (binToHex(output.lockingBytecode).toLowerCase() !== expectedScript ||
+      output.valueSatoshis !== expectedValue) {
+    throw new Error("PUSD Mainnet escrow output " + index + " has the wrong member script or BCH carrier value.");
+  }
+  if (credit > 0n) {
+    assertPusdTokenOutput(output, expectedScript, credit, index);
+  } else if (output.token) {
+    throw new Error("Empty PUSD Mainnet escrow output " + index + " must not contain tokens.");
+  } else {
+    assertPusdBchChangeCarrier(output, index);
+  }
+}
+
+export function assertPusdMainnetCircleLayout(transaction, sourceOutputs, inputScripts, walletScripts, context, operation, body) {
+  const count = context.memberCount;
+  const walletScript = walletScripts[0];
+  if (operation === "genesis") {
+    if (walletScript !== context.initiatorScript ||
+        transaction.inputs.length < 1 || transaction.inputs.length > 100 ||
+        transaction.outputs.length !== 2 * count + 2) {
+      throw new Error("PUSD Mainnet V3 genesis must be funded by the registered initiator and create the exact state, receipt, escrow and change outputs.");
+    }
+    const first = transaction.inputs[0];
+    if (reverseHex(binToHex(first.outpointTransactionHash)).toLowerCase() !== context.stateCategory ||
+        first.outpointIndex !== 0) {
+      throw new Error("PUSD Mainnet V3 genesis state category must come from the first token-free input at vout 0.");
+    }
+    for (let index = 0; index < sourceOutputs.length; index++) {
+      if (inputScripts[index] !== context.initiatorScript || sourceOutputs[index].token) {
+        throw new Error("Every PUSD Mainnet genesis input must be token-free BCH owned by the registered initiator.");
+      }
+    }
+    assertPusdCircleNftOutput(transaction.outputs[0], context, "minting", "540000", 0);
+    if (transaction.outputs[0].valueSatoshis !== PUSD_MAINNET_CIRCLE_DUST) {
+      throw new Error("PUSD Mainnet genesis state backing must be exactly 1,000 satoshis.");
+    }
+    for (let index = 0; index < count; index++) {
+      const commitment = pusdReceiptCommitment(index, 0n);
+      assertPusdCircleNftOutput(transaction.outputs[index + 1], context, "none", commitment, index + 1);
+      if (transaction.outputs[index + 1].valueSatoshis !== PUSD_MAINNET_CIRCLE_DUST) {
+        throw new Error("PUSD Mainnet genesis receipt backing must be exactly 1,000 satoshis.");
+      }
+      const escrowOutput = transaction.outputs[count + 1 + index];
+      if (binToHex(escrowOutput.lockingBytecode).toLowerCase() !== context.escrowLockingBytecodes[index]) {
+        throw new Error("PUSD Mainnet genesis escrow output " + index + " uses the wrong member script.");
+      }
+      assertPusdPlainOutput(escrowOutput, context.escrowLockingBytecodes[index], count + 1 + index);
+      if (escrowOutput.valueSatoshis !== PUSD_MAINNET_CIRCLE_DUST) {
+        throw new Error("PUSD Mainnet genesis member escrow backing must be exactly 1,000 satoshis.");
+      }
+    }
+    assertPusdPlainOutput(transaction.outputs[2 * count + 1], context.initiatorScript, 2 * count + 1);
+    return;
+  }
+
+  if (operation === "deposit") {
+    const memberIndex = body.memberIndex;
+    const amount = parsePositiveBigInt(body.amount, "PUSD deposit amount");
+    if (!Number.isSafeInteger(memberIndex) || memberIndex < 0 || memberIndex >= count ||
+        transaction.inputs.length !== 5 || (transaction.outputs.length !== 4 && transaction.outputs.length !== 5) ||
+        walletScript !== context.members[memberIndex]) {
+      throw new Error("PUSD Mainnet deposit must use the registered member and connected wallet with the exact five-input lifecycle layout.");
+    }
+    if (inputScripts[0] !== context.contractLockingBytecode ||
+        inputScripts[1] !== context.contractLockingBytecode ||
+        inputScripts[2] !== context.escrowLockingBytecodes[memberIndex] ||
+        inputScripts[3] !== walletScript || inputScripts[4] !== walletScript) {
+      throw new Error("PUSD Mainnet deposit inputs must be the state, selected receipt, matching escrow, member PUSD and member BCH inputs in order.");
+    }
+    const state = pusdStatePosition(sourceOutputs[0], context, "PUSD deposit state input");
+    if (state.completed) throw new Error("PUSD Mainnet deposit cannot spend a completed circle.");
+    const oldCredit = pusdCreditFromReceipt(sourceOutputs[1], memberIndex, context, "PUSD deposit receipt input");
+    if (oldCredit > context.contribution || amount > context.contribution - oldCredit) {
+      throw new Error("PUSD Mainnet deposit exceeds this member's remaining contribution for the current round.");
+    }
+    const escrowInput = sourceOutputs[2];
+    if (binToHex(escrowInput.lockingBytecode).toLowerCase() !== context.escrowLockingBytecodes[memberIndex] ||
+        escrowInput.token?.nft || (oldCredit === 0n
+          ? Boolean(escrowInput.token)
+          : (!escrowInput.token || bchTokenCategoryHex(escrowInput.token) !== PUSD_CATEGORY ||
+              escrowInput.token.amount !== oldCredit))) {
+      throw new Error("PUSD Mainnet deposit escrow input does not match the selected member receipt credit.");
+    }
+    const funding = sourceOutputs[3];
+    if (!funding.token || bchTokenCategoryHex(funding.token) !== PUSD_CATEGORY ||
+        funding.token.nft || funding.token.amount < amount ||
+        binToHex(funding.lockingBytecode).toLowerCase() !== walletScript ||
+        sourceOutputs[4].token) {
+      throw new Error("PUSD Mainnet deposit requires sufficient fungible PUSD and a separate token-free BCH fee input from the member.");
+    }
+    const newCredit = oldCredit + amount;
+    if (newCredit > PUSD_MAINNET_SCRIPT_INT_MAX) throw new Error("PUSD Mainnet member credit exceeds the CashScript integer limit.");
+    assertPusdCircleNftOutput(transaction.outputs[0], context, "minting", bchNftCommitmentHex(sourceOutputs[0].token), 0);
+    if (transaction.outputs[0].valueSatoshis !== sourceOutputs[0].valueSatoshis) {
+      throw new Error("PUSD Mainnet deposit must preserve state NFT BCH backing.");
+    }
+    assertPusdCircleNftOutput(transaction.outputs[1], context, "none", pusdReceiptCommitment(memberIndex, newCredit), 1);
+    if (transaction.outputs[1].valueSatoshis !== sourceOutputs[1].valueSatoshis) {
+      throw new Error("PUSD Mainnet deposit must preserve receipt NFT BCH backing.");
+    }
+    assertPusdEscrowOutput(
+      transaction.outputs[2], context, memberIndex, newCredit,
+      sourceOutputs[2].valueSatoshis + sourceOutputs[3].valueSatoshis, 2,
+    );
+    const excess = funding.token.amount - amount;
+    if (excess > 0n) {
+      if (transaction.outputs.length !== 5) throw new Error("PUSD Mainnet deposit must return excess PUSD to the member wallet.");
+      assertPusdTokenOutput(transaction.outputs[3], walletScript, excess, 3);
+      assertPusdPlainOutput(transaction.outputs[4], walletScript, 4);
+    } else {
+      if (transaction.outputs.length !== 4) throw new Error("PUSD Mainnet deposit contains an unexpected extra output.");
+      assertPusdPlainOutput(transaction.outputs[3], walletScript, 3);
+    }
+    return;
+  }
+
+  if (operation !== "payout" && operation !== "cancel") {
+    throw new Error("Unsupported PUSD Mainnet circle verification operation.");
+  }
+  if (transaction.inputs.length !== 2 * count + 2) {
+    throw new Error("PUSD Mainnet payout or cancellation must include the state, every receipt, every escrow and one fee input.");
+  }
+  if (inputScripts[0] !== context.contractLockingBytecode) {
+    throw new Error("PUSD Mainnet lifecycle input 0 must be the registered circle state NFT.");
+  }
+  for (let index = 0; index < count; index++) {
+    if (inputScripts[index + 1] !== context.contractLockingBytecode ||
+        inputScripts[count + index + 1] !== context.escrowLockingBytecodes[index]) {
+      throw new Error("PUSD Mainnet lifecycle inputs must preserve ordered receipts and member-specific escrow scripts.");
+    }
+    const credit = pusdCreditFromReceipt(sourceOutputs[index + 1], index, context, "PUSD lifecycle receipt input " + (index + 1));
+    const escrow = sourceOutputs[count + index + 1];
+    if (escrow.token?.nft || (credit === 0n
+      ? Boolean(escrow.token)
+      : (!escrow.token || bchTokenCategoryHex(escrow.token) !== PUSD_CATEGORY ||
+          escrow.token.amount !== credit))) {
+      throw new Error("PUSD Mainnet lifecycle escrow input " + (index + 1) + " does not match its receipt credit.");
+    }
+  }
+  const feeIndex = 2 * count + 1;
+  if (sourceOutputs[feeIndex].token) {
+    throw new Error("PUSD Mainnet lifecycle fee input must be token-free BCH.");
+  }
+
+  const state = pusdStatePosition(sourceOutputs[0], context, "PUSD Mainnet lifecycle state input");
+  if (operation === "payout") {
+    if (inputScripts[feeIndex] !== walletScript) {
+      throw new Error("PUSD Mainnet payout fee input must belong to the connected sponsor wallet.");
+    }
+    if (state.completed) throw new Error("PUSD Mainnet circle has already completed all scheduled payouts.");
+    const closing = state.round + 1 === count;
+    const expectedOutputs = closing ? count + 4 : 2 * count + 4;
+    if (transaction.outputs.length !== expectedOutputs) {
+      throw new Error("PUSD Mainnet payout does not use the exact normal or final-closing output layout.");
+    }
+    const credits = sourceOutputs.slice(1, count + 1).map((output, index) =>
+      pusdCreditFromReceipt(output, index, context, "PUSD payout receipt input " + (index + 1)),
+    );
+    const escrowInputs = sourceOutputs.slice(count + 1, 2 * count + 1);
+    if (!credits.every((credit) => credit >= context.contribution)) {
+      throw new Error("Every PUSD Mainnet member escrow must be fully funded before payout.");
+    }
+    if (closing && !credits.every((credit) => credit === context.contribution)) {
+      throw new Error("PUSD Mainnet final payout requires exactly one contribution in every member escrow.");
+    }
+    const grossPot = BigInt(count) * context.contribution;
+    const projectFee = grossPot / 100n;
+    const reserve = closing || state.round + 1 >= count ? 0n : context.contribution;
+    const recipientAmount = grossPot - projectFee - reserve;
+    const treasuryIndex = closing ? 0 : 2 * count + 1;
+    const recipientIndex = closing ? 1 : 2 * count + 2;
+    const feeChangeIndex = closing ? count + 3 : 2 * count + 3;
+    if (closing) {
+      assertPusdTokenOutput(transaction.outputs[0], context.treasuryScript, projectFee, 0);
+      assertPusdTokenOutput(transaction.outputs[1], context.members[state.round], recipientAmount, 1);
+      for (let index = 0; index < count; index++) {
+        assertPusdPlainOutput(transaction.outputs[index + 2], context.members[index], index + 2);
+        if (transaction.outputs[index + 2].valueSatoshis !==
+            escrowInputs[index].valueSatoshis + sourceOutputs[index + 1].valueSatoshis) {
+          throw new Error("PUSD Mainnet final payout must refund each member's exact escrow and receipt BCH backing.");
+        }
+      }
+      assertPusdPlainOutput(transaction.outputs[count + 2], context.initiatorScript, count + 2);
+      if (transaction.outputs[count + 2].valueSatoshis !== sourceOutputs[0].valueSatoshis) {
+        throw new Error("PUSD Mainnet final payout must return the exact state BCH backing to the initiator.");
+      }
+    } else {
+      assertPusdCircleNftOutput(
+        transaction.outputs[0], context, "minting", "54" +
+        (state.round + 1).toString(16).padStart(2, "0") + "01", 0,
+      );
+      if (transaction.outputs[0].valueSatoshis !== sourceOutputs[0].valueSatoshis) {
+        throw new Error("PUSD Mainnet payout must preserve state NFT BCH backing.");
+      }
+      for (let index = 0; index < count; index++) {
+        const nextCredit = credits[index] - context.contribution +
+          (index === state.round ? reserve : 0n);
+        assertPusdCircleNftOutput(
+          transaction.outputs[index + 1], context, "none",
+          pusdReceiptCommitment(index, nextCredit), index + 1,
+        );
+        if (transaction.outputs[index + 1].valueSatoshis !== sourceOutputs[index + 1].valueSatoshis) {
+          throw new Error("PUSD Mainnet payout must preserve receipt NFT BCH backing.");
+        }
+        assertPusdEscrowOutput(
+          transaction.outputs[count + index + 1], context, index, nextCredit,
+          escrowInputs[index].valueSatoshis, count + index + 1,
+        );
+      }
+      if (walletScript === context.initiatorScript &&
+          inputScripts[feeIndex] !== context.initiatorScript) {
+        throw new Error("PUSD Mainnet payout fee sponsor input does not match its wallet address.");
+      }
+      assertPusdTokenOutput(transaction.outputs[treasuryIndex], context.treasuryScript, projectFee, treasuryIndex);
+      assertPusdTokenOutput(transaction.outputs[recipientIndex], context.members[state.round], recipientAmount, recipientIndex);
+    }
+    assertPusdPlainOutput(transaction.outputs[feeChangeIndex], walletScript, feeChangeIndex);
+    return;
+  }
+
+  if (state.round !== 0 || state.hasPaid ||
+      walletScript !== context.initiatorScript || inputScripts[feeIndex] !== context.initiatorScript ||
+      transaction.outputs.length !== count + 1) {
+    throw new Error("PUSD Mainnet cancellation is initiator-only and available only before the first payout.");
+  }
+  for (let index = 0; index < count; index++) {
+    const credit = pusdCreditFromReceipt(sourceOutputs[index + 1], index, context, "PUSD cancellation receipt input " + (index + 1));
+    const escrow = sourceOutputs[count + index + 1];
+    if (credit > 0n) {
+      assertPusdTokenOutput(transaction.outputs[index], context.members[index], credit, index);
+    } else {
+      assertPusdPlainOutput(transaction.outputs[index], context.members[index], index);
+    }
+    if (transaction.outputs[index].valueSatoshis !== escrow.valueSatoshis + sourceOutputs[index + 1].valueSatoshis) {
+      throw new Error("PUSD Mainnet cancellation must return each member's exact PUSD and BCH escrow backing.");
+    }
+  }
+  assertPusdPlainOutput(transaction.outputs[count], context.initiatorScript, count);
+}
+
+/**
+ * Verify a Selene-signed PUSD Mainnet V3 circle lifecycle transaction against
+ * raw quorum-authenticated prevouts, exact covenant scripts, wallet sighashes,
+ * transaction economics and the BCH 2026 VM. This endpoint is read-only.
+ */
+export async function verifyPusdMainnetCircleTransaction(sessions, tip, body) {
+  const operation = body?.operation;
+  if (!["genesis", "deposit", "payout", "cancel"].includes(operation)) {
+    throw new Error("Unsupported PUSD Mainnet circle verification operation.");
+  }
+  const context = createPusdMainnetV3ContractContext(body.circle);
+  const walletScripts = normalizeWalletAddresses(body.walletAddresses);
+  if (walletScripts.length !== 1 || !/^76a914[0-9a-f]{40}88ac$/.test(walletScripts[0])) {
+    throw new Error("PUSD Mainnet circle verification requires exactly one connected P2PKH wallet address.");
+  }
+  if (operation === "genesis" && walletScripts[0] !== context.initiatorScript) {
+    throw new Error("PUSD Mainnet circle genesis must be verified by the registered initiator wallet.");
+  }
+  if (!isHex(body.signedTransactionHex)) {
+    throw new Error("Signed PUSD Mainnet circle transaction must be complete hexadecimal bytes.");
+  }
+  const signedBytes = hexToBin(body.signedTransactionHex);
+  const transaction = decodeTransactionBCH(signedBytes);
+  if (typeof transaction === "string") {
+    throw new Error("Signed PUSD Mainnet circle transaction failed CashTokens-aware decoding: " + transaction);
+  }
+  if (transaction.inputs.length === 0 || transaction.inputs.length > 100 ||
+      transaction.outputs.length === 0 || transaction.outputs.length > 100) {
+    throw new Error("Signed PUSD Mainnet circle transaction has an invalid input or output count.");
+  }
+
+  const seen = new Set();
+  const previousByTxid = new Map();
+  const sourceOutputs = [];
+  const inputScripts = [];
+  let inputSatoshis = 0n;
+  for (const [index, input] of transaction.inputs.entries()) {
+    const txid = reverseHex(binToHex(input.outpointTransactionHash)).toLowerCase();
+    const outpoint = txid + ":" + input.outpointIndex;
+    if (seen.has(outpoint)) throw new Error("Signed PUSD Mainnet circle transaction contains a duplicate input.");
+    seen.add(outpoint);
+    let previous = previousByTxid.get(txid);
+    if (!previous) {
+      previous = await fetchQuorumPreviousTransaction(sessions, txid);
+      previousByTxid.set(txid, previous);
+    }
+    const sourceOutput = previous.decoded.outputs[input.outpointIndex];
+    if (!sourceOutput || sourceOutput.valueSatoshis <= 0n) {
+      throw new Error("PUSD Mainnet circle input " + index + " references a missing or valueless previous output.");
+    }
+    const script = binToHex(sourceOutput.lockingBytecode).toLowerCase();
+    const allowed = new Set([
+      context.contractLockingBytecode,
+      ...context.escrowLockingBytecodes,
+      ...walletScripts,
+    ]);
+    if (!allowed.has(script)) {
+      throw new Error("PUSD Mainnet circle input " + index + " is not a registered circle, escrow or connected-wallet output.");
+    }
+    if (script === context.contractLockingBytecode || context.escrowLockingBytecodes.includes(script)) {
+      // Covenant unlocking scripts are checked by the BCH 2026 VM below.
+      if (!sourceOutput.token && script === context.contractLockingBytecode) {
+        throw new Error("PUSD Mainnet circle contract input is missing its state or receipt NFT.");
+      }
+    } else {
+      assertRequiredPusdSighash(input.unlockingBytecode, index);
+    }
+    sourceOutputs.push(sourceOutput);
+    inputScripts.push(script);
+    inputSatoshis += sourceOutput.valueSatoshis;
+  }
+
+  assertPusdMainnetCircleLayout(
+    transaction, sourceOutputs, inputScripts, walletScripts, context, operation, body,
+  );
+
+  const initialSnapshots = await getUnspentSnapshots(sessions, [...new Set(inputScripts)]);
+  const initialUnspent = new Map(initialSnapshots[0].map((utxo) => [
+    utxo.txid + ":" + utxo.vout, utxo,
+  ]));
+  for (const [index, input] of transaction.inputs.entries()) {
+    const txid = reverseHex(binToHex(input.outpointTransactionHash)).toLowerCase();
+    const outpoint = txid + ":" + input.outpointIndex;
+    const unspent = initialUnspent.get(outpoint);
+    if (!unspent || unspent.height <= 0 ||
+        BigInt(unspent.satoshis) !== sourceOutputs[index].valueSatoshis) {
+      throw new Error("PUSD Mainnet circle input " + outpoint + " is not confirmed and unspent in every configured Electrum provider.");
+    }
+  }
+
+  let outputSatoshis = 0n;
+  for (const [index, output] of transaction.outputs.entries()) {
+    if (output.valueSatoshis < getDustThreshold(output)) {
+      throw new Error("PUSD Mainnet circle output " + index + " is below the consensus dust threshold.");
+    }
+    outputSatoshis += output.valueSatoshis;
+  }
+  const minerFee = inputSatoshis - outputSatoshis;
+  if (minerFee <= 0n || minerFee > context.maxFee) {
+    throw new Error("PUSD Mainnet circle miner fee is outside the approved maximum.");
+  }
+
+  const vmResult = createVirtualMachineBch2026().verify({ transaction, sourceOutputs });
+  if (vmResult !== true) {
+    throw new Error("Signed PUSD Mainnet circle transaction failed BCH 2026 virtual-machine validation: " + vmResult);
+  }
+
+  // Re-check every covenant, escrow and wallet input after VM execution so
+  // stale transactions are rejected immediately before returning verification.
+  const finalSnapshots = await getUnspentSnapshots(sessions, [...new Set(inputScripts)]);
+  const finalUnspent = new Map(finalSnapshots[0].map((utxo) => [
+    utxo.txid + ":" + utxo.vout, utxo,
+  ]));
+  for (const [index, input] of transaction.inputs.entries()) {
+    const txid = reverseHex(binToHex(input.outpointTransactionHash)).toLowerCase();
+    const current = finalUnspent.get(txid + ":" + input.outpointIndex);
+    if (!current || current.height <= 0 ||
+        BigInt(current.satoshis) !== sourceOutputs[index].valueSatoshis) {
+      throw new Error("PUSD Mainnet circle input changed while the signed transaction was being verified.");
+    }
+  }
+
+  return {
+    network: "mainnet",
+    operation,
+    txid: hashTransaction(signedBytes).toLowerCase(),
+    contractAddress: context.contractAddress,
+    escrowAddresses: context.escrowAddresses,
+    feeSatoshis: minerFee.toString(),
+    inputCount: transaction.inputs.length,
+    outputCount: transaction.outputs.length,
+    tipHeight: tip.height,
+    tipHash: tip.hash,
+    confirmedInputs: transaction.inputs.length,
+    verified: true,
+    broadcast: false,
+    message: "Signed PUSD circle transaction passed server-side raw-prevout, Electrum quorum, exact covenant layout, wallet sighash and BCH 2026 VM verification. Nothing was broadcast.",
+  };
+}
+
 export function validateBchMainnetGatherLayout(transaction, walletScripts, destinationScript, transactionSizeBytes) {
   if (!transaction || !Array.isArray(transaction.inputs) ||
       transaction.inputs.length < 1 || transaction.inputs.length > MAX_GATHER_INPUTS ||
@@ -2354,6 +2937,18 @@ export function createMainnetApiServer() {
             present.has(item.txid + ":" + item.vout),
           ]));
           sendJson(response, 200, { network: "mainnet", tipHeight: tip.height, tipHash: tip.hash, unspent });
+        });
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/api/pusd/circle/verify") {
+        const body = await readJson(request);
+        if (!["genesis", "deposit", "payout", "cancel"].includes(body?.operation)) {
+          throw new Error("Unsupported PUSD Mainnet circle verification operation.");
+        }
+        await withElectrumSessions(async (sessions) => {
+          const tip = await getTipQuorum(sessions);
+          const result = await verifyPusdMainnetCircleTransaction(sessions, tip, body);
+          sendJson(response, 200, result);
         });
         return;
       }

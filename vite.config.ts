@@ -51,5 +51,15 @@ export default defineConfig(({ mode }) => {
     build: {
       target: "esnext",
     },
+    // The optional local API process listens on port 3001. Keep the browser
+    // on one origin and forward its /api requests to that process in dev.
+    server: {
+      proxy: {
+        "/api": {
+          target: "http://127.0.0.1:3001",
+          changeOrigin: true,
+        },
+      },
+    },
   };
 });

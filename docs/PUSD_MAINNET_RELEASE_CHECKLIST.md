@@ -65,12 +65,14 @@ A read-only `GET /api/transaction/status?txid=<64-hex-txid>` endpoint has been a
 
 The separate PUSD circle covenant is a different execution path from ordinary PUSD wallet transfers. Its Mainnet workspace currently supports unsigned genesis, deposit, payout and pre-first-payout cancellation previews, plus read-only state/receipt/escrow reconciliation. Those previews do not authorize real funds.
 
+The server now provides `POST /api/pusd/circle/verify` for read-only verification of Selene-signed circle lifecycle transactions (PR #78). The workspace reports success only after local verification and server-side quorum-prevout/artifact/VM verification. Signed bytes are discarded after the response; this route cannot reserve, relay or broadcast them. The verifier still requires independent review and adversarial/live-wallet testing before a Mainnet release.
+
 - [ ] Independently review `AjoCirclePUSDV3Mainnet.cash` and `AjoPUSDMemberEscrowV3.cash`, including exact compiled artifact hashes and every constructor argument.
 - [ ] Independently verify the token category, token-aware member scripts, receipt NFT commitments, escrow contract bindings and CashToken carrier values.
 - [ ] Inspect the exact genesis transaction and prove the state category, minting NFT, one receipt per member, and one empty PUSD escrow sidecar per member are created at the intended outputs.
 - [ ] Adversarially test deposit, excess-token change, payout, reserve carry-forward, final-recipient no-reserve, cancellation, member order, missing/duplicate UTXOs, dust, integer bounds and inconsistent state commitments.
 - [ ] Independently verify the exact PUSD fee output to the shared BCH/PUSD Mainnet treasury, and verify BCH carrier and miner fee amounts separately.
-- [ ] Add a Mainnet signed-byte verifier for all contract and wallet inputs, prevouts, token categories/amounts, NFT commitments, outputs, change and fee.
+- [x] Implement a read-only server-side PUSD V3 circle signed-byte verifier for genesis, deposit, payout and cancellation. It reconstructs the exact circle/escrow artifacts, authenticates raw prevouts against the Electrum quorum, validates the full lifecycle layouts, checks wallet 0x61 sighashes and runs the BCH 2026 VM. Added in PR #78; it never relays or broadcasts. **Implementation is not independent security approval.**
 - [ ] Recheck all state, receipt, escrow, token and fee UTXOs immediately before any future wallet authorization.
 - [ ] Complete real Selene/WizardConnect lifecycle tests with independent member wallets, including app switching, reconnect, timeout, cancellation and confirmation.
 - [ ] Add idempotent broadcast, unknown-result resolution, mempool-conflict handling, confirmation and reorg recovery.
