@@ -122,6 +122,7 @@ The repository's `docs/PUSD_MAINNET_RELEASE_CHECKLIST.md` remains authoritative 
 5. Complete independent Selene/WizardConnect lifecycle tests with separate member wallets, including reconnect, timeout, app switching, cancellation, exact signed bytes and confirmation.
 6. Define and test unknown-result reconciliation, mempool conflict handling, confirmations, reorg handling, alerting, incident response and manual recovery for input locks.
 7. Obtain external security approval for the exact source commit and compiled artifacts in this handoff.
+8. Repository control: at the time of this review, GitHub reports `main` as unprotected with no required status checks. Protect the branch and require successful CI before future release commits; a green run on this SHA does not enforce checks on later commits.
 
 ## 6. Current safety state
 
