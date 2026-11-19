@@ -1045,19 +1045,34 @@ test("PUSD submission-status route returns 503 when private ledger credentials a
   }
 });
 
-test("nested PUSD circle verifier route rejects unknown operations before network access", async () => {
-  const response = await invokeServerlessRoute(
-    pusdCircleVerifyHandler,
-    {
-      ...mockApiRequest("POST", "/api/pusd/circle/verify"),
-      headers: { "content-type": "application/json" },
-      [Symbol.asyncIterator]: async function* () {
-        yield Buffer.from(JSON.stringify({ operation: "unknown" }));
+test("on-chain verification API does not require hosted Redis rate-limiter credentials", async () => {
+  const originalVercel = process.env.VERCEL;
+  const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const originalToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  process.env.VERCEL = "1";
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  try {
+    const response = await invokeServerlessRoute(
+      pusdCircleVerifyHandler,
+      {
+        ...mockApiRequest("POST", "/api/pusd/circle/verify"),
+        headers: { "content-type": "application/json" },
+        [Symbol.asyncIterator]: async function* () {
+          yield Buffer.from(JSON.stringify({ operation: "unknown" }));
+        },
       },
-    },
-  );
-  assert.equal(response.statusCode, 400);
-  assert.match(JSON.parse(response.body).error, /Unsupported PUSD Mainnet circle verification operation/);
+    );
+    assert.equal(response.statusCode, 400);
+    assert.match(JSON.parse(response.body).error, /Unsupported PUSD Mainnet circle verification operation/);
+  } finally {
+    if (originalVercel === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = originalVercel;
+    if (originalUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+    else process.env.UPSTASH_REDIS_REST_URL = originalUrl;
+    if (originalToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    else process.env.UPSTASH_REDIS_REST_TOKEN = originalToken;
+  }
 });
 
 test("nested PUSD submission-status Vercel route validates the transaction ID before ledger access", async () => {
