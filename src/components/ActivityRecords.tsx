@@ -214,7 +214,7 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
       return {
         ref, status: "ready",
         stateLabel: "Closed",
-        roundLabel: ref.params.members.length + " / " + ref.params.members.length,
+        roundLabel: "Closed",
         recipient: null,
         details: "No circle state remains on-chain: the circle was closed by its final payout or by cancellation.",
         ...historyResult,
