@@ -69,9 +69,9 @@ Read [BCH, PUSD and member accounting](docs/BCH_PUSD_MEMBER_ACCOUNTING.md) for t
 
 | Area | Current state | What that means |
 |---|---|---|
-| BCH V3 automatic-reserve circles | **Chipnet + Mainnet workspaces** | Circle discovery is on-chain on both networks. The dedicated V3 Mainnet create/pay/payout path is separate from the Classic BCH guard. |
+| BCH V3 automatic-reserve circles | **Chipnet + Mainnet V3 paths** | Discovery is on-chain on both networks. The dedicated V3 Mainnet signing/broadcast path is separate from the Classic BCH guard; real-wallet and lifecycle validation remains important. |
 | Classic / V1 / V2 circles | **Versioned compatibility** | Existing circles retain their original covenant and accounting rules; they are not silently migrated to V3. |
-| BCH Mainnet circles | **V3 on-chain discovery and dedicated send path** | The V3 workspace has its own Mainnet signing/broadcast path. Classic BCH operations remain controlled by their separate legacy guard. |
+| BCH Mainnet circles | **V3 send path enabled in code** | The dedicated V3 UI and broadcast gates are enabled separately from the Classic BCH operations gate. This is not a blanket audit or release approval for every contract/version. |
 | PUSD Mainnet V3 circles | **Engineering / read-only verification** | The workspace and lifecycle planners cover genesis, deposit, payout and pre-first-payout cancellation. PR [#78](https://github.com/Afar88/ajochain-blaze/pull/78) adds server-side signed-byte verification; it does not add a broadcast path or enable spending. |
 | Shared circle registry | **Not used** | Neither Chipnet nor Mainnet circle discovery depends on a centralized registry. Circle identity and lifecycle are reconstructed from BCH transactions and UTXOs. |
 
