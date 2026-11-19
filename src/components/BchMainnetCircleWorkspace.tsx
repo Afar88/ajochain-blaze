@@ -181,14 +181,20 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
     [membersText],
   );
   const initiatorAddress = walletConnected && wallet.state === "connected" ? wallet.address("mainnet") : null;
+  const initiatorAddressConfirmed = walletConnected && wallet.state === "connected" &&
+    wallet.isReceiveAddressConfirmed("mainnet");
   const memberOrder = useMemo(() => {
     if (!initiatorAddress) return { members: [] as string[], error: "Connect Selene to register your address as Member 1." };
+    if (!initiatorAddressConfirmed) return {
+      members: [initiatorAddress, ...additionalMembers],
+      error: "Sync the Mainnet receive address currently shown in Selene under Wallet Details before creating a circle.",
+    };
     try {
       return { members: buildV2FeeMemberOrder(initiatorAddress, additionalMembers, "mainnet"), error: "" };
     } catch (cause) {
       return { members: [initiatorAddress, ...additionalMembers], error: errorMessage(cause) };
     }
-  }, [initiatorAddress, additionalMembers]);
+  }, [initiatorAddress, initiatorAddressConfirmed, additionalMembers]);
   const members = memberOrder.members;
   const economics = useMemo(() => {
     try {
@@ -216,6 +222,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
     try {
       if (network !== "mainnet") throw new Error("BCH Mainnet drafts can only be saved while the app is set to Mainnet.");
       if (!initiatorAddress) throw new Error("Connect Selene to register your address as Member 1.");
+      if (!initiatorAddressConfirmed) throw new Error("Sync the Mainnet receive address currently shown in Selene under Wallet Details before saving or creating this circle.");
       if (memberOrder.error) throw new Error(memberOrder.error);
       if (!name.trim() || name.trim().length > 60) throw new Error("Enter a circle name between 1 and 60 characters.");
       if (members.length < 2 || members.length > 5) throw new Error("Add 1–4 other BCH Mainnet addresses. Your connected wallet is Member 1.");
@@ -562,6 +569,10 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
       setError("No verified Mainnet receive address is available from the connected wallet. Match Selene's current receive address in Wallet Details first.");
       return;
     }
+    if (!initiatorAddressConfirmed) {
+      setError("Sync the Mainnet receive address currently shown in Selene under Wallet Details before preparing the circle.");
+      return;
+    }
     if (memberOrder.error) {
       setError(memberOrder.error);
       return;
@@ -637,8 +648,8 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
         <div className="creator-member-preview">
           <b>Member 1 · You, the initiator</b>
           {initiatorAddress
-            ? <code>{initiatorAddress}</code>
-            : "Connect Selene and match the address currently shown on its Mainnet Receive screen. Your address will be added first automatically."}
+            ? <><code>{initiatorAddress}</code><small>{initiatorAddressConfirmed ? "Confirmed from Selene's current Receive screen" : "Not yet confirmed · sync the current Selene address in Wallet Details"}</small></>
+            : "Connect Selene and sync the address currently shown on its Mainnet Receive screen. Your address will be added first automatically."}
         </div>
         <label>Other members' Mainnet addresses · one per line
           <textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder={"bitcoincash:…\nbitcoincash:…"} required />
@@ -668,7 +679,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
 
         <div className="pusd-mainnet-actions">
           <button className="secondary-button" type="button" onClick={saveDraft} disabled={network !== "mainnet" || !walletConnected}>Save local draft</button>
-        <button className="primary-button" type="submit" disabled={busy || network !== "mainnet" || !walletConnected || Boolean(memberOrder.error)}>
+        <button className="primary-button" type="submit" disabled={busy || network !== "mainnet" || !walletConnected || !initiatorAddressConfirmed || Boolean(memberOrder.error)}>
           {busy ? "Preparing Mainnet preview…" : "Prepare on-chain creation preview"} <ArrowRight size={15} />
         </button>
         </div>
