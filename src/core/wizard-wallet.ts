@@ -25,8 +25,7 @@ export function wizardConnectReceiveAddressIndexes(receiveLimit: number, selecte
       !Number.isSafeInteger(selectedIndex) || selectedIndex < 0 || selectedIndex > 100000) {
     throw new Error("WizardConnect receive-address indexes are outside the supported range.");
   }
-  const indexes = Array.from({ length: receiveLimit + 1 }, (_, index) => index);
-  if (!indexes.includes(selectedIndex)) indexes.push(selectedIndex);
+  const indexes = Array.from({ length: Math.max(receiveLimit, selectedIndex) + 1 }, (_, index) => index);
   return indexes.sort((left, right) => left - right);
 }
 
