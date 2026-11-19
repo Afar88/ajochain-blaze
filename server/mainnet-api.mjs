@@ -2925,6 +2925,15 @@ export function createMainnetApiServer() {
         });
         return;
       }
+      if (request.method === "POST" && url.pathname === "/api/pusd/circle/verify") {
+        const body = await readJson(request);
+        await withElectrumSessions(async (sessions) => {
+          const tip = await getTipQuorum(sessions);
+          const result = await verifyPusdMainnetCircleTransaction(sessions, tip, body);
+          sendJson(response, 200, result);
+        });
+        return;
+      }
       if (request.method === "POST" && url.pathname === "/api/pusd/broadcast") {
         if (!MAINNET_BROADCAST_ENABLED) {
           sendJson(response, 403, { error: "Mainnet broadcast is disabled until the release review is approved." });
