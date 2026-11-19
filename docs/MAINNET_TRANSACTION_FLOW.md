@@ -38,8 +38,8 @@ These are evidence requirements, not checkboxes that a user can toggle. Evidence
 
 ## Scope and safety limits
 
-- Current BCH and PUSD Mainnet workspaces can validate drafts, prepare unsigned genesis previews, and read chain state for saved circle identities. Their lifecycle planners can prepare unsigned deposit, payout and pre-payout cancellation previews. They do not deploy, sign or broadcast transactions. A saved circle identity is a local reference, not proof that a contract exists.
-- The WizardConnect adapter can request signatures for supported experimental paths and inspect selected transaction intent. Mainnet circle preview buttons do not call it. A complete Mainnet signed-byte verifier for every prevout, script, value, fee/change rule, token output and covenant invariant is still outstanding.
+- Current BCH and PUSD Mainnet workspaces can validate drafts, prepare transaction previews, and read chain state for saved circle identities. Their explicit verification-only actions may request a Selene signature, run local/server validation against the exact signed bytes, and then discard those bytes. These actions do not deploy, reserve, relay or broadcast transactions. Separate BCH circle, BCH wallet-gather, and PUSD spend routes remain hard-disabled. A saved circle identity is a local reference, not proof that a contract exists.
+- The WizardConnect adapter is connected to verification-only flows in the BCH V3 and PUSD V3 Mainnet workspaces. The BCH and PUSD server verifiers check their respective signed transaction layouts and consensus execution, but remain subject to independent security review, independent provider-domain evidence, and adversarial real-wallet lifecycle tests. Passing these checks is not approval to spend.
 - Mainnet broadcast remains disabled by the BCH and PUSD fail-closed guards.
 - The BCH V2 contract is experimental and not independently audited. PUSD is not implemented by that covenant.
 - Never label the app mainnet-ready until the contract, wallet, chain reconciliation, signed-transaction inspection, and operational gates have evidence and independent review.
