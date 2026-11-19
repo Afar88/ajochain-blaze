@@ -132,6 +132,29 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
     window.addEventListener(BCH_MAINNET_CIRCLES_CHANGED_EVENT, refresh);
     return () => window.removeEventListener(BCH_MAINNET_CIRCLES_CHANGED_EVENT, refresh);
   }, []);
+  useEffect(() => {
+    if (!activeCircle || !walletConnected || wallet.state !== "connected") return;
+    // Prefer the initiator's registered receive address when this Selene xpub
+    // owns it. Otherwise match the first registered member address it owns.
+    try {
+      const initiatorIndex = wallet.matchReceiveAddress(activeCircle.members[0], "mainnet", 250);
+      if (initiatorIndex !== null) {
+        setNotice("Matched this Selene wallet to its registered initiator address (receive index " + initiatorIndex + ").");
+        return;
+      }
+      const currentAddress = wallet.address("mainnet");
+      if (currentAddress && activeCircle.members.some((member) => sameMainnetAddress(member, currentAddress))) return;
+      for (const memberAddress of activeCircle.members.slice(1)) {
+        const matchedIndex = wallet.matchReceiveAddress(memberAddress, "mainnet", 250);
+        if (matchedIndex !== null) {
+          setNotice("Matched this Selene wallet to its registered member address (receive index " + matchedIndex + ").");
+          return;
+        }
+      }
+    } catch {
+      // An unrelated connected wallet remains an unregistered viewer.
+    }
+  }, [activeCircle?.stateCategory, walletConnected, wallet.state, wallet.receiveIndex]);
   const [circleSnapshot, setCircleSnapshot] = useState<Awaited<ReturnType<typeof readV2FeeCircle>> | null>(null);
   const [depositAmount, setDepositAmount] = useState("0.002");
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
@@ -192,8 +215,10 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
     setPreview(null);
     try {
       if (network !== "mainnet") throw new Error("BCH Mainnet drafts can only be saved while the app is set to Mainnet.");
+      if (!initiatorAddress) throw new Error("Connect Selene to register your address as Member 1.");
+      if (memberOrder.error) throw new Error(memberOrder.error);
       if (!name.trim() || name.trim().length > 60) throw new Error("Enter a circle name between 1 and 60 characters.");
-      if (members.length < 2 || members.length > 5) throw new Error("Enter 2–5 unique BCH Mainnet member addresses.");
+      if (members.length < 2 || members.length > 5) throw new Error("Add 1–4 other BCH Mainnet addresses. Your connected wallet is Member 1.");
       const units = parseAssetAmount("BCH", contribution);
       if (!/^\d+$/.test(maxFee.trim())) {
         throw new Error("Maximum miner fee must be a whole number of satoshis.");
@@ -204,12 +229,13 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
         members,
         contribution: units,
         maxFee: BigInt(maxFee.trim()),
-        initiator: members[0],
+        initiator: initiatorAddress,
       });
       const draft: Draft = {
         name: name.trim(),
         contribution: formatAssetAmount("BCH", units),
         members,
+        initiator: initiatorAddress,
         maxFee: maxFee.trim(),
         savedAt: Date.now(),
       };
@@ -228,7 +254,16 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
   const restoreDraft = (draft: Draft) => {
     setName(draft.name);
     setContribution(draft.contribution);
-    setMembersText(draft.members.join("\n"));
+    const savedInitiator = draft.initiator ?? draft.members[0];
+    let creatorAddressBelongsToConnectedWallet = false;
+    if (savedInitiator && walletConnected && wallet.state === "connected") {
+      try {
+        creatorAddressBelongsToConnectedWallet = wallet.matchReceiveAddress(savedInitiator, "mainnet", 250) !== null;
+      } catch { /* leave the saved member list for manual review */ }
+    }
+    setMembersText((creatorAddressBelongsToConnectedWallet
+      ? draft.members.filter((member) => !sameMainnetAddress(member, savedInitiator!))
+      : draft.members).join("\n"));
     setMaxFee(draft.maxFee);
     setPreview(null);
     setError("");
@@ -524,7 +559,11 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
     }
     const initiator = wallet.address("mainnet");
     if (!initiator) {
-      setError("No verified Mainnet receive address is available from the connected wallet.");
+      setError("No verified Mainnet receive address is available from the connected wallet. Match Selene's current receive address in Wallet Details first.");
+      return;
+    }
+    if (memberOrder.error) {
+      setError(memberOrder.error);
       return;
     }
     if (!/^\d+$/.test(maxFee.trim())) {
@@ -537,7 +576,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
       const plan = await prepareBchMainnetCircleGenesisPreview({
         version: 2,
         name: name.trim(),
-        members,
+        members: buildV2FeeMemberOrder(initiator, additionalMembers, "mainnet"),
         contribution: amount,
         maxFee: BigInt(maxFee.trim()),
         initiator,
