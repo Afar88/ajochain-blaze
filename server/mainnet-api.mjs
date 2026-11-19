@@ -2381,7 +2381,7 @@ export async function verifyPusdMainnetCircleTransaction(sessions, tip, body) {
   const inputScripts = [];
   let inputSatoshis = 0n;
   for (const [index, input] of transaction.inputs.entries()) {
-    const txid = binToHex(input.outpointTransactionHash).toLowerCase();
+    const txid = reverseHex(binToHex(input.outpointTransactionHash)).toLowerCase();
     const outpoint = txid + ":" + input.outpointIndex;
     if (seen.has(outpoint)) throw new Error("Signed PUSD Mainnet circle transaction contains a duplicate input.");
     seen.add(outpoint);
@@ -2425,7 +2425,7 @@ export async function verifyPusdMainnetCircleTransaction(sessions, tip, body) {
     utxo.txid + ":" + utxo.vout, utxo,
   ]));
   for (const [index, input] of transaction.inputs.entries()) {
-    const txid = binToHex(input.outpointTransactionHash).toLowerCase();
+    const txid = reverseHex(binToHex(input.outpointTransactionHash)).toLowerCase();
     const outpoint = txid + ":" + input.outpointIndex;
     const unspent = initialUnspent.get(outpoint);
     if (!unspent || unspent.height <= 0 ||
@@ -2458,7 +2458,7 @@ export async function verifyPusdMainnetCircleTransaction(sessions, tip, body) {
     utxo.txid + ":" + utxo.vout, utxo,
   ]));
   for (const [index, input] of transaction.inputs.entries()) {
-    const txid = binToHex(input.outpointTransactionHash).toLowerCase();
+    const txid = reverseHex(binToHex(input.outpointTransactionHash)).toLowerCase();
     const current = finalUnspent.get(txid + ":" + input.outpointIndex);
     if (!current || current.height <= 0 ||
         BigInt(current.satoshis) !== sourceOutputs[index].valueSatoshis) {
