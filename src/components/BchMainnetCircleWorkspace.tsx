@@ -132,29 +132,6 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
     window.addEventListener(BCH_MAINNET_CIRCLES_CHANGED_EVENT, refresh);
     return () => window.removeEventListener(BCH_MAINNET_CIRCLES_CHANGED_EVENT, refresh);
   }, []);
-  useEffect(() => {
-    if (!activeCircle || !walletConnected || wallet.state !== "connected") return;
-    // Prefer the initiator's registered receive address when this Selene xpub
-    // owns it. Otherwise match the first registered member address it owns.
-    try {
-      const initiatorIndex = wallet.matchReceiveAddress(activeCircle.members[0], "mainnet", 250);
-      if (initiatorIndex !== null) {
-        setNotice("Matched this Selene wallet to its registered initiator address (receive index " + initiatorIndex + ").");
-        return;
-      }
-      const currentAddress = wallet.address("mainnet");
-      if (currentAddress && activeCircle.members.some((member) => sameMainnetAddress(member, currentAddress))) return;
-      for (const memberAddress of activeCircle.members.slice(1)) {
-        const matchedIndex = wallet.matchReceiveAddress(memberAddress, "mainnet", 250);
-        if (matchedIndex !== null) {
-          setNotice("Matched this Selene wallet to its registered member address (receive index " + matchedIndex + ").");
-          return;
-        }
-      }
-    } catch {
-      // An unrelated connected wallet remains an unregistered viewer.
-    }
-  }, [activeCircle?.stateCategory, walletConnected, wallet.state, wallet.receiveIndex]);
   const [circleSnapshot, setCircleSnapshot] = useState<Awaited<ReturnType<typeof readV2FeeCircle>> | null>(null);
   const [depositAmount, setDepositAmount] = useState("0.002");
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
@@ -175,6 +152,29 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
     inputCount: number;
     outputCount: number;
   } | null>(null);
+
+  useEffect(() => {
+    if (!activeCircle || !walletConnected || wallet.state !== "connected") return;
+    const currentAddress = wallet.address("mainnet");
+    if (currentAddress && activeCircle.members.some((member) => sameMainnetAddress(member, currentAddress))) return;
+    // If the displayed address is not registered, match the circle's member
+    // addresses against this wallet's receive xpub, initiator first.
+    try {
+      for (const memberAddress of activeCircle.members) {
+        const matchedIndex = wallet.matchReceiveAddress(memberAddress, "mainnet", 250);
+        if (matchedIndex !== null) {
+          setNotice(
+            "Matched this Selene wallet to registered Member " +
+            (activeCircle.members.findIndex((member) => sameMainnetAddress(member, memberAddress)) + 1) +
+            " (receive index " + matchedIndex + ").",
+          );
+          return;
+        }
+      }
+    } catch {
+      // An unrelated connected wallet remains an unregistered viewer.
+    }
+  }, [activeCircle?.stateCategory, walletConnected, wallet.state, wallet.receiveIndex]);
 
   const additionalMembers = useMemo(
     () => membersText.split(/\r?\n/).map((value) => value.trim()).filter(Boolean),
