@@ -1,71 +1,59 @@
-# Mainnet Architecture and Release Gates
+# Mainnet Architecture and On-Chain Discovery
 
-## Scope
+## Source of truth
 
-This is an independent implementation in `Afar88/ajochain-blaze`. The frozen V1 application is not a source dependency and is not modified by this project.
+Bitcoin Cash is the source of truth for circle identity, ordered membership, covenant state, CashToken state and member receipts, escrow outputs, contributions and confirmed payouts.
 
-## Mainnet-first architecture
+BLAZE does not use a central application database or circle registry. It does not require Neon, Postgres, Redis or a conventional backend to discover circles.
 
-1. **Presentation and review** — network identity, circle state, member obligations, plain-language action summary, fee/change breakdown, explicit approval, and pending/confirmed/failed/reorged status.
-2. **WizardConnect wallet adapter** — session lifecycle, wallet capability detection, Selene receive/change path verification, signature request, disconnect handling, and no secret-key custody.
-3. **Chain reader and reconciler** — independent mainnet identity, contract bytecode/version, UTXO and CashToken/NFT state, transaction history, confirmations, and reorg detection. Browser state is a cache only.
-4. **Circle domain model** — immutable member order, contribution rounds, per-member receipt credit, duplicate-payment prevention, payout recipient, finite completion state, and closure rules.
-5. **Transaction planner** — deterministic creation of BCH/CashToken transactions with exact inputs, prevouts, scripts, values, outputs, fee cap, change, token categories, NFT capabilities, and commitments.
-6. **Transaction verifier** — decode exact signed bytes and independently verify every input, prevout, signature policy, contract script, output, token, fee, and change against the approved plan.
-7. **Broadcast and confirmation adapter** — idempotent broadcast, unknown-result reconciliation, independent tx lookup, confirmation tracking, and reorg recovery.
-8. **Evidence and release policy** — fail-closed gates in `src/core/mainnet-flow.ts`; a user-selected network or connected wallet can never open a gate.
+## Architecture
 
-## Required mainnet user journey
+1. **Wallet and presentation** — Selene/WizardConnect connects the member's wallet. BLAZE derives the member's public receive/change addresses and keeps wallet authorization in the wallet.
+2. **On-chain discovery** — the browser reads the connected wallet's BCH transaction history through Electrum, downloads candidate raw transactions, checks transaction IDs, parses the discovery note, checks category/state/receipt/marker outputs and rebuilds the covenant script. The candidate is accepted only when the connected wallet is an on-chain member.
+3. **Chain providers** — Electrum endpoints provide transaction history, UTXOs, raw transactions and fee/tip data. They are transport and data sources, not a circle database or source of truth.
+4. **Circle state and accounting** — state NFTs, member receipt NFTs, escrow outputs and confirmed transactions determine the current circle state. Browser storage is only a local convenience cache.
+5. **Transaction planning and wallet signing** — the app builds the version-specific transaction; the member reviews and signs in Selene/WizardConnect.
+6. **Verification** — transaction bytes, previous outputs, token categories, NFT capabilities, commitments, sighashes and covenant execution are checked against the exact plan.
+7. **Broadcast and confirmation** — the dedicated BCH V3 Mainnet path uses its separate route and guard. A transaction is not shown as confirmed until its chain status is independently checked.
 
-Network selection → wallet verification → chain-backed circle discovery → member-ledger reconciliation → action calculation → human-readable transaction review → explicit wallet signature → exact signed-byte inspection → gated broadcast → independent confirmation → ledger reconciliation.
+## On-chain discovery implementation
 
-A stale wallet session, changed UTXO, duplicate payment, unknown contract version, member credit mismatch, unexpected token/NFT, fee/change deviation, signature mismatch, or uncertain broadcast result must stop the flow and require reconciliation.
+`src/core/v2-fee-discovery.ts` supports both `chipnet` and `mainnet` discovery. It:
 
-## Mainnet transaction invariants
+- derives the connected wallet's public addresses from wallet state supplied by the app;
+- queries each address's script history through the configured network provider;
+- ignores unconfirmed/malformed history entries;
+- downloads candidate raw transactions and checks that their bytes hash to the requested TXID;
+- decodes the discovery note and verifies the category-creating input;
+- checks the state NFT, ordered member receipt NFTs and ordered member marker outputs;
+- reconstructs the circle parameters and confirms that the outputs are locked by the expected covenant script;
+- returns only circles whose member addresses include the connected wallet.
 
-- The transaction targets verified BCH mainnet and the expected contract/script version.
-- Every input outpoint, prevout script and value is known and spendable.
-- BCH and CashToken amounts use integer base units.
-- Every token category, fungible amount, NFT capability and commitment matches the plan.
-- Outputs, recipient, fee and change match the approved review.
-- The signed transaction is semantically identical to the reviewed plan, apart from permitted unlocking data.
-- Wallet authorization is bound to the exact request; no post-approval mutation is possible.
-- Broadcast is idempotent and never blindly retried after an ambiguous response.
-- UI state changes to confirmed only after independent chain confirmation.
+The app does not send wallet xpubs, seeds or private keys to a registry. No server registration, invite index or database backfill is used to discover these circles.
 
-Any mismatch fails closed and prevents broadcast.
+## Optional API adapter
 
-## Circle accounting invariants
+The repository has optional API routes for chain reads and additional PUSD signed-transaction verification. These routes do not own circle records, do not register circles and are not required for browser-side on-chain discovery.
 
-- A member's payment is credited to that member, never inferred from pooled balance.
-- Excess credit remains with its owner.
-- Every registered member must satisfy their own round obligation before payout.
-- A contribution transaction is credited once, globally, and only to its verified member.
-- Circle totals reconcile to member receipts and confirmed on-chain activity.
-- Membership and payout order cannot rewrite historical records.
-- The current V2 prototype terminates after the final member payout; it does not loop into a new cycle.
+The Upstash Redis shared rate limiter was removed from the common request path. Absence of Redis credentials must not block chain discovery or read-only transaction verification.
 
-## Release gates
+The separate PUSD submission-ledger adapter is only a transaction-submission/idempotency mechanism for a future broadcast path. It is not a circle registry or a source of circle truth. PUSD Mainnet broadcast remains separately gated off.
 
-The executable guard starts with every gate closed. Evidence must be independently generated; no UI checkbox can authorize mainnet broadcast.
+## Separate transaction paths
 
-| Gate | Evidence required | Status |
-|---|---|---|
-| Network identity | Independent Mainnet genesis/tip verification and endpoint verification (browser quorum implementation added; operator independence and production monitoring still need evidence) | Partially implemented |
-| Consensus VM | Stable verifier matching the active BCH_2026_05 consensus rules | Blocked |
-| Wallet | WizardConnect/Selene device E2E, reconnect and signing tests | Blocked |
-| Circle state | Contract version, state NFT and all receipt UTXOs reconciled | Blocked |
-| Member accounting | Per-member credit, duplicate/replay and round invariants | Blocked |
-| Contract | CashScript compilation, adversarial tests and independent audit | Blocked |
-| Token policy | BCH and CashToken category/amount/NFT/change tests; PUSD scope defined | Blocked |
-| Transaction plan | Exact inputs, prevouts, outputs, fee and change reviewed | Blocked |
-| Signed transaction | Exact raw bytes decoded and compared with approved intent | Blocked |
-| Broadcast/confirmation | Idempotent relay and independent confirmation/reorg tests | Blocked |
+- **BCH V3 Mainnet:** has a dedicated create/pay/payout/cancel workspace and broadcast path. It is separate from the generic Classic BCH transaction guard.
+- **Classic BCH Mainnet:** remains controlled by the generic legacy BCH operations gate.
+- **PUSD V3 Mainnet:** has lifecycle planning and signed-byte verification. PUSD broadcast remains disabled until its own transaction path is completed.
 
-## Current implementation boundary
+Do not conflate these flags or disable the BCH V3 path by changing the Classic BCH gate.
 
-The app currently provides a local draft UI and a WizardConnect connection adapter. It does not yet discover authoritative mainnet circles, reconcile on-chain member receipts, or broadcast. The current signature helper checks transaction version, locktime, input outpoints/order/sequences, and serialized outputs; it does **not** yet independently verify all prevout scripts/values, fee/change policy, signature sighash rules, covenant semantics, or confirmation status. Do not describe it as a complete mainnet verifier.
+## Operational constraints
 
-## Deployment policy
+- Require the connected wallet's current address and correct network before preparing a transaction.
+- Validate raw previous transactions against their TXIDs and verify UTXO values/scripts/token data.
+- Treat Electrum quorum as provider agreement, not proof of independently operated providers or local SPV/chainwork validation.
+- Do not mark a transaction paid based on a wallet response alone; reconcile its transaction ID and confirmation state from BCH.
+- Preserve the version-specific covenant and accounting rules for existing circles.
+- Keep PUSD's broadcast gate separate from BCH V3 Mainnet.
 
-The public interface may be demonstrated in read-only mode. Real-value contract deployment, contributions, payouts and broadcast remain disabled until every applicable gate has verifiable evidence and independent review.
+This architecture makes the blockchain—not a central backend—the authority for circles and member payments.
