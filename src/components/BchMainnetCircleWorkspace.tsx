@@ -1,10 +1,12 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
+import { ArrowRight, Copy, LockKeyhole, ShieldCheck } from "lucide-react";
+import { encodeV2FeeCircleParams } from "../core/v2-fee-discovery";
 import { formatAssetAmount, parseAssetAmount } from "../core/assets";
 import { createBchMainnetCircleDraft, prepareBchMainnetCircleGenesisPreview } from "../core/bch-mainnet-circle";
 import { classicAddressToPkh } from "../core/classic-bch";
 import { BCH_MAINNET_CIRCLE_SEND_ENABLED } from "../core/bch-mainnet-guard";
 import {
+  decodeV2FeeCircle,
   planV2FeeDeposit,
   planV2FeePayout,
   planV2FeeCancel,
@@ -21,6 +23,29 @@ type Props = { network: NetworkId; walletConnected: boolean };
 type Draft = { name: string; contribution: string; members: string[]; maxFee: string; savedAt: number };
 const STORAGE_KEY = "ajochain-blaze:bch-mainnet-circle-drafts:v1";
 const ACTIVE_CIRCLE_KEY = "ajochain-blaze:bch-mainnet-circle-active:v1";
+const DEPLOYED_KEY = "ajochain-blaze:bch-mainnet-circles-deployed:v1";
+const INVITE_ROUTE = "#/bch-mainnet/";
+
+function readDeployedCircles(): V2FeeCircleParams[] {
+  try {
+    const raw: unknown = JSON.parse(window.localStorage.getItem(DEPLOYED_KEY) || "[]");
+    if (!Array.isArray(raw)) return [];
+    return raw.flatMap((entry) => {
+      try {
+        const circle = decodeV2FeeCircle(String(entry));
+        return circle.network === "mainnet" && circle.covenant === "fee-v3-auto-reserve-mainnet" ? [circle] : [];
+      } catch { return []; }
+    });
+  } catch {
+    return [];
+  }
+}
+
+function addDeployedCircle(circle: V2FeeCircleParams): V2FeeCircleParams[] {
+  const next = [circle, ...readDeployedCircles().filter((entry) => entry.stateCategory !== circle.stateCategory)].slice(0, 50);
+  window.localStorage.setItem(DEPLOYED_KEY, JSON.stringify(next.map(encodeV2FeeCircleParams)));
+  return next;
+}
 type StoredCircle = Omit<V2FeeCircleParams, "contribution" | "maxFee"> & {
   contribution: string;
   maxFee: string;
@@ -98,6 +123,8 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
   const [maxFee, setMaxFee] = useState("10000");
   const [drafts, setDrafts] = useState<Draft[]>(readDrafts);
   const [activeCircle, setActiveCircle] = useState<V2FeeCircleParams | null>(readActiveCircle);
+  const [deployedCircles, setDeployedCircles] = useState<V2FeeCircleParams[]>(readDeployedCircles);
+  const [inviteInput, setInviteInput] = useState("");
   const [circleSnapshot, setCircleSnapshot] = useState<Awaited<ReturnType<typeof readV2FeeCircle>> | null>(null);
   const [depositAmount, setDepositAmount] = useState("0.002");
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
@@ -377,6 +404,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
           : "The Mainnet server did not return a valid verification-only result. No transaction was broadcast.");
       }
       if (send) {
+        if (target === "genesis") setDeployedCircles(addDeployedCircle(signingPlan.circle));
         if (target === "genesis") setGenesisSigningPlan(null);
         else setActionSigningPlan(null);
         setNotice((verification.message || "Transaction sent.") + " Transaction: " + (verification.txid || "unknown"));
@@ -395,6 +423,49 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
       setError(errorMessage(cause));
     } finally {
       setLifecycleBusy(false);
+    }
+  };
+
+  const selectCircle = (circle: V2FeeCircleParams) => {
+    setActiveCircle(circle);
+    persistActiveCircle(circle);
+    setCircleSnapshot(null);
+    setActionPreview(null);
+    setActionSigningPlan(null);
+    setGenesisSigningPlan(null);
+    setPreview(null);
+    setError("");
+  };
+
+  const joinWithInvite = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError("");
+    setNotice("");
+    try {
+      const candidate = inviteInput.trim();
+      const match = candidate.match(/#\/bch-mainnet\/([A-Za-z0-9_-]+)/) ?? candidate.match(/^([A-Za-z0-9_-]{8,})$/);
+      if (!match) throw new Error("Paste a BCH Mainnet circle invite link.");
+      const circle = decodeV2FeeCircle(match[1]);
+      if (circle.network !== "mainnet" || circle.covenant !== "fee-v3-auto-reserve-mainnet") {
+        throw new Error("This invite is not for a BCH Mainnet V3 circle.");
+      }
+      setDeployedCircles(addDeployedCircle(circle));
+      selectCircle(circle);
+      setInviteInput("");
+      setNotice("Circle added from the invite. Read its on-chain status before paying.");
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  };
+
+  const copyInvite = async () => {
+    if (!activeCircle) return;
+    const link = window.location.origin + window.location.pathname + INVITE_ROUTE + encodeV2FeeCircleParams(activeCircle);
+    try {
+      await navigator.clipboard.writeText(link);
+      setNotice("Invite link copied. Members paste it under Join a circle with an invite link.");
+    } catch {
+      setNotice("Clipboard is unavailable. Invite link: " + link);
     }
   };
 
@@ -542,6 +613,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
             </button>
           </div>
           <p className="classic-empty">Local circle identity saved for tracking. A saved genesis preview is not proof that the on-chain circle has been created.</p>
+          <button type="button" className="secondary-button" onClick={() => void copyInvite()}><Copy size={14} /> Copy invite</button>
           {circleSnapshot && (
             <div className="pusd-mainnet-breakdown">
               <b>Verified circle state</b>
@@ -578,6 +650,25 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
 
       {error && <p className="classic-error" role="alert">{error}</p>}
       {notice && <p className="classic-notice" role="status">{notice}</p>}
+
+      <div className="pusd-mainnet-saved">
+        <div className="section-heading"><div><span className="section-kicker">ON-CHAIN</span><h3>Your BCH Mainnet circles</h3></div><small>{deployedCircles.length} saved</small></div>
+        <form className="classic-form" onSubmit={joinWithInvite}>
+          <label>Join a circle with an invite link<input value={inviteInput} onChange={(event) => setInviteInput(event.target.value)} placeholder="Paste circle invite link" /></label>
+          <button type="submit" className="secondary-button" disabled={!inviteInput.trim()}>Add circle</button>
+        </form>
+        {deployedCircles.length === 0 ? <p className="classic-empty">No sent or joined BCH Mainnet circles on this browser.</p> : (
+          <div className="classic-saved-list">
+            {deployedCircles.map((circle) => (
+              <button type="button" className="classic-saved-item" key={circle.stateCategory} onClick={() => selectCircle(circle)}>
+                <b>{circle.name}</b>
+                <span>{formatAssetAmount("BCH", circle.contribution)} BCH · {circle.members.length} members</span>
+                <small>{circle.stateCategory.slice(0, 12)}…{activeCircle?.stateCategory === circle.stateCategory ? " · open" : ""}</small>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="pusd-mainnet-saved">
         <div className="section-heading"><div><span className="section-kicker">LOCAL DRAFTS</span><h3>Saved BCH Mainnet circles</h3></div><small>{drafts.length} saved</small></div>

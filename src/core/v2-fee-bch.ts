@@ -75,7 +75,7 @@ export function decodeV2FeeCircle(encoded: string): V2FeeCircleParams {
   const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
   const value = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
   if (value.version !== 2 || typeof value.covenant !== "string" ||
-      !["fee-v1", "fee-v2-escrow", "fee-v3-auto-reserve", "fee-v1-guarded", "fee-v2-escrow-guarded", "fee-v3-auto-reserve-guarded", "fee-v3-auto-reserve-closing"].includes(value.covenant) ||
+      !["fee-v1", "fee-v2-escrow", "fee-v3-auto-reserve", "fee-v1-guarded", "fee-v2-escrow-guarded", "fee-v3-auto-reserve-guarded", "fee-v3-auto-reserve-closing", "fee-v3-auto-reserve-mainnet"].includes(value.covenant) ||
       typeof value.name !== "string" ||
       (value.network !== "chipnet" && value.network !== "mainnet") ||
       !Array.isArray(value.members) || !value.members.every((member) => typeof member === "string") ||
