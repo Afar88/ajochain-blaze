@@ -437,6 +437,13 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
         signingPlan.walletInputs,
         send ? signingPlan.prompt : signingPlan.prompt + " (local verification only; never broadcast)",
       );
+      if (signingPlan.operation === "genesis") {
+        const currentAddress = wallet.address("mainnet");
+        if (!wallet.isReceiveAddressConfirmed("mainnet") || !currentAddress ||
+            !sameMainnetAddress(currentAddress, signingPlan.circle.initiator)) {
+          throw new Error("Selene's confirmed Mainnet address or connection changed after signing. The signed bytes were discarded and were not submitted. Sync the address and prepare a fresh preview.");
+        }
+      }
       const walletAddress = wallet.address("mainnet");
       if (!walletAddress) throw new Error("The connected Selene wallet no longer exposes its Mainnet address.");
       const verificationResponse = await fetch(send ? "/api/bch/broadcast" : "/api/bch/verify", {
