@@ -983,11 +983,11 @@ test("BCH Mainnet payout verifier accepts the V3 final closing layout and its ex
 });
 
 test("BCH Mainnet circle broadcast is gated and refuses before any verification or relay", async () => {
-  assert.equal(BCH_MAINNET_CIRCLE_BROADCAST_ENABLED, false);
+  assert.equal(BCH_MAINNET_CIRCLE_BROADCAST_ENABLED, true);
   let called = false;
   const sessions = [{ call: async () => { called = true; } }, { call: async () => { called = true; } }];
   await assert.rejects(
-    broadcastBchMainnetCircleTransaction(sessions, { height: 1, hash: "00" }, { operation: "payout" }),
+    broadcastBchMainnetCircleTransaction(sessions, { height: 1, hash: "00" }, { operation: "payout" }, false),
     /disabled until the release is approved/,
   );
   await assert.rejects(

@@ -3,7 +3,7 @@ import { ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
 import { formatAssetAmount, parseAssetAmount } from "../core/assets";
 import { createBchMainnetCircleDraft, prepareBchMainnetCircleGenesisPreview } from "../core/bch-mainnet-circle";
 import { classicAddressToPkh } from "../core/classic-bch";
-import { BCH_MAINNET_OPERATIONS_ENABLED, assertBchTransactionBroadcastAllowed } from "../core/bch-mainnet-guard";
+import { BCH_MAINNET_CIRCLE_SEND_ENABLED } from "../core/bch-mainnet-guard";
 import {
   planV2FeeDeposit,
   planV2FeePayout,
@@ -335,7 +335,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
     setError("");
     setNotice("");
     try {
-      if (send) assertBchTransactionBroadcastAllowed("mainnet");
+      if (send && !BCH_MAINNET_CIRCLE_SEND_ENABLED) throw new Error("BCH Mainnet circle sending is locked.");
       const verified = await wallet.signAndVerify(
         signingPlan.wc,
         signingPlan.walletInputs,
@@ -451,7 +451,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
         inputCount: plan.transactionInputCount,
         outputCount: plan.transactionOutputCount,
       });
-      setNotice("BCH Mainnet genesis preview prepared. The transaction is unsigned and cannot be broadcast from this workspace.");
+      setNotice("BCH Mainnet genesis preview prepared. Use Sign and send on Mainnet to create the circle with real BCH.");
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -472,7 +472,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
 
       <div className="pusd-mainnet-safety">
         <div><ShieldCheck size={17} /><span><b>Mainnet covenant selected</b><small>Separate V3 circle version · not the older Chipnet circle</small></span></div>
-        <span className="asset-state neutral">Signing and broadcast locked</span>
+        <span className="asset-state neutral">Real BCH · unaudited contract</span>
       </div>
 
       {network !== "mainnet" && (
@@ -530,7 +530,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
           <div><span>Transaction shape</span><strong>{preview.inputCount} inputs · {preview.outputCount} outputs</strong></div>
           <small>No contract has been deployed. This preview is not a payment or deployment.</small>
           {genesisSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis")}>Verify Selene signature · no broadcast</button>}
-          {genesisSigningPlan && BCH_MAINNET_OPERATIONS_ENABLED && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis", true)}>Sign and send on Mainnet</button>}
+          {genesisSigningPlan && BCH_MAINNET_CIRCLE_SEND_ENABLED && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis", true)}>Sign and send on Mainnet</button>}
         </div>
       )}
       {activeCircle && (
@@ -568,9 +568,9 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
               <div><span>Estimated miner fee</span><strong>{actionPreview.feeEstimate} sats</strong></div>
               <div><span>Transaction size</span><strong>{actionPreview.size}</strong></div>
               <div><span>Wallet-owned inputs requiring signatures</span><strong>{actionPreview.walletInputCount}</strong></div>
-              <small>No transaction is broadcast by this workspace. Re-read state before each new review.</small>
+              <small>Sign and send uses real BCH. Re-read state before each new action; inputs must be confirmed.</small>
               {actionSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action")}>Verify Selene signature · no broadcast</button>}
-          {actionSigningPlan && BCH_MAINNET_OPERATIONS_ENABLED && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action", true)}>Sign and send on Mainnet</button>}
+          {actionSigningPlan && BCH_MAINNET_CIRCLE_SEND_ENABLED && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action", true)}>Sign and send on Mainnet</button>}
             </div>
           )}
         </div>
@@ -596,7 +596,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
 
       <div className="pusd-mainnet-build-status">
         <LockKeyhole size={16} />
-        <span><b>Mainnet transaction execution remains disabled</b><small>Selene signing can now be exercised in a local verification-only step: exact transaction intent, 0x61 sighashes and BCH 2026 VM are checked, then signed bytes are discarded. Broadcasting, durable idempotency and reorg reconciliation remain locked.</small></span>
+        <span><b>Real BCH on Mainnet</b><small>Every transaction is checked by the server (exact transaction intent, 0x61 sighashes, confirmed inputs, BCH 2026 VM) before it is sent once. The contract has not had an independent human audit. Start with small amounts.</small></span>
       </div>
     </section>
   );
