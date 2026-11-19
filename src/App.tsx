@@ -128,6 +128,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (walletView.state !== "connected") setAddressMatchMessage("");
+  }, [walletView.state]);
+
+  useEffect(() => {
     let active = true;
     let lastInviteHash = "";
     const restoreInviteFromHash = () => {
@@ -974,6 +978,11 @@ export default function App() {
                   } catch (cause) { setAddressMatchMessage(cause instanceof Error ? cause.message : "Could not match address."); }
                 }}>Sync Selene address</button>
                 {addressMatchMessage && <p className="wallet-match-message" role="status">{addressMatchMessage}</p>}
+                <small className="field-hint">
+                  {walletClient?.isReceiveAddressConfirmed(network)
+                    ? "Current Selene receive address confirmed for this wallet connection."
+                    : "This connection's current receive address is not confirmed yet."}
+                </small>
                 {(network === "chipnet" || network === "mainnet") && walletAddress && <>
                   <button className="secondary-button"
                     disabled={gatherBusy || (network === "mainnet" && !walletClient?.isReceiveAddressConfirmed("mainnet"))}
