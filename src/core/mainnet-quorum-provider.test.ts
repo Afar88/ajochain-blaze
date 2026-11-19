@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { encodeCashAddress } from "@bitauth/libauth";
 import type { ElectrumNetworkProvider, SpendableUtxo } from "cashscript";
 import {
   BCH_MAINNET_GENESIS_HASH,
@@ -138,6 +139,23 @@ describe("BCH Mainnet quorum provider", () => {
       [{ ...mainnetUtxo, satoshis: -1n }],
       [mainnetUtxo],
     ])).toThrow(/malformed Mainnet UTXO record/);
+  });
+
+  it("rejects an Electrum UTXO mapped to the wrong Mainnet wallet address", async () => {
+    const encoded = encodeCashAddress({
+      prefix: "bitcoincash",
+      type: "p2pkh",
+      payload: new Uint8Array(20).fill(0x33),
+    });
+    if (typeof encoded === "string") throw new Error(encoded);
+    const provider = new MainnetQuorumNetworkProvider([
+      { getUtxos: async () => [mainnetUtxo] } as unknown as ElectrumNetworkProvider,
+      { getUtxos: async () => [mainnetUtxo] } as unknown as ElectrumNetworkProvider,
+    ]);
+    // Isolate the address-to-script binding check from chain-header fixtures.
+    (provider as unknown as { verifyTip: () => Promise<void> }).verifyTip = async () => undefined;
+    await expect(provider.getUtxosForAddresses([encoded.address]))
+      .rejects.toThrow(/locking script does not match that address/i);
   });
 
   it("cannot broadcast through the read-only Mainnet quorum provider", async () => {
