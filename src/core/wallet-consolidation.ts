@@ -51,8 +51,9 @@ export async function planWalletConsolidation(
   addresses: readonly WalletAddressEntry[],
   destination: string,
   excludeOutpoints: ReadonlySet<string> = new Set(),
+  network: "chipnet" | "mainnet" = "chipnet",
 ): Promise<WalletConsolidationPlan> {
-  await assertChipnetProvider(provider);
+  await assertProviderNetwork(provider, network);
   const target = destination.trim().toLowerCase();
   if (!addresses.some((entry) => entry.address.toLowerCase() === target)) {
     throw new Error("The destination is not one of this wallet's addresses.");
