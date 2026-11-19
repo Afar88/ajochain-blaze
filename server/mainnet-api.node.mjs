@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { encodeCashAddress, hexToBin } from "@bitauth/libauth";
+import bchBroadcastHandler from "../api/bch/broadcast.mjs";
+import bchGatherHandler from "../api/bch/gather.mjs";
 import pusdBroadcastHandler from "../api/pusd/broadcast.mjs";
 import pusdCircleVerifyHandler from "../api/pusd/circle/verify.mjs";
 import pusdUnspentHandler from "../api/pusd/unspent.mjs";
@@ -289,10 +291,14 @@ test("Mainnet BCH gather accepts only one token-free output back to a wallet-der
   ), /wallet's derived P2PKH addresses/i);
 });
 
-test("Mainnet BCH gather has a separate explicit broadcast gate", async () => {
-  assert.equal(BCH_MAINNET_GATHER_BROADCAST_ENABLED, true);
+test("Mainnet BCH wallet gathering stays hard-locked without an override", async () => {
+  assert.equal(BCH_MAINNET_GATHER_BROADCAST_ENABLED, false);
   await assert.rejects(
-    broadcastBchMainnetGatherTransaction([], {}, {}, false),
+    broadcastBchMainnetGatherTransaction([], {}, {}),
+    /wallet gathering is disabled/i,
+  );
+  await assert.rejects(
+    broadcastBchMainnetGatherTransaction([], {}, {}, true),
     /wallet gathering is disabled/i,
   );
 });
@@ -1078,6 +1084,40 @@ test("nested PUSD unspent route reaches the shared API handler", async () => {
   assert.deepEqual(JSON.parse(response.body), { error: "Not found." });
 });
 
+test("nested BCH circle broadcast Vercel route remains hard-locked", async () => {
+  const original = process.env.ENABLE_BCH_MAINNET_CIRCLE_BROADCAST;
+  process.env.ENABLE_BCH_MAINNET_CIRCLE_BROADCAST = "true";
+  try {
+    const response = await invokeServerlessRoute(
+      bchBroadcastHandler,
+      mockApiRequest("POST", "/api/bch/broadcast"),
+    );
+    assert.equal(response.statusCode, 403);
+    assert.equal(BCH_MAINNET_CIRCLE_BROADCAST_ENABLED, false);
+    assert.match(JSON.parse(response.body).error, /BCH Mainnet circle broadcast is disabled/);
+  } finally {
+    if (original === undefined) delete process.env.ENABLE_BCH_MAINNET_CIRCLE_BROADCAST;
+    else process.env.ENABLE_BCH_MAINNET_CIRCLE_BROADCAST = original;
+  }
+});
+
+test("nested BCH wallet-gather Vercel route remains hard-locked", async () => {
+  const original = process.env.ENABLE_BCH_MAINNET_GATHER_BROADCAST;
+  process.env.ENABLE_BCH_MAINNET_GATHER_BROADCAST = "true";
+  try {
+    const response = await invokeServerlessRoute(
+      bchGatherHandler,
+      mockApiRequest("POST", "/api/bch/gather"),
+    );
+    assert.equal(response.statusCode, 403);
+    assert.equal(BCH_MAINNET_GATHER_BROADCAST_ENABLED, false);
+    assert.match(JSON.parse(response.body).error, /BCH Mainnet wallet gathering is disabled/);
+  } finally {
+    if (original === undefined) delete process.env.ENABLE_BCH_MAINNET_GATHER_BROADCAST;
+    else process.env.ENABLE_BCH_MAINNET_GATHER_BROADCAST = original;
+  }
+});
+
 test("nested PUSD broadcast Vercel route remains hard-locked despite env override", async () => {
   const original = process.env.ENABLE_MAINNET_BROADCAST;
   process.env.ENABLE_MAINNET_BROADCAST = "true";
@@ -1358,17 +1398,17 @@ test("PUSD Mainnet verifier requires initiator-only cancellation before first pa
   ), /initiator-only/);
 });
 
-test("BCH Mainnet circle broadcast is gated and refuses before any verification or relay", async () => {
-  assert.equal(BCH_MAINNET_CIRCLE_BROADCAST_ENABLED, true);
+test("BCH Mainnet circle broadcast stays hard-locked before verification or relay", async () => {
+  assert.equal(BCH_MAINNET_CIRCLE_BROADCAST_ENABLED, false);
   let called = false;
   const sessions = [{ call: async () => { called = true; } }, { call: async () => { called = true; } }];
   await assert.rejects(
-    broadcastBchMainnetCircleTransaction(sessions, { height: 1, hash: "00" }, { operation: "payout" }, false),
+    broadcastBchMainnetCircleTransaction(sessions, { height: 1, hash: "00" }, { operation: "payout" }),
     /disabled until the release is approved/,
   );
   await assert.rejects(
     broadcastBchMainnetCircleTransaction(sessions, { height: 1, hash: "00" }, { operation: "bogus" }, true),
-    /Unsupported BCH Mainnet circle verification operation/,
+    /disabled until the release is approved/,
   );
   assert.equal(called, false);
 });
