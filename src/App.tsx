@@ -22,6 +22,7 @@ const ActivityRecords = lazy(() => import("./components/ActivityRecords"));
 type Page = "overview" | "create-circle" | "circle-detail" | "assets" | "activity";
 type MenuCircle = { encoded: string; name: string; label: string };
 
+const BCH_MAINNET_CIRCLES_STORAGE_KEY = "ajochain-blaze:bch-mainnet-circles-deployed:v1";
 const V2_MENU_STORAGE_KEY = "ajochain-blaze:v2-fee-circles:v1";
 function readSavedV2MenuCircles(): MenuCircle[] {
   try {
@@ -440,7 +441,7 @@ export default function App() {
     setDiscoveryMessage("Checking Chipnet for circles that include this wallet…");
     void (async () => {
       try {
-        const [{ getClassicProvider }, { discoverV2FeeCircles, encodeV2FeeCircleParams }, { dedupeSavedV2FeeCircleRecords, getV2FeeCircleRecordIdentity }] = await Promise.all([
+        const [{ getClassicProvider, getMainnetDiscoveryProvider }, { discoverV2FeeCircles, encodeV2FeeCircleParams }, { dedupeSavedV2FeeCircleRecords, getV2FeeCircleRecordIdentity }] = await Promise.all([
           import("./core/classic-bch"),
           import("./core/v2-fee-discovery"),
           import("./core/v2-fee-circle-records"),
@@ -461,11 +462,34 @@ export default function App() {
           .filter((params) => !knownCategories.has(params.stateCategory.toLowerCase()))
           .map((params) => ({ encoded: encodeV2FeeCircleParams(params), savedAt: 0 }));
         const added = additions.length;
+        let mainnetAdded = 0;
+        try {
+          const mainnetAddresses = walletClient.listWalletAddresses("mainnet").map((entry) => entry.address);
+          const mainnetFound = await discoverV2FeeCircles(getMainnetDiscoveryProvider(), mainnetAddresses, undefined, "mainnet");
+          if (cancelled) return;
+          const savedMainnet: unknown = JSON.parse(window.localStorage.getItem(BCH_MAINNET_CIRCLES_STORAGE_KEY) || "[]");
+          const savedList = Array.isArray(savedMainnet) ? savedMainnet.filter((entry): entry is string => typeof entry === "string") : [];
+          const savedCategories = new Set(savedList.flatMap((encoded) => {
+            const identity = getV2FeeCircleRecordIdentity(encoded);
+            return identity ? [identity.stateCategory.toLowerCase()] : [];
+          }));
+          const mainnetAdditions = mainnetFound.filter((params) => !savedCategories.has(params.stateCategory.toLowerCase()));
+          mainnetAdded = mainnetAdditions.length;
+          if (mainnetAdded > 0) {
+            window.localStorage.setItem(BCH_MAINNET_CIRCLES_STORAGE_KEY, JSON.stringify([...savedList, ...mainnetAdditions.map(encodeV2FeeCircleParams)]));
+            window.dispatchEvent(new Event("ajochain:bch-mainnet-circles-changed"));
+          }
+        } catch {
+          // Mainnet discovery is best-effort; invite links still work.
+        }
+        if (mainnetAdded > 0) {
+          setDiscoveryMessage(`Found ${mainnetAdded} BCH Mainnet circle${mainnetAdded === 1 ? "" : "s"} for this wallet. Open Create a circle on Mainnet to see it.`);
+        }
         if (added > 0) {
           window.localStorage.setItem(V2_MENU_STORAGE_KEY, JSON.stringify([...existing, ...additions]));
           setMenuCircles(readSavedV2MenuCircles());
           setDiscoveryMessage(`Found ${added} circle${added === 1 ? "" : "s"} for this wallet on Chipnet. Open it from Your circles.`);
-        } else {
+        } else if (mainnetAdded === 0) {
           setDiscoveryMessage("Checked Chipnet. No new circles were found for this wallet. A just-created circle appears after its first confirmation (usually under 10 minutes); check again then.");
         }
       } catch {

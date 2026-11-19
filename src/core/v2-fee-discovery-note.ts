@@ -4,7 +4,7 @@ import { binToHex, cashAddressToLockingBytecode, hexToBin } from '@bitauth/libau
 export const V2_FEE_DISCOVERY_MARKER_SATS = 546n;
 const NOTE_TAG = '414a4f44'; // "AJOD"
 const NOTE_VERSION = 1;
-export const V2_FEE_DISCOVERY_COVENANT_CODES = { 'fee-v3-auto-reserve-closing': 1 } as const;
+export const V2_FEE_DISCOVERY_COVENANT_CODES = { 'fee-v3-auto-reserve-closing': 1, 'fee-v3-auto-reserve-mainnet': 2 } as const;
 export type V2FeeDiscoverableCovenant = keyof typeof V2_FEE_DISCOVERY_COVENANT_CODES;
 
 export type V2FeeDiscoveryNote = {

@@ -114,6 +114,20 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+let mainnetDiscoveryProvider: NetworkProvider | null = null;
+
+/**
+ * Single read-only Mainnet Electrum connection for wallet-history circle discovery.
+ * Discovered circles are re-derived from the covenant and re-read through the quorum before use.
+ */
+export function getMainnetDiscoveryProvider(): NetworkProvider {
+  if (!mainnetDiscoveryProvider) {
+    const [host, port] = servers.mainnet[0];
+    mainnetDiscoveryProvider = makeProvider("mainnet", host, port).provider;
+  }
+  return mainnetDiscoveryProvider;
+}
+
 /**
  * Mainnet uses a strict multi-server read quorum and can never broadcast.
  * Chipnet keeps the first-responsive test provider with a local override.

@@ -19,14 +19,23 @@ export interface WalletConsolidationPlan {
 /** Chipnet shares the testnet4 genesis block; Mainnet's genesis differs. */
 export const CHIPNET_GENESIS_BLOCK_HASH = "000000001dd410c49a788668ce26751718cc797474d3152a5fc073dd44fd9f7b";
 
+export const MAINNET_GENESIS_BLOCK_HASH = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f";
+
+/** Refuse to continue unless the Electrum endpoint proves, by its genesis block, which network it serves. */
+export async function assertProviderNetwork(provider: NetworkProvider, network: "chipnet" | "mainnet"): Promise<void> {
+  const label = network === "chipnet" ? "Chipnet" : "Mainnet";
+  const electrum = provider as NetworkProvider & { performRequest?: (name: string, ...args: number[]) => Promise<unknown> };
+  if (typeof electrum.performRequest !== "function") throw new Error("Cannot verify that the BCH server is on " + label + ".");
+  const header = await electrum.performRequest("blockchain.block.header", 0);
+  if (typeof header !== "string" || !/^[0-9a-f]{160}$/i.test(header)) throw new Error("Cannot verify that the BCH server is on " + label + ".");
+  const hash = binToHex(sha256.hash(sha256.hash(hexToBin(header))).reverse());
+  const expected = network === "chipnet" ? CHIPNET_GENESIS_BLOCK_HASH : MAINNET_GENESIS_BLOCK_HASH;
+  if (hash !== expected) throw new Error("The BCH server is not on " + label + ". Nothing was prepared.");
+}
+
 /** Refuse to plan unless the Electrum endpoint proves it serves Chipnet, so Mainnet coins can't be swept. */
 export async function assertChipnetProvider(provider: NetworkProvider): Promise<void> {
-  const electrum = provider as NetworkProvider & { performRequest?: (name: string, ...args: number[]) => Promise<unknown> };
-  if (typeof electrum.performRequest !== "function") throw new Error("Cannot verify that the BCH server is on Chipnet.");
-  const header = await electrum.performRequest("blockchain.block.header", 0);
-  if (typeof header !== "string" || !/^[0-9a-f]{160}$/i.test(header)) throw new Error("Cannot verify that the BCH server is on Chipnet.");
-  const hash = binToHex(sha256.hash(sha256.hash(hexToBin(header))).reverse());
-  if (hash !== CHIPNET_GENESIS_BLOCK_HASH) throw new Error("The BCH server is not on Chipnet. Nothing was prepared.");
+  await assertProviderNetwork(provider, "chipnet");
 }
 
 function feeFor(builder: TransactionBuilder): bigint {
