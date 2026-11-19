@@ -2765,11 +2765,10 @@ async function readJson(request) {
 }
 
 async function applyRateLimit(request) {
-  if (process.env.VERCEL === "1") {
-    const limiter = createUpstashMainnetRateLimiter();
-    await limiter.consume(request);
-    return;
-  }
+  // Chain reads and transaction preflight must not depend on a hosted Redis
+  // service. This per-instance limiter is best-effort abuse protection only;
+  // BCH consensus, wallet signatures and on-chain state remain authoritative.
+  // Value-spend submission has its own explicit idempotency/reconciliation path.
   const now = Date.now();
   const key = request.socket?.remoteAddress || "local";
   const entries = (rateLimit.get(key) ?? []).filter((timestamp) => now - timestamp < RATE_LIMIT_WINDOW_MS);
