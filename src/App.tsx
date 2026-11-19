@@ -266,6 +266,9 @@ export default function App() {
         detail: "Sync the Mainnet receive address currently shown in Selene under Wallet Details before checking this wallet's PUSD balance.",
         utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
       });
+      setPusdTransferPlan(null);
+      setPusdPlanError("");
+      setPusdSignatureMessage("");
       return () => { active = false; };
     }
     const address = walletClient.address("mainnet");
