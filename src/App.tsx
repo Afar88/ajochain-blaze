@@ -130,6 +130,14 @@ export default function App() {
     let lastInviteHash = "";
     const restoreInviteFromHash = () => {
       const hash = window.location.hash;
+      if (hash.startsWith("#/bch-mainnet/") && hash !== lastInviteHash) {
+        // BchMainnetCircleWorkspace validates and saves the invite from the hash when it mounts.
+        lastInviteHash = hash;
+        setNetwork("mainnet");
+        setPage("create-circle");
+        setMenuOpen(false);
+        return;
+      }
       if (!hash.startsWith("#/classic/") || hash === lastInviteHash) return;
       lastInviteHash = hash;
       // Keep the Classic contract and CashScript dependencies lazy for normal app visits.
@@ -709,7 +717,7 @@ export default function App() {
                 </button>
                 </>}
               </div>
-              <p className="circle-choice-disclaimer"><ShieldCheck size={15} /> {network === "mainnet" ? "Mainnet circles are unsigned previews. No BCH or PUSD Mainnet circle can accept deposits or send payouts yet." : "Chipnet is a testing network only. Use test BCH; it has no real-money value and cannot be used as Mainnet funds."}</p>
+              <p className="circle-choice-disclaimer"><ShieldCheck size={15} /> {network === "mainnet" ? "BCH Mainnet circles use real BCH and an unaudited contract; start small. PUSD Mainnet circles are still previews only." : "Chipnet is a testing network only. Use test BCH; it has no real-money value and cannot be used as Mainnet funds."}</p>
             </section>
             <Suspense fallback={<div className="workspace-loading"><span className="loading-orb" />Loading Mainnet asset workspaces…</div>}>
               {network === "mainnet" && <>

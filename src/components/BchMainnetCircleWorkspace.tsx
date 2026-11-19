@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { ArrowRight, Copy, LockKeyhole, ShieldCheck } from "lucide-react";
 import { encodeV2FeeCircleParams } from "../core/v2-fee-discovery";
 import { formatAssetAmount, parseAssetAmount } from "../core/assets";
@@ -404,10 +404,17 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
           : "The Mainnet server did not return a valid verification-only result. No transaction was broadcast.");
       }
       if (send) {
-        if (target === "genesis") setDeployedCircles(addDeployedCircle(signingPlan.circle));
         if (target === "genesis") setGenesisSigningPlan(null);
         else setActionSigningPlan(null);
-        setNotice((verification.message || "Transaction sent.") + " Transaction: " + (verification.txid || "unknown"));
+        const sent = (verification.message || "Transaction sent.") + " Transaction: " + (verification.txid || "unknown");
+        setNotice(sent);
+        if (target === "genesis") {
+          try {
+            setDeployedCircles(addDeployedCircle(signingPlan.circle));
+          } catch {
+            setNotice(sent + ". This browser could not add it to the saved circle list; copy the invite now to keep it.");
+          }
+        }
         return;
       }
       const inputCount = verification.inputCount ?? verified.decoded.inputs.length;
@@ -437,12 +444,11 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
     setError("");
   };
 
-  const joinWithInvite = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const importInvite = (text: string) => {
     setError("");
     setNotice("");
     try {
-      const candidate = inviteInput.trim();
+      const candidate = text.trim();
       const match = candidate.match(/#\/bch-mainnet\/([A-Za-z0-9_-]+)/) ?? candidate.match(/^([A-Za-z0-9_-]{8,})$/);
       if (!match) throw new Error("Paste a BCH Mainnet circle invite link.");
       const circle = decodeV2FeeCircle(match[1]);
@@ -457,6 +463,20 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
       setError(errorMessage(cause));
     }
   };
+
+  const joinWithInvite = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    importInvite(inviteInput);
+  };
+
+  useEffect(() => {
+    const fromHash = () => {
+      if (window.location.hash.startsWith(INVITE_ROUTE)) importInvite(window.location.hash);
+    };
+    fromHash();
+    window.addEventListener("hashchange", fromHash);
+    return () => window.removeEventListener("hashchange", fromHash);
+  }, []);
 
   const copyInvite = async () => {
     if (!activeCircle) return;
