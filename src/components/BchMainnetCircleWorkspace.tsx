@@ -3,6 +3,7 @@ import { ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
 import { formatAssetAmount, parseAssetAmount } from "../core/assets";
 import { createBchMainnetCircleDraft, prepareBchMainnetCircleGenesisPreview } from "../core/bch-mainnet-circle";
 import { classicAddressToPkh } from "../core/classic-bch";
+import { BCH_MAINNET_OPERATIONS_ENABLED, assertBchTransactionBroadcastAllowed } from "../core/bch-mainnet-guard";
 import {
   planV2FeeDeposit,
   planV2FeePayout,
@@ -317,7 +318,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
     }
   };
 
-  const verifyMainnetSignature = async (target: "genesis" | "action") => {
+  const verifyMainnetSignature = async (target: "genesis" | "action", send = false) => {
     const signingPlan = target === "genesis" ? genesisSigningPlan : actionSigningPlan;
     if (!signingPlan) return;
     if (network !== "mainnet" || !walletConnected || wallet.state !== "connected") {
@@ -334,14 +335,15 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
     setError("");
     setNotice("");
     try {
+      if (send) assertBchTransactionBroadcastAllowed("mainnet");
       const verified = await wallet.signAndVerify(
         signingPlan.wc,
         signingPlan.walletInputs,
-        signingPlan.prompt + " (local verification only; never broadcast)",
+        send ? signingPlan.prompt : signingPlan.prompt + " (local verification only; never broadcast)",
       );
       const walletAddress = wallet.address("mainnet");
       if (!walletAddress) throw new Error("The connected Selene wallet no longer exposes its Mainnet address.");
-      const verificationResponse = await fetch("/api/bch/verify", {
+      const verificationResponse = await fetch(send ? "/api/bch/broadcast" : "/api/bch/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -369,8 +371,16 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
       if (!verificationResponse.ok) {
         throw new Error(verification?.error || "Independent BCH Mainnet server verification failed.");
       }
-      if (!verification || verification.verified !== true || verification.broadcast !== false) {
-        throw new Error("The Mainnet server did not return a valid verification-only result. No transaction was broadcast.");
+      if (!verification || verification.verified !== true || verification.broadcast !== send) {
+        throw new Error(send
+          ? "The Mainnet server did not confirm the relay. Check the transaction ID before retrying."
+          : "The Mainnet server did not return a valid verification-only result. No transaction was broadcast.");
+      }
+      if (send) {
+        if (target === "genesis") setGenesisSigningPlan(null);
+        else setActionSigningPlan(null);
+        setNotice((verification.message || "Transaction sent.") + " Transaction: " + (verification.txid || "unknown"));
+        return;
       }
       const inputCount = verification.inputCount ?? verified.decoded.inputs.length;
       const outputCount = verification.outputCount ?? verified.decoded.outputs.length;
@@ -520,6 +530,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
           <div><span>Transaction shape</span><strong>{preview.inputCount} inputs · {preview.outputCount} outputs</strong></div>
           <small>No contract has been deployed. This preview is not a payment or deployment.</small>
           {genesisSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis")}>Verify Selene signature · no broadcast</button>}
+          {genesisSigningPlan && BCH_MAINNET_OPERATIONS_ENABLED && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis", true)}>Sign and send on Mainnet</button>}
         </div>
       )}
       {activeCircle && (
@@ -559,6 +570,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
               <div><span>Wallet-owned inputs requiring signatures</span><strong>{actionPreview.walletInputCount}</strong></div>
               <small>No transaction is broadcast by this workspace. Re-read state before each new review.</small>
               {actionSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action")}>Verify Selene signature · no broadcast</button>}
+          {actionSigningPlan && BCH_MAINNET_OPERATIONS_ENABLED && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action", true)}>Sign and send on Mainnet</button>}
             </div>
           )}
         </div>
