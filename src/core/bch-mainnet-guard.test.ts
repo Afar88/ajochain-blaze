@@ -12,8 +12,8 @@ describe("BCH Mainnet transaction gate", () => {
       .toThrow(/BCH Mainnet broadcasting is still locked/);
   });
 
-  it("enables only the V3 Mainnet circle send path", () => {
-    expect(BCH_MAINNET_CIRCLE_SEND_ENABLED).toBe(true);
+  it("keeps the V3 Mainnet circle send path locked pending release approval", () => {
+    expect(BCH_MAINNET_CIRCLE_SEND_ENABLED).toBe(false);
   });
 
   it("continues to allow Chipnet test transactions", () => {
