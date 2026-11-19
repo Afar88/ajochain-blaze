@@ -6,6 +6,7 @@ import { createBchMainnetCircleDraft, prepareBchMainnetCircleGenesisPreview } fr
 import { classicAddressToPkh } from "../core/classic-bch";
 import { BCH_MAINNET_CIRCLE_SEND_ENABLED } from "../core/bch-mainnet-guard";
 import {
+  buildV2FeeMemberOrder,
   decodeV2FeeCircle,
   planV2FeeDeposit,
   planV2FeePayout,
@@ -20,7 +21,7 @@ import type { NetworkId } from "../core/network-config";
 
 type Props = { network: NetworkId; walletConnected: boolean };
 
-type Draft = { name: string; contribution: string; members: string[]; maxFee: string; savedAt: number };
+type Draft = { name: string; contribution: string; members: string[]; initiator?: string; maxFee: string; savedAt: number };
 const STORAGE_KEY = "ajochain-blaze:bch-mainnet-circle-drafts:v1";
 const ACTIVE_CIRCLE_KEY = "ajochain-blaze:bch-mainnet-circle-active:v1";
 const DEPLOYED_KEY = "ajochain-blaze:bch-mainnet-circles-deployed:v1";
@@ -152,10 +153,20 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
     outputCount: number;
   } | null>(null);
 
-  const members = useMemo(
+  const additionalMembers = useMemo(
     () => membersText.split(/\r?\n/).map((value) => value.trim()).filter(Boolean),
     [membersText],
   );
+  const initiatorAddress = walletConnected && wallet.state === "connected" ? wallet.address("mainnet") : null;
+  const memberOrder = useMemo(() => {
+    if (!initiatorAddress) return { members: [] as string[], error: "Connect Selene to register your address as Member 1." };
+    try {
+      return { members: buildV2FeeMemberOrder(initiatorAddress, additionalMembers, "mainnet"), error: "" };
+    } catch (cause) {
+      return { members: [initiatorAddress, ...additionalMembers], error: errorMessage(cause) };
+    }
+  }, [initiatorAddress, additionalMembers]);
+  const members = memberOrder.members;
   const economics = useMemo(() => {
     try {
       if (members.length < 2 || members.length > 5) return null;
