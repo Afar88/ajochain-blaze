@@ -155,6 +155,8 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
 
   useEffect(() => {
     if (!activeCircle || !walletConnected || wallet.state !== "connected") return;
+    // Do not override an address the user explicitly synced from Selene's current Receive screen.
+    if (wallet.isReceiveAddressConfirmed("mainnet")) return;
     const currentAddress = wallet.address("mainnet");
     if (currentAddress && activeCircle.members.some((member) => sameMainnetAddress(member, currentAddress))) return;
     // If the displayed address is not registered, match the circle's member
