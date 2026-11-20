@@ -530,10 +530,7 @@ export default function V2FeeBchWorkspace({
         </div>
         <span className="classic-network">Chipnet · test coins</span>
       </div>
-      <div className="safety-note-inline">
-        <ShieldCheck size={17} />
-        <span>Experimental and not audited. Chipnet test coins only. When a member collects (except on the final turn), one next contribution is held aside for their following round. They make later contributions as usual. This circle cannot send payments on Mainnet.</span>
-      </div>
+      <p className="circle-education-copy">For each non-final payout, one next contribution is held for the recipient's following round. Members make later contributions as usual.</p>
 
       {view === "create" && (<>
       <div className="circle-workspace-grid">
