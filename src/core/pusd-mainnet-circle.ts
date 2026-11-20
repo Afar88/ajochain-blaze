@@ -6,7 +6,7 @@ import {
   type NetworkProvider,
   type SpendableUtxo,
 } from "cashscript";
-import { binToHex, decodeCashAddress, getDustThreshold, hexToBin } from "@bitauth/libauth";
+import { binToHex, decodeCashAddress, decodeTransaction, getDustThreshold, hexToBin, sha256, type Transaction } from "@bitauth/libauth";
 import circleArtifactJson from "../../contracts/AjoCirclePUSDV3Mainnet.json" with { type: "json" };
 import escrowArtifactJson from "../../contracts/AjoPUSDMemberEscrowV3.json" with { type: "json" };
 import { CASH_TOKEN_MAX_AMOUNT, PUSD_ASSET } from "./assets";
@@ -372,12 +372,149 @@ export async function planPusdMainnetCircleGenesis(
   };
 }
 
-/** No state NFT is unspent: the circle closed on its final payout, or was never created. */
+/** No state NFT is unspent: the circle closed on its final payout, was cancelled, or was never created. */
 export class PusdCircleNoStateError extends Error {
   constructor() {
-    super("No PUSD circle state is unspent at this contract. The circle has closed after its final payout or has not been created yet.");
+    super("No PUSD circle state is unspent at this contract. The circle may have closed or may not have been created yet.");
     this.name = "PusdCircleNoStateError";
   }
+}
+
+export type PusdCircleClosedAs = "completed" | "cancelled";
+
+export class PusdCircleClosedError extends PusdCircleNoStateError {
+  constructor(
+    public readonly closedAs: PusdCircleClosedAs,
+    public readonly completedAt: number | null,
+  ) {
+    super();
+    this.name = "PusdCircleClosedError";
+  }
+}
+
+function p2pkhLockingBytecodeHex(pkh: Uint8Array) {
+  return "76a914" + toHex(pkh) + "88ac";
+}
+
+function isPusdTransactionOutput(output: Transaction["outputs"][number]) {
+  const category = output.token?.category as unknown;
+  if (category instanceof Uint8Array) {
+    const encoded = toHex(category);
+    const reversed = category.slice().reverse();
+    return encoded === PUSD_ASSET.categoryId.toLowerCase() ||
+      toHex(reversed) === PUSD_ASSET.categoryId.toLowerCase();
+  }
+  return typeof category === "string" &&
+    category.toLowerCase() === PUSD_ASSET.categoryId.toLowerCase();
+}
+
+/** Recognise the exact output shapes built by the existing PUSD payout and cancel paths. */
+export function classifyPusdMainnetClosingTransaction(
+  params: PusdMainnetCircleParams,
+  transaction: Transaction,
+): PusdCircleClosedAs | null {
+  const memberCount = params.members.length;
+  if (transaction.inputs.length !== memberCount * 2 + 2) return null;
+
+  const memberScripts = params.members.map((member) =>
+    p2pkhLockingBytecodeHex(tokenAwareP2pkh(member)),
+  );
+  const initiatorScript = p2pkhLockingBytecodeHex(classicAddressToPkh(params.initiator, "mainnet"));
+  const treasuryScript = p2pkhLockingBytecodeHex(getMainnetProjectTreasuryPkh());
+  const outputs = transaction.outputs;
+  const scripts = outputs.map((output) => binToHex(output.lockingBytecode));
+  const onlyPusdToken = outputs.every((output) =>
+    !output.token || isPusdTransactionOutput(output),
+  );
+
+  // Final payout: PUSD treasury fee and recipient payout, all member BCH
+  // carriers returned, the initiator's state carrier returned, then sponsor change.
+  if (outputs.length === memberCount + 4 && onlyPusdToken &&
+      scripts[0] === treasuryScript && isPusdTransactionOutput(outputs[0]) &&
+      scripts[1] === memberScripts[memberCount - 1] && isPusdTransactionOutput(outputs[1]) &&
+      memberScripts.every((script, index) =>
+        scripts[index + 2] === script && outputs[index + 2].token === undefined,
+      ) &&
+      scripts[memberCount + 2] === initiatorScript &&
+      outputs[memberCount + 2].token === undefined &&
+      outputs[memberCount + 3].token === undefined) {
+    return "completed";
+  }
+
+  // Pre-payout cancellation: one refund output per member plus the initiator's
+  // fee-change output. A member output carries PUSD only when their escrow had credit.
+  if (outputs.length === memberCount + 1 && onlyPusdToken &&
+      memberScripts.every((script, index) => scripts[index] === script) &&
+      scripts[memberCount] === initiatorScript &&
+      outputs[memberCount].token === undefined) {
+    return "cancelled";
+  }
+  return null;
+}
+
+async function readPusdClosingBlockTime(
+  electrum: NetworkProvider & { performRequest: (name: string, ...args: (string | number)[]) => Promise<unknown> },
+  height: number,
+): Promise<number | null> {
+  if (!Number.isSafeInteger(height) || height <= 0) return null;
+  try {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const response = await Promise.race([
+      electrum.performRequest("blockchain.block.header", height),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error("Block header lookup timed out.")), 2_000);
+      }),
+    ]).finally(() => {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    });
+    const header = typeof response === "string"
+      ? response
+      : response && typeof response === "object" && "hex" in response &&
+          typeof (response as { hex?: unknown }).hex === "string"
+        ? (response as { hex: string }).hex
+        : "";
+    if (!/^[0-9a-f]{160,}$/i.test(header)) return null;
+    const timestampHex = header.slice(136, 144);
+    const seconds = Number.parseInt(timestampHex.match(/../g)!.reverse().join(""), 16);
+    return Number.isSafeInteger(seconds) && seconds > 0 ? seconds * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+async function findPusdMainnetClosingTransaction(
+  provider: NetworkProvider,
+  contract: Contract,
+  params: PusdMainnetCircleParams,
+): Promise<{ closedAs: PusdCircleClosedAs; completedAt: number | null } | null> {
+  const electrum = provider as NetworkProvider & {
+    performRequest?: (name: string, ...args: (string | number)[]) => Promise<unknown>;
+  };
+  if (typeof electrum.performRequest !== "function") return null;
+  const lockingBytecode = typeof contract.lockingBytecode === "string"
+    ? hexToBin(contract.lockingBytecode)
+    : contract.lockingBytecode;
+  const scriptHash = binToHex(sha256.hash(lockingBytecode).reverse());
+  const history = await electrum.performRequest("blockchain.scripthash.get_history", scriptHash);
+  if (!Array.isArray(history)) return null;
+  for (const entry of [...history].reverse()) {
+    const record = entry as { tx_hash?: unknown; height?: unknown };
+    if (typeof record?.tx_hash !== "string") continue;
+    const raw = await provider.getRawTransaction(record.tx_hash);
+    const transaction = decodeTransaction(hexToBin(raw));
+    if (typeof transaction === "string") continue;
+    const closedAs = classifyPusdMainnetClosingTransaction(params, transaction);
+    if (closedAs) {
+      const completedAt = closedAs === "completed" && typeof record.height === "number"
+        ? await readPusdClosingBlockTime(
+            electrum as NetworkProvider & { performRequest: (name: string, ...args: (string | number)[]) => Promise<unknown> },
+            record.height,
+          )
+        : null;
+      return { closedAs, completedAt };
+    }
+  }
+  return null;
 }
 
 export async function readPusdMainnetCircle(params: PusdMainnetCircleParams): Promise<PusdMainnetCircleSnapshot> {
@@ -387,6 +524,8 @@ export async function readPusdMainnetCircle(params: PusdMainnetCircleParams): Pr
   const utxos = await contract.getUtxos();
   const categoryUtxos = utxos.filter((utxo) => utxo.token?.category === params.stateCategory);
   if (categoryUtxos.length === 0) {
+    const closing = await findPusdMainnetClosingTransaction(provider, contract, params);
+    if (closing) throw new PusdCircleClosedError(closing.closedAs, closing.completedAt);
     throw new PusdCircleNoStateError();
   }
   if (categoryUtxos.length !== params.members.length + 1) {
