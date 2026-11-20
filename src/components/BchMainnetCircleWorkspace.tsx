@@ -499,8 +499,6 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
         }
         return;
       }
-      const inputCount = verification.inputCount ?? verified.decoded.inputs.length;
-      const outputCount = verification.outputCount ?? verified.decoded.outputs.length;
       if (target === "genesis") setGenesisSigningPlan(null);
       else setActionSigningPlan(null);
       setNotice(

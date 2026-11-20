@@ -385,7 +385,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
         }
         return;
       }
-      const serverVerified = await verifyPusdMainnetCircleSignedTransaction(circleRequest);
+      await verifyPusdMainnetCircleSignedTransaction(circleRequest);
       if (target === "genesis") setGenesisSigningPlan(null);
       else setActionSigningPlan(null);
       setNotice(
