@@ -736,7 +736,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
 
       <div className="pusd-mainnet-build-status">
         <LockKeyhole size={16} />
-        <span><b>PUSD Mainnet circles are live</b><small>Members approve each payment in Selene. The app checks the circle details before sending. Plain PUSD wallet transfers remain locked.</small>
+        <span><b>PUSD Mainnet circle rules</b><small>Members approve each payment in Selene. The app checks the circle details before sending. Plain PUSD wallet transfers remain locked.</small>
           <details className="technical-details">
             <summary>Technical details</summary>
             <p>Circle actions are checked against provider-confirmed previous outputs, the exact circle and escrow artifacts, wallet signature hashes and BCH 2026 VM rules. The durable input ledger prevents a transaction from being relayed twice.</p>
