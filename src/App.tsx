@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   Activity, ArrowRight, Check, ChevronDown, Home,
   Monitor, MoreVertical, Moon, ShieldCheck, Sun, Users, Wallet, X,
@@ -190,6 +190,8 @@ const formatBchSatoshis = (satoshis: bigint) => {
 const gatherExplorerUrl = (network: NetworkId, txid: string) =>
   "https://blockexplorer.cash/" + network + "/tx/" + txid;
 
+const CREATE_CIRCLE_FORM_HISTORY_KEY = "__ajoCreateCircleFormEntry";
+
 const pageLabels: Record<Page, string> = {
   overview: "Overview",
   "create-circle": "Create a circle",
@@ -201,6 +203,9 @@ const pageLabels: Record<Page, string> = {
 export default function App() {
   const [network, setNetwork] = useState<NetworkId>(() => getDefaultNetwork(import.meta.env.PROD));
   const [page, setPage] = useState<Page>("overview");
+  const [createCircleView, setCreateCircleView] = useState<"choose" | "form">("choose");
+  const [createCircleWorkspaceBusy, setCreateCircleWorkspaceBusy] = useState(false);
+  const createCircleFormHistoryEntryRef = useRef(false);
   const [circleWorkspace, setCircleWorkspace] = useState<CircleWorkspaceId>(() => getDefaultCircleWorkspace(getDefaultNetwork(import.meta.env.PROD)));
   const [classicInviteRevision, setClassicInviteRevision] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -286,6 +291,89 @@ export default function App() {
     if (walletView.state !== "connected") setAddressMatchMessage("");
   }, [walletView.state]);
 
+  const clearCreateCircleHistoryEntry = () => {
+    const currentState = window.history.state;
+    if (currentState && typeof currentState === "object" &&
+        CREATE_CIRCLE_FORM_HISTORY_KEY in currentState) {
+      const nextState = { ...(currentState as Record<string, unknown>) };
+      delete nextState[CREATE_CIRCLE_FORM_HISTORY_KEY];
+      window.history.replaceState(nextState, "", window.location.href);
+    }
+    createCircleFormHistoryEntryRef.current = false;
+  };
+
+  const navigate = (next: Page) => {
+    clearCreateCircleHistoryEntry();
+    if (next === "create-circle") {
+      setCreateCircleView("choose");
+      setCreateCircleWorkspaceBusy(false);
+    }
+    setPage(next);
+    setMenuOpen(false);
+  };
+
+  const enterCreateCircleForm = (workspace: CircleWorkspaceId) => {
+    setCircleWorkspace(workspace);
+    if (!createCircleFormHistoryEntryRef.current) {
+      const currentState = window.history.state && typeof window.history.state === "object"
+        ? window.history.state as Record<string, unknown>
+        : {};
+      window.history.pushState(
+        { ...currentState, [CREATE_CIRCLE_FORM_HISTORY_KEY]: true },
+        "",
+        window.location.href,
+      );
+      createCircleFormHistoryEntryRef.current = true;
+    }
+    setCreateCircleView("form");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const leaveCreateCircleForm = () => {
+    if (createCircleWorkspaceBusy && !window.confirm(
+      "A circle action is still processing. Leaving now could interrupt a wallet signing or broadcast step. Leave this form anyway?",
+    )) return;
+    clearCreateCircleHistoryEntry();
+    setCreateCircleView("choose");
+    setCreateCircleWorkspaceBusy(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    const handleCreateCirclePopState = (event: PopStateEvent) => {
+      const state = event.state && typeof event.state === "object"
+        ? event.state as Record<string, unknown>
+        : {};
+      const returningToForm = state[CREATE_CIRCLE_FORM_HISTORY_KEY] === true;
+      createCircleFormHistoryEntryRef.current = returningToForm;
+      if (page !== "create-circle") return;
+      if (returningToForm) {
+        setCreateCircleView("form");
+        return;
+      }
+      if (createCircleView !== "form") return;
+      if (createCircleWorkspaceBusy && !window.confirm(
+        "A circle action is still processing. Leaving now could interrupt a wallet signing or broadcast step. Leave this form anyway?",
+      )) {
+        const currentState = window.history.state && typeof window.history.state === "object"
+          ? window.history.state as Record<string, unknown>
+          : {};
+        window.history.pushState(
+          { ...currentState, [CREATE_CIRCLE_FORM_HISTORY_KEY]: true },
+          "",
+          window.location.href,
+        );
+        createCircleFormHistoryEntryRef.current = true;
+        return;
+      }
+      setCreateCircleView("choose");
+      setCreateCircleWorkspaceBusy(false);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+    window.addEventListener("popstate", handleCreateCirclePopState);
+    return () => window.removeEventListener("popstate", handleCreateCirclePopState);
+  }, [page, createCircleView, createCircleWorkspaceBusy]);
+
   useEffect(() => {
     let active = true;
     let lastInviteHash = "";
@@ -296,6 +384,7 @@ export default function App() {
         lastInviteHash = hash;
         setNetwork("mainnet");
         setPage("create-circle");
+        enterCreateCircleForm("bch-mainnet");
         setMenuOpen(false);
         return;
       }
@@ -311,8 +400,8 @@ export default function App() {
           saveClassicCircle(window.localStorage, params);
           setClassicInviteRevision((revision) => revision + 1);
           setNetwork(params.network);
-          setCircleWorkspace("bch-classic");
           setPage("create-circle");
+          enterCreateCircleForm("bch-classic");
           setMenuOpen(false);
         } catch {
           // Do not silently switch workspaces for a malformed or unsupported link.
@@ -612,11 +701,6 @@ export default function App() {
       .catch((cause: unknown) => setWalletView((view) => ({
         ...view, error: cause instanceof Error ? cause.message : "Wallet module could not be loaded.",
       })));
-  };
-
-  const navigate = (next: Page) => {
-    setPage(next);
-    setMenuOpen(false);
   };
 
   useEffect(() => {
@@ -1047,74 +1131,78 @@ export default function App() {
         )}
 
         {page === "create-circle" && (
-          <section className="page-section">
-            <div className="page-intro">
-              <span className="section-kicker">YOUR SAVINGS GROUPS</span>
-              <h1>Create a circle</h1>
-              <p>Choose what your group wants to save in, set the amount and members, then review the circle setup before taking action.</p>
-            </div>
-            <section className="circle-choice-guide" aria-label="Choose a circle type">
-              <div className="circle-choice-heading">
-                <div><span className="section-kicker">CHOOSE YOUR CIRCLE</span><h2>What kind of circle do you want?</h2>
-                  <p>{network === "mainnet" ? "Choose BCH or PUSD. These are separate circles with their own member lists and payments." : "Try the circle options on Chipnet first. Test coins have no real-money value."}</p></div>
-              </div>
-              <div className="circle-choice-grid">
-                {network === "mainnet" && <>
-                <button type="button" className={circleWorkspace === "bch-mainnet" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-mainnet"} onClick={() => { setCircleWorkspace("bch-mainnet"); document.getElementById("bch-mainnet-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>
-                  <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status">Mainnet</span></span>
-                  <b>BCH savings circle</b>
-                  <span>For groups saving in Bitcoin Cash. Tracks member contributions and reserves the next installment for each non-final payout.</span>
-                  <small>Best when your group wants native BCH and individual member accounting.</small>
-                </button>
-                <button type="button" className={circleWorkspace === "pusd-mainnet" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "pusd-mainnet"} onClick={() => { setCircleWorkspace("pusd-mainnet"); document.getElementById("pusd-mainnet-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>
-                  <span className="circle-choice-top"><span className="circle-choice-symbol pusd">PUSD</span><span className="circle-choice-status">Mainnet</span></span>
-                  <b>PUSD savings circle</b>
-                  <span>For groups that prefer ParyonUSD instead of BCH. Contributions and payouts are denominated in PUSD, with BCH needed separately for network fees.</span>
-                  <small>Choose this if your group wants a stable-value token rather than BCH price exposure.</small>
-                </button>
-                </>}
-                {network === "chipnet" && <>
-                <button type="button" className={circleWorkspace === "bch-fair-round" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-fair-round"} onClick={() => setCircleWorkspace("bch-fair-round")}>
-                  <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status testing">Chipnet · test</span></span>
-                  <b>BCH savings circle</b>
-                  <span>Experimental member-credit model. Members fund the current round; a non-final recipient carries one next contribution forward in their own receipt.</span>
-                  <small>Try this option for the newer round-by-round savings experience.</small>
-                </button>
-                <button type="button" className={circleWorkspace === "bch-classic" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-classic"} onClick={() => setCircleWorkspace("bch-classic")}>
-                  <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status testing">Chipnet · legacy</span></span>
-                  <b>Classic BCH savings circle</b>
-                  <span>A simple rotating savings group with a shared BCH pot and a set order for payouts.</span>
-                  <small>Use this option for older circles or simple compatibility testing.</small>
-                </button>
-                </>}
-              </div>
-              <p className="circle-choice-disclaimer"><ShieldCheck size={15} /> {network === "mainnet" ? "BCH and PUSD Mainnet circles use real funds and unaudited contracts; start small." : "Chipnet is a testing network only. Use test BCH; it has no real-money value and cannot be used as Mainnet funds."}</p>
-            </section>
-            <Suspense fallback={<div className="workspace-loading"><span className="loading-orb" />Loading Mainnet asset workspaces…</div>}>
-              {network === "mainnet" && <>
-                <div className="mainnet-dual-workspaces">
-                  <div id="bch-mainnet-workspace" className="circle-workspace-panel"><BchMainnetCircleWorkspace
-                    network={network}
-                    walletConnected={connected}
-                    onOpenWalletDetails={openWallet}
-                  /></div>
-                  <div id="pusd-mainnet-workspace" className="circle-workspace-panel"><PusdMainnetCircleWorkspace network={network} walletConnected={connected} /></div>
+          <section className="page-section create-circle-page">
+            {createCircleView === "choose" ? (
+              <>
+                <div className="page-intro">
+                  <span className="section-kicker">YOUR SAVINGS GROUPS</span>
+                  <h1>Create a circle</h1>
+                  <p>Choose what your group wants to save in, set the amount and members, then review the circle setup before taking action.</p>
                 </div>
-                {/* Legacy invite links remain accessible as a read-only compatibility workspace. */}
-                {circleWorkspace === "bch-classic" && <div className="circle-workspace-panel"><ClassicBchWorkspace key={classicInviteRevision} network={network} walletConnected={connected} /></div>}
-              </>}
-              {network === "chipnet" && <>
-                <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-fair-round"}>
-                  <V2FeeBchWorkspace
-                    network={network}
-                    walletConnected={connected}
-                    view="create"
-                    onCircleSaved={() => setMenuCircles(readSavedCircleMenuRecords())}
-                  />
-                </div>
-                <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-classic"}><ClassicBchWorkspace key={classicInviteRevision} network={network} walletConnected={connected} /></div>
-              </>}
-            </Suspense>
+                <section className="circle-choice-guide" aria-label="Choose a circle type">
+                  <div className="circle-choice-heading">
+                    <div><span className="section-kicker">CHOOSE YOUR CIRCLE</span><h2>What kind of circle do you want?</h2>
+                      <p>{network === "mainnet" ? "Choose BCH or PUSD. These are separate circles with their own member lists and payments." : "Try the circle options on Chipnet first. Test coins have no real-money value."}</p></div>
+                  </div>
+                  <div className="circle-choice-grid">
+                    {network === "mainnet" && <>
+                      <button type="button" className={circleWorkspace === "bch-mainnet" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-mainnet"} onClick={() => enterCreateCircleForm("bch-mainnet")}>
+                        <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status">Mainnet</span></span>
+                        <b>BCH savings circle</b>
+                        <span>For groups saving in Bitcoin Cash. Tracks member contributions and reserves the next installment for each non-final payout.</span>
+                        <small>Best when your group wants native BCH and individual member accounting.</small>
+                      </button>
+                      <button type="button" className={circleWorkspace === "pusd-mainnet" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "pusd-mainnet"} onClick={() => enterCreateCircleForm("pusd-mainnet")}>
+                        <span className="circle-choice-top"><span className="circle-choice-symbol pusd">PUSD</span><span className="circle-choice-status">Mainnet</span></span>
+                        <b>PUSD savings circle</b>
+                        <span>For groups that prefer ParyonUSD instead of BCH. Contributions and payouts are denominated in PUSD, with BCH needed separately for network fees.</span>
+                        <small>Choose this if your group wants a stable-value token rather than BCH price exposure.</small>
+                      </button>
+                    </>}
+                    {network === "chipnet" && <>
+                      <button type="button" className={circleWorkspace === "bch-fair-round" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-fair-round"} onClick={() => enterCreateCircleForm("bch-fair-round")}>
+                        <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status testing">Chipnet · test</span></span>
+                        <b>BCH savings circle</b>
+                        <span>Experimental member-credit model. Members fund the current round; a non-final recipient carries one next contribution forward in their own receipt.</span>
+                        <small>Try this option for the newer round-by-round savings experience.</small>
+                      </button>
+                      <button type="button" className={circleWorkspace === "bch-classic" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-classic"} onClick={() => enterCreateCircleForm("bch-classic")}>
+                        <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status testing">Chipnet · legacy</span></span>
+                        <b>Classic BCH savings circle</b>
+                        <span>A simple rotating savings group with a shared BCH pot and a set order for payouts.</span>
+                        <small>Use this option for older circles or simple compatibility testing.</small>
+                      </button>
+                    </>}
+                  </div>
+                  <p className="circle-choice-disclaimer"><ShieldCheck size={15} /> {network === "mainnet" ? "BCH and PUSD Mainnet circles use real funds and unaudited contracts; start small." : "Chipnet is a testing network only. Use test BCH; it has no real-money value and cannot be used as Mainnet funds."}</p>
+                </section>
+              </>
+            ) : (
+              <>
+                <button type="button" className="secondary-button create-circle-back" onClick={leaveCreateCircleForm}>
+                  ← Back to circle types
+                </button>
+                <Suspense fallback={<div className="workspace-loading"><span className="loading-orb" />Loading your circle form…</div>}>
+                  {network === "mainnet" && circleWorkspace === "bch-mainnet" && (
+                    <BchMainnetCircleWorkspace key="create-bch-mainnet" network={network} walletConnected={connected}
+                      onOpenWalletDetails={openWallet} onBusyChange={setCreateCircleWorkspaceBusy} />
+                  )}
+                  {network === "mainnet" && circleWorkspace === "pusd-mainnet" && (
+                    <PusdMainnetCircleWorkspace key="create-pusd-mainnet" network={network} walletConnected={connected}
+                      onBusyChange={setCreateCircleWorkspaceBusy} />
+                  )}
+                  {network === "chipnet" && circleWorkspace === "bch-fair-round" && (
+                    <V2FeeBchWorkspace key="create-bch-fair-round" network={network} walletConnected={connected}
+                      view="create" onCircleSaved={() => setMenuCircles(readSavedCircleMenuRecords())}
+                      onBusyChange={setCreateCircleWorkspaceBusy} />
+                  )}
+                  {circleWorkspace === "bch-classic" && (
+                    <ClassicBchWorkspace key={classicInviteRevision + "-create-classic"} network={network}
+                      walletConnected={connected} onBusyChange={setCreateCircleWorkspaceBusy} />
+                  )}
+                </Suspense>
+              </>
+            )}
           </section>
         )}
 

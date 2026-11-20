@@ -19,7 +19,7 @@ import { broadcastPusdMainnetCircleSignedTransaction, verifyPusdMainnetCircleSig
 import { wallet } from "../core/wizard-wallet";
 import type { NetworkId } from "../core/network-config";
 
-type Props = { network: NetworkId; walletConnected: boolean; selectedCircle?: string | null };
+type Props = { network: NetworkId; walletConnected: boolean; selectedCircle?: string | null; onBusyChange?: (busy: boolean) => void };
 type Draft = {
   name: string;
   contribution: string;
@@ -172,7 +172,7 @@ function errorMessage(cause: unknown) {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-export default function PusdMainnetCircleWorkspace({ network, walletConnected, selectedCircle = null }: Props) {
+export default function PusdMainnetCircleWorkspace({ network, walletConnected, selectedCircle = null, onBusyChange }: Props) {
   const [name, setName] = useState(() => "PUSD Ajo circle – " + new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" }));
   const [contribution, setContribution] = useState("10.00");
   const [membersText, setMembersText] = useState("");
@@ -203,6 +203,11 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
   const [actionSigningPlan, setActionSigningPlan] = useState<MainnetSigningPlan | null>(null);
   const [deployedCircles, setDeployedCircles] = useState<PusdMainnetCircleParams[]>(readDeployedCircles);
   const [inviteInput, setInviteInput] = useState("");
+
+  useEffect(() => {
+    onBusyChange?.(busy || lifecycleBusy);
+    return () => onBusyChange?.(false);
+  }, [busy, lifecycleBusy, onBusyChange]);
 
   useEffect(() => {
     if (!selectedCircle) return;
