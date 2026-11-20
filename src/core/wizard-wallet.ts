@@ -151,6 +151,16 @@ export function deriveWizardConnectReceiveAddress(
 
 export type WalletState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnecting' | 'disconnected';
 
+export function canRestoreWizardSession(state: WalletState, hasStoredSession: boolean): boolean {
+  return hasStoredSession && (state === "idle" || state === "disconnected");
+}
+
+export function wizardConnectionTimeoutMessage(existingSession: boolean): string {
+  return existingSession
+    ? "Selene did not reconnect in time. Tap Reconnect to try the saved session again."
+    : "The wallet connection timed out. Tap Reconnect to start a new pairing."; 
+}
+
 type Listener = () => void;
 
 /** Keep temporary relay drops visible as recoverable, rather than as a dead wallet session. */
@@ -594,9 +604,10 @@ class WizardWallet {
     this.clearConnectionWatchdog();
     this.connectionWatchdog = setTimeout(() => {
       if (!this.isCurrent(mgr, generation) || this.state !== "connecting") return;
-      this.error = existing
-        ? "Selene has not completed the saved-session handshake. Retry the saved session or start a fresh pairing."
-        : "Still waiting for Selene. Keep AjoChain open, or start a fresh pairing.";
+      this.error = wizardConnectionTimeoutMessage(existing);
+      // Stop showing an endless connecting state. Keep the current session
+      // available for explicit retry or a late wallet_ready handshake.
+      this.state = "disconnected";
       this.emit();
     }, 20_000);
   }
@@ -764,7 +775,7 @@ class WizardWallet {
 
   /** Resume a stored WizardConnect session after reload or mobile app switching. */
   tryResume(): boolean {
-    if (this.state !== 'idle' && this.state !== 'disconnected') return false;
+    if (!canRestoreWizardSession(this.state, true)) return false;
     const now = Date.now();
     if (now - this.lastResumeAttemptAt < 5000) return false;
     try {

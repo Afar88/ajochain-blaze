@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { decodeCashAddress } from "@bitauth/libauth";
 import {
   wizardRelayStatusMessage,
+  canRestoreWizardSession,
+  wizardConnectionTimeoutMessage,
   shouldPreserveReceiveAddressConfirmation,
   walletAddressSnapshotsMatch,
   isCurrentReceiveAddressConfirmed,
@@ -226,6 +228,21 @@ describe("WizardConnect receive-address confirmation across relay handshakes", (
     expect(shouldPreserveReceiveAddressConfirmation(walletIdentity, null)).toBe(false);
     expect(shouldPreserveReceiveAddressConfirmation(null, walletIdentity)).toBe(false);
     expect(shouldPreserveReceiveAddressConfirmation(walletIdentity, "not-a-public-key")).toBe(false);
+  });
+});
+
+describe("WizardConnect saved-session recovery", () => {
+  it("restores a saved session from idle or disconnected states only", () => {
+    expect(canRestoreWizardSession("idle", true)).toBe(true);
+    expect(canRestoreWizardSession("disconnected", true)).toBe(true);
+    expect(canRestoreWizardSession("connected", true)).toBe(false);
+    expect(canRestoreWizardSession("connecting", true)).toBe(false);
+    expect(canRestoreWizardSession("idle", false)).toBe(false);
+  });
+
+  it("gives pending connection timeouts a clear retry message", () => {
+    expect(wizardConnectionTimeoutMessage(true)).toContain("Tap Reconnect");
+    expect(wizardConnectionTimeoutMessage(false)).toContain("start a new pairing");
   });
 });
 

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
-  Activity, ArrowRight, Check, ChevronDown, Home,
+  Activity, ArrowRight, Check, ChevronDown, Copy, Home,
   Monitor, MoreVertical, Moon, ShieldCheck, Sun, Users, Wallet, X,
 } from "lucide-react";
 import { getDefaultNetwork, NETWORKS, type NetworkId } from "./core/network-config";
@@ -241,6 +241,12 @@ type PusdView = {
   rawPreviousTransactions: Record<string, string>;
 };
 
+export function circleRiskNoticeText(network: NetworkId): string {
+  return network === "mainnet"
+    ? "Real BCH. The circle contract hasn't had an independent audit yet. Start with small amounts."
+    : "Test network. No real money.";
+}
+
 const formatBchSatoshis = (satoshis: bigint) => {
   const whole = (satoshis / 100_000_000n).toString();
   const fraction = (satoshis % 100_000_000n).toString().padStart(8, "0");
@@ -362,6 +368,13 @@ const pageLabels: Record<Page, string> = {
 
 export default function App() {
   const [network, setNetwork] = useState<NetworkId>(() => getDefaultNetwork(import.meta.env.PROD));
+  const [riskNoticeCollapsed, setRiskNoticeCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem("ajochain:circle-risk-notice:v1:" + getDefaultNetwork(import.meta.env.PROD)) === "collapsed";
+    } catch { return false; }
+  });
+  const riskNoticeStorageKey = "ajochain:circle-risk-notice:v1:" + network;
   const [page, setPage] = useState<Page>("overview");
   const [createCircleView, setCreateCircleView] = useState<"choose" | "form">("choose");
   const [createCircleWorkspaceBusy, setCreateCircleWorkspaceBusy] = useState(false);
@@ -422,6 +435,11 @@ export default function App() {
 
   const walletAddress = walletClient?.address(network) ?? null;
   const connected = walletView.state === "connected";
+  const walletStateLabel = walletView.state === "connecting" ? "Connecting"
+    : walletView.state === "reconnecting" ? "Reconnecting"
+      : walletView.state === "disconnecting" ? "Disconnecting"
+        : walletView.state === "disconnected" ? "Disconnected"
+          : connected ? "Connected" : "Connect wallet";
 
   const walletSessionIdentity = walletClient?.getSessionIdentity() ?? null;
   const discoveryEffectDependencies = getDiscoveryEffectDependencies(
@@ -453,6 +471,21 @@ export default function App() {
   ) ?? null;
 
   useEffect(() => {
+    let timer: number | undefined;
+    try {
+      const wasCollapsed = window.localStorage.getItem(riskNoticeStorageKey) === "collapsed";
+      setRiskNoticeCollapsed(wasCollapsed);
+      if (!wasCollapsed) {
+        timer = window.setTimeout(() => {
+          setRiskNoticeCollapsed(true);
+          try { window.localStorage.setItem(riskNoticeStorageKey, "collapsed"); } catch { /* optional persistence */ }
+        }, 6_000);
+      }
+    } catch { setRiskNoticeCollapsed(false); }
+    return () => { if (timer !== undefined) window.clearTimeout(timer); };
+  }, [riskNoticeStorageKey]);
+
+  useEffect(() => {
     // A network change can also mean Selene is showing a different receive
     // address. Require the user to sync the address for the newly selected
     // BCH network rather than carrying an old confirmation across networks.
@@ -478,6 +511,24 @@ export default function App() {
   const visibleStatusCircles = filterSavedCirclesByStatus(visibleNetworkCircles, circleStatusTab);
   const networkCircleCounts = countCircleStatuses(visibleNetworkCircles);
   const menuLabel = pageLabels[page];
+  const renderCircleRiskNotice = () => (
+    <details
+      className="circle-risk-notice"
+      open={!riskNoticeCollapsed}
+      onToggle={(event) => {
+        const collapsed = !event.currentTarget.open;
+        setRiskNoticeCollapsed(collapsed);
+        try {
+          if (collapsed) window.localStorage.setItem(riskNoticeStorageKey, "collapsed");
+          else window.localStorage.removeItem(riskNoticeStorageKey);
+        } catch { /* notice remains usable when storage is unavailable */ }
+      }}
+    >
+      <summary><ShieldCheck size={18} /> {network === "mainnet" ? "Mainnet safety notice" : "Chipnet notice"} <span>{riskNoticeCollapsed ? "Show" : "Hide"}</span></summary>
+      <p>{circleRiskNoticeText(network)}</p>
+      <button type="button" className="secondary-button" onClick={() => setMenuOpen(true)}>Change network</button>
+    </details>
+  );
 
   useEffect(() => {
     const refreshSavedCircles = () => setMenuCircles(readSavedCircleMenuRecords());
@@ -1189,7 +1240,9 @@ export default function App() {
     setShowWallet(true);
     const start = (client: WalletClient) => {
       setWalletClient(client);
-      if (client.state === "disconnected" || client.state === "idle") {
+      if (client.state === "disconnected") {
+        if (!client.retrySavedSession()) client.startFreshPairing();
+      } else if (client.state === "idle") {
         // A fresh page starts idle even when an encrypted WizardConnect session
         // exists. Try that saved session before creating a new pairing.
         if (!client.tryResume()) client.connect();
@@ -1641,13 +1694,19 @@ export default function App() {
           }} aria-label={"Selected network: " + NETWORKS[network].label + ". Open network options."}>
             <span className="network-dot" />{network === "mainnet" ? "Mainnet" : "Chipnet"}
           </button>
-          {connected ? (
-            <button className="header-wallet-chip" type="button" onClick={() => setShowWallet(true)}>
-              <span className="wallet-live-dot" />{shortAddress(walletAddress)}
-            </button>
-          ) : (
-            <button className="header-wallet-chip header-connect-button" type="button" onClick={openWallet}>
-              Connect
+          <button
+            className={"header-wallet-chip wallet-state-" + walletView.state}
+            type="button"
+            onClick={openWallet}
+            aria-label={"Wallet status: " + walletStateLabel + ". Open wallet details."}
+          >
+            <span className={"wallet-state-dot " + (connected ? "is-connected" : "is-idle")} />
+            {connected && walletAddress ? shortAddress(walletAddress) : walletStateLabel}
+          </button>
+          {connected && walletAddress && (
+            <button className="header-wallet-copy" type="button" aria-label="Copy wallet address"
+              onClick={() => { void navigator.clipboard.writeText(walletAddress).catch(() => undefined); }}>
+              <Copy size={15} />
             </button>
           )}
           <button
@@ -1743,18 +1802,7 @@ export default function App() {
 
         {page === "overview" && (
           <>
-            <section className="overview-network-notice" aria-label="Selected network notice">
-              <div className="overview-notice-icon"><ShieldCheck size={18} /></div>
-              <div className="overview-notice-copy">
-                <span className="section-kicker">NETWORK NOTICE</span>
-                <b>{network === "mainnet" ? "Bitcoin Cash Mainnet · real funds" : "Chipnet · testing only"}</b>
-                <p>{network === "mainnet"
-                  ? "Mainnet uses real BCH and PUSD. Review every amount and miner fee; wallet approval is required. Circle contracts are unaudited."
-                  : "Chipnet is a testing network. Test BCH has no real-money value and cannot be used as Mainnet funds."}</p>
-              </div>
-              <button type="button" className="secondary-button overview-network-change"
-                onClick={() => setMenuOpen(true)}>Change network</button>
-            </section>
+            {renderCircleRiskNotice()}
 
             <section className="overview-my-circles section-card" aria-labelledby="overview-circles-title">
               <div className="section-heading overview-circles-heading">
@@ -1820,7 +1868,7 @@ export default function App() {
               <article className="overview-status-card">
                 <div className="status-card-icon"><ShieldCheck size={18} /></div>
                 <div><span className="status-label">NETWORK</span><b>{NETWORKS[network].label}</b>
-                  <small>{network === "chipnet" ? "Testing environment · no real funds" : "Real money · you approve every payment in your wallet"}</small></div>
+                  <small>{network === "chipnet" ? "Chipnet testing environment" : "Mainnet · wallet approval required"}</small></div>
                 <button type="button" className="status-action" onClick={() => setMenuOpen(true)}>Change <ChevronDown size={13} /></button>
               </article>
             </section>
@@ -1838,6 +1886,7 @@ export default function App() {
 
         {page === "create-circle" && (
           <section className="page-section create-circle-page">
+            {renderCircleRiskNotice()}
             {createCircleView === "choose" ? (
               <>
                 <div className="page-intro">
@@ -1848,7 +1897,7 @@ export default function App() {
                 <section className="circle-choice-guide" aria-label="Choose a circle type">
                   <div className="circle-choice-heading">
                     <div><span className="section-kicker">CHOOSE YOUR CIRCLE</span><h2>What kind of circle do you want?</h2>
-                      <p>{network === "mainnet" ? "Choose BCH or PUSD. These are separate circles with their own member lists and payments." : "Try the circle options on Chipnet first. Test coins have no real-money value."}</p></div>
+                      <p>{network === "mainnet" ? "Choose BCH or PUSD. These are separate circles with their own member lists and payments." : "Try the circle options on Chipnet first."}</p></div>
                   </div>
                   <div className="circle-choice-grid">
                     {network === "mainnet" && <>
@@ -1880,7 +1929,7 @@ export default function App() {
                       </button>
                     </>}
                   </div>
-                  <p className="circle-choice-disclaimer"><ShieldCheck size={15} /> {network === "mainnet" ? "BCH and PUSD Mainnet circles use real funds and unaudited contracts; start small." : "Chipnet is a testing network only. Use test BCH; it has no real-money value and cannot be used as Mainnet funds."}</p>
+                  
                 </section>
               </>
             ) : (
@@ -1917,6 +1966,7 @@ export default function App() {
 
         {page === "my-circles" && (
           <section className="page-section my-circles-page">
+            {renderCircleRiskNotice()}
             <div className="page-intro">
               <span className="section-kicker">YOUR SAVINGS CIRCLES</span>
               <h1>{network === "mainnet" ? "Mainnet circles" : "Chipnet test circles"}</h1>
@@ -1964,6 +2014,7 @@ export default function App() {
 
         {page === "circle-detail" && selectedCircleRecord && (
           <section className="page-section">
+            {renderCircleRiskNotice()}
             <button type="button" className="secondary-button my-circles-back" onClick={() => {
               setMenuCircles(readSavedCircleMenuRecords());
               setSelectedMenuCircle(null);
@@ -2100,7 +2151,12 @@ export default function App() {
       </div>
 
       {walletView.error && <div className="global-wallet-error" role="alert"><ShieldCheck size={17} /><span>{walletView.error}</span><div className="global-wallet-error-actions">
-        <button onClick={() => { if (walletClient && !walletClient.retrySavedSession()) walletClient.connect(); }}>Retry saved session</button>
+        <button onClick={() => {
+          if (!walletClient) return;
+          if (walletClient.retrySavedSession()) return;
+          if (walletClient.state === "disconnected") walletClient.startFreshPairing();
+          else if (walletClient.state === "idle") walletClient.connect();
+        }}>Reconnect</button>
         <button onClick={() => walletClient?.startFreshPairing()}>Fresh pairing</button>
       </div></div>}
 
@@ -2114,7 +2170,7 @@ export default function App() {
             </div>
             {connected ? (
               <div className="wallet-detail-body">
-                <div className="wallet-address-card"><span>{NETWORKS[network].label}</span><code>{walletAddress ?? "Address not available yet"}</code>{walletAddress
+                <div className="wallet-address-card"><span>{NETWORKS[network].label}</span><code>{walletAddress ?? "Address not available yet"}</code>{walletAddress && <button type="button" className="secondary-button wallet-copy-address" onClick={() => { void navigator.clipboard.writeText(walletAddress).catch(() => undefined); }}><Copy size={14} /> Copy address</button>}{walletAddress
                   ? <small>Derived receive address · index {walletView.receiveIndex}. Receive and change addresses are derived from this connected Selene wallet. Choose the address Selene is currently showing before creating or managing a Mainnet circle.</small>
                   : <small className="wallet-match-message">WizardConnect is connected, but no valid live receive key is available yet. Check the Selene session and reconnect if needed.</small>}</div>
                 {network === "mainnet" && <section className="receive-address-picker" aria-labelledby="receive-address-picker-title">
@@ -2233,7 +2289,7 @@ export default function App() {
                         <button type="button" className="secondary-button" onClick={() => { setGatherResult(null); setGatherPlan(null); }}>Try again</button>
                       </div>
                     )}
-                    {network === "mainnet" && <small className="field-hint">Mainnet uses real BCH. Review the total and fee before asking Selene to approve. The coins return to your wallet.</small>}
+                    {network === "mainnet" && <small className="field-hint">Check the total and fee before asking Selene to approve. The coins return to your wallet.</small>}
                   </section>
                 </>}
                 <button className="secondary-button" disabled={discoveryBusy} onClick={() => setDiscoveryRun((run) => run + 1)}>{discoveryBusy ? "Checking circles…" : discoveryMessage ? "Retry discovery" : "Check for my circles"}</button>
@@ -2244,15 +2300,18 @@ export default function App() {
               <div className="wallet-detail-body">
                 {qrDataUrl && <img className="wallet-qr" src={qrDataUrl} alt="WizardConnect pairing QR code" />}
                 {walletView.uri && <a className="primary-button wallet-open-link" href={walletView.uri}>Open in Selene <ArrowRight size={15} /></a>}
-                {walletView.state === "connecting" && <p className="wallet-match-message">Approve the WizardConnect session in Selene, then return here.</p>}
+                {walletView.state === "connecting" && <p className="wallet-match-message">Connecting to Selene. Approve the session in Selene, then return here.</p>}
+                {walletView.state === "reconnecting" && <p className="wallet-match-message" role="status">Reconnecting to Selene. Keep this page open while the relay recovers.</p>}
+                {walletView.state === "disconnected" && <p className="wallet-match-message" role="status">Wallet disconnected. Tap Reconnect to try again.</p>}
                 {walletView.error && <p className="wallet-match-message" role="alert">{walletView.error}</p>}
                 <div className="wallet-modal-actions">
                   <button className="primary-button" onClick={() => {
                     if (!walletClient) { openWallet(); return; }
                     if (!walletClient.retrySavedSession()) {
-                      if (walletClient.state === "idle" || walletClient.state === "disconnected") walletClient.connect();
+                      if (walletClient.state === "idle") walletClient.connect();
+                      else if (walletClient.state === "disconnected") walletClient.startFreshPairing();
                     }
-                  }}>Retry saved session / connect</button>
+                  }}>Reconnect</button>
                   <button className="secondary-button" onClick={() => walletClient?.startFreshPairing()}>Start fresh pairing</button>
                   <button className="secondary-button" onClick={() => setShowWallet(false)}>Close</button>
                 </div>
