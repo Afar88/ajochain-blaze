@@ -2671,10 +2671,11 @@ async function readJson(request) {
 }
 
 async function applyRateLimit(request) {
-  // Chain reads and transaction preflight must not depend on a hosted Redis
-  // service. This per-instance limiter is best-effort abuse protection only;
-  // BCH consensus, wallet signatures and on-chain state remain authoritative.
-  // Value-spend submission has its own explicit idempotency/reconciliation path.
+  // Chain reads and transaction preflight must not depend on hosted Redis.
+  // This process-local limiter is best-effort only, not a deployment-wide
+  // Vercel control. Production API traffic also needs edge/WAF rate limits;
+  // never derive identity from a client-supplied forwarding header here.
+  // Broadcast idempotency is handled separately by the durable spend ledger.
   const now = Date.now();
   const key = request.socket?.remoteAddress || "local";
   const entries = (rateLimit.get(key) ?? []).filter((timestamp) => now - timestamp < RATE_LIMIT_WINDOW_MS);
