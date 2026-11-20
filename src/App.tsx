@@ -129,7 +129,8 @@ function readSavedCircleMenuRecords(): MenuCircle[] {
         const payload: unknown = JSON.parse(encoded);
         if (!payload || typeof payload !== "object" || Array.isArray(payload)) continue;
         const circle = payload as Record<string, unknown>;
-        if (typeof circle.name !== "string" || typeof circle.stateCategory !== "string" ||
+        if (circle.network !== "mainnet" ||
+            typeof circle.name !== "string" || typeof circle.stateCategory !== "string" ||
             typeof circle.contribution !== "string" || !/^\d+$/.test(circle.contribution) ||
             !Array.isArray(circle.members) || !circle.members.every((member) => typeof member === "string")) continue;
         add("pusd:" + circle.stateCategory.toLowerCase(), "pusd-mainnet", encoded, circle.name, "mainnet", "PUSD",
