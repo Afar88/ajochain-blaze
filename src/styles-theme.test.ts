@@ -36,10 +36,10 @@ function layoutSnapshotAt(width: number) {
   return {
     viewport: width + "px",
     columns: columnsAt(width),
-    contentWidth: desktop && /\.app-shell \.page-body, \.app-shell \.content \{ max-width:1280px; \}/.test(css)
+    contentWidth: desktop && /\.app-shell\s+\.page-body,\s*\.app-shell\s+\.content\s*\{[^}]*max-width:\s*1280px/.test(css)
       ? "max-width: 1280px"
       : "fluid",
-    horizontalGutter: phone && /\.app-shell \.page-body, \.app-shell \.content \{ padding-inline:16px; \}/.test(css)
+    horizontalGutter: phone && /@media\s*\(max-width:\s*767px\)[\s\S]*?\.app-shell\s+\.page-body,\s*\.app-shell\s+\.content\s*\{[^}]*padding-inline:\s*16px/.test(css)
       ? "16px"
       : "fluid",
     minimumFontSize: phone ? 14 : 13,
