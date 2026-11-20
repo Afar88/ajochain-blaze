@@ -132,9 +132,10 @@ export function updateSavedCircleProgress(
   const record: SavedCircleMetadata = {
     ...previous,
     ...circle,
-    status: completed ? "completed" : "active",
+    status: completed ? previous?.status === "cancelled" ? "cancelled" : "completed" : "active",
     completedAt: completed
-      ? previous?.status === "completed" ? previous.completedAt : now
+      ? previous?.status === "cancelled" ? previous.completedAt
+        : previous?.status === "completed" ? previous.completedAt : now
       : null,
     round: Number.isInteger(round) && round !== null && round >= 0 ? round : null,
     checkedAt: now,
