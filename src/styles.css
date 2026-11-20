@@ -2782,3 +2782,89 @@ label small, .field-hint { color: var(--muted); font-size: 12px; }
   .app-shell .my-circle-entry { width: 100%; }
   .app-shell .my-circle-row { width: 100%; }
 }
+
+
+/* Remove the remaining green surfaces from the compact home and legacy workspace. */
+.welcome-hero {
+  border-color: var(--line);
+  border-radius: var(--card-radius);
+  background: linear-gradient(115deg, var(--surface) 0%, var(--soft-tint) 100%);
+  box-shadow: var(--shadow);
+}
+.welcome-hero::after {
+  border-color: color-mix(in srgb, var(--ember) 26%, transparent);
+  box-shadow: 0 0 0 35px color-mix(in srgb, var(--ember) 8%, transparent),
+    0 0 0 75px color-mix(in srgb, var(--primary) 5%, transparent);
+}
+.welcome-kicker { color: var(--primary-deep); }
+.welcome-kicker span { background: var(--ember); }
+.welcome-hero h1 { color: var(--ink); }
+.welcome-hero h1 em { color: var(--primary); }
+.welcome-hero p { color: var(--muted); }
+.how-ajo-works, .how-ajo-steps li, .guide-card, .draft-card,
+.verification-strip, .activity-empty, .network-notice, .draft-disclaimer {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+.how-ajo-heading h2, .how-ajo-steps b, .activity-empty > span,
+.verification-strip b, .guide-card h2, .guide-step b { color: var(--ink); }
+.how-ajo-steps small, .how-ajo-heading p, .activity-empty small,
+.verification-strip small, .guide-step small, .guide-foot { color: var(--muted); }
+.how-ajo-number, .guide-icon, .activity-icon, .verification-icon,
+.draft-avatar, .status-card-icon, .dropdown-wallet-icon {
+  background: var(--soft-tint);
+  color: var(--primary);
+}
+.network-notice {
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--line));
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.notice-icon { background: color-mix(in srgb, var(--warning) 15%, var(--surface)); color: var(--warning); }
+.notice-copy b, .notice-copy span { color: var(--warning); }
+.read-only-pill { border-color: var(--line); background: var(--surface); color: var(--primary-deep); }
+.metric-card, .draft-card, .section-card, .guide-card, .verification-strip,
+.asset-preview, .asset-detail-card, .overview-status-card {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+.metric-card strong, .draft-amount strong, .empty-state h3, .draft-card h3 { color: var(--ink); }
+.metric-label, .metric-card small, .draft-summary, .draft-members small,
+.asset-preview-rows small, .asset-preview > div:first-child p { color: var(--muted); }
+.asset-preview-rows, .asset-preview-rows > div { border-color: var(--line); }
+.asset-symbol { background: var(--soft-tint); color: var(--primary-deep); }
+.subtle-link, .text-action { color: var(--primary-deep); }
+.draft-status, .coming-soon, .draft-warning, .draft-disclaimer {
+  border-color: color-mix(in srgb, var(--warning) 35%, var(--line));
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+:root[data-theme="dark"] .welcome-hero,
+:root[data-theme="dark"] .how-ajo-works,
+:root[data-theme="dark"] .how-ajo-steps li,
+:root[data-theme="dark"] .guide-card,
+:root[data-theme="dark"] .draft-card,
+:root[data-theme="dark"] .verification-strip,
+:root[data-theme="dark"] .activity-empty,
+:root[data-theme="dark"] .metric-card,
+:root[data-theme="dark"] .section-card,
+:root[data-theme="dark"] .asset-preview,
+:root[data-theme="dark"] .asset-detail-card,
+:root[data-theme="dark"] .overview-status-card {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
+}
+:root[data-theme="dark"] .network-notice,
+:root[data-theme="dark"] .draft-warning,
+:root[data-theme="dark"] .draft-disclaimer {
+  background: var(--warning-soft);
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--line));
+  color: var(--warning);
+}
+:root[data-theme="dark"] .network-notice .notice-copy b,
+:root[data-theme="dark"] .network-notice .notice-copy span,
+:root[data-theme="dark"] .draft-warning,
+:root[data-theme="dark"] .draft-disclaimer { color: var(--warning); }

@@ -1627,9 +1627,13 @@ export default function App() {
           }} aria-label={"Selected network: " + NETWORKS[network].label + ". Open network options."}>
             <span className="network-dot" />{network === "mainnet" ? "Mainnet" : "Chipnet"}
           </button>
-          {connected && (
+          {connected ? (
             <button className="header-wallet-chip" type="button" onClick={() => setShowWallet(true)}>
               <span className="wallet-live-dot" />{shortAddress(walletAddress)}
+            </button>
+          ) : (
+            <button className="header-wallet-chip header-connect-button" type="button" onClick={openWallet}>
+              Connect
             </button>
           )}
           <button
