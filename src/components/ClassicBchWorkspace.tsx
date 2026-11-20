@@ -10,13 +10,14 @@ type Props = {
   network: NetworkId;
   walletConnected: boolean;
   selectedCircle?: string | null;
+  onBusyChange?: (busy: boolean) => void;
 };
 
 function message(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-export default function ClassicBchWorkspace({ network, walletConnected, selectedCircle = null }: Props) {
+export default function ClassicBchWorkspace({ network, walletConnected, selectedCircle = null, onBusyChange }: Props) {
   const [saved, setSaved] = useState<SavedClassicCircle[]>(() => loadSavedClassicCircles(window.localStorage));
   const [selected, setSelected] = useState<string | null>(() => selectedCircle ?? loadSavedClassicCircles(window.localStorage)[0]?.encoded ?? null);
   const [name, setName] = useState(() => "Ajo circle – " + new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" }));
@@ -29,6 +30,11 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
 
   const activeCircle = useMemo(() => {
     if (!selected) return null;
