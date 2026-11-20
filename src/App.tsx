@@ -545,7 +545,7 @@ export default function App() {
         };
       }
       if (circle.kind === "pusd-mainnet") {
-        const { readPusdMainnetCircle } = await import("./core/pusd-mainnet-circle");
+        const { PusdCircleClosedError, readPusdMainnetCircle } = await import("./core/pusd-mainnet-circle");
         const payload: unknown = JSON.parse(circle.encoded);
         if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
           throw new Error("Saved PUSD circle data is invalid.");
@@ -560,18 +560,30 @@ export default function App() {
             typeof value.treasury !== "string") {
           throw new Error("Saved PUSD circle data is incomplete.");
         }
-        const snapshot = await readPusdMainnetCircle({
-          version: 3,
-          network: "mainnet",
-          name: value.name,
-          members: value.members as string[],
-          contribution: BigInt(value.contribution),
-          maxFee: BigInt(value.maxFee),
-          initiator: value.initiator,
-          stateCategory: value.stateCategory,
-          treasury: value.treasury,
-        });
-        return { round: snapshot.round, completed: snapshot.completed, stateVerified: true, completedAt: null };
+        try {
+          const snapshot = await readPusdMainnetCircle({
+            version: 3,
+            network: "mainnet",
+            name: value.name,
+            members: value.members as string[],
+            contribution: BigInt(value.contribution),
+            maxFee: BigInt(value.maxFee),
+            initiator: value.initiator,
+            stateCategory: value.stateCategory,
+            treasury: value.treasury,
+          });
+          return { round: snapshot.round, completed: snapshot.completed, stateVerified: true, completedAt: null };
+        } catch (cause) {
+          if (cause instanceof PusdCircleClosedError) {
+            return {
+              round: value.members.length,
+              completed: true,
+              closedAs: cause.closedAs,
+              completedAt: cause.completedAt,
+            };
+          }
+          throw cause;
+        }
       }
       throw new Error("No read-only status checker is available for this saved circle type.");
     };
