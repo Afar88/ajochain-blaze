@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
+import { ArrowRight, Copy, LockKeyhole, ShieldCheck } from "lucide-react";
 import { PUSD_ASSET, formatAssetAmount, parseAssetAmount } from "../core/assets";
 import { classicAddressToPkh } from "../core/classic-bch";
 import { pkhToTokenAwareAddress } from "../core/bch-address";
@@ -707,7 +707,16 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         </label>
         <div className="creator-member-preview">
           <b>Member 1 · You, the initiator</b>
-          {initiatorAddress ? <><code>{initiatorAddress}</code><small>{wallet.isReceiveAddressConfirmed("mainnet") ? "Selected from your connected Selene receive addresses" : "Choose a derived Mainnet receive address in Wallet Details first"}</small></> : "Connect Selene and choose your receive address. It will be Member 1 automatically."}
+          {initiatorAddress ? <>
+            <code>{initiatorAddress}</code>
+            <button className="secondary-button wallet-copy-address" type="button" onClick={() => {
+              const pendingCopy = navigator.clipboard?.writeText(initiatorAddress);
+              if (!pendingCopy) { setNotice("Copy is unavailable. Select the address and copy it manually."); return; }
+              void pendingCopy.then(() => setNotice("Member 1 address copied."))
+                .catch(() => setNotice("Could not copy the address. Select it and copy manually."));
+            }}><Copy size={15} /> Copy address</button>
+            <small>{wallet.isReceiveAddressConfirmed("mainnet") ? "Selected from your connected Selene receive addresses" : "Choose a derived Mainnet receive address in Wallet Details first"}</small>
+          </> : "Connect Selene and choose your receive address. It will be Member 1 automatically."}
         </div>
         <label>Other members' Mainnet BCH addresses · one per line
           <textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder={"bitcoincash:…\nbitcoincash:…"} required />
