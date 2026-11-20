@@ -1113,7 +1113,7 @@ test("PUSD Mainnet server reconstructs the exact circle and each member escrow s
 test("PUSD Mainnet genesis verifier enforces state category, receipt order and escrow scripts", () => {
   const context = createPusdMainnetV3ContractContext(pusdMainnetVerificationCircle);
   const firstInput = {
-    outpointTransactionHash: hexToBin(context.stateCategory).reverse(),
+    outpointTransactionHash: hexToBin(context.stateCategory),
     outpointIndex: 0,
   };
   const sourceOutputs = [

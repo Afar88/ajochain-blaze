@@ -53,7 +53,8 @@ export interface PusdTransferPlan {
 /** Display-order transaction IDs are serialized in reverse byte order in inputs. */
 function outpointHashBytes(txid: string): Uint8Array {
   if (!/^[0-9a-f]{64}$/i.test(txid)) throw new Error("PUSD input contains an invalid transaction ID.");
-  return hexToBin(txid.match(/../g)!.reverse().join(""));
+  // libauth encodes outpoint hashes from display (RPC) order itself.
+  return hexToBin(txid.toLowerCase());
 }
 
 function ceilDiv(value: bigint, divisor: bigint): bigint {

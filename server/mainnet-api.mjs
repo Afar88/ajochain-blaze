@@ -932,7 +932,7 @@ export function createUpstashPusdBroadcastLedger(options = {}) {
       if (!Number.isSafeInteger(input.outpointIndex) || input.outpointIndex < 0) {
         throw new Error("Signed transaction contains an invalid input outpoint index.");
       }
-      const previousTxid = reverseHex(binToHex(input.outpointTransactionHash));
+      const previousTxid = binToHex(input.outpointTransactionHash);
       if (!/^[0-9a-f]{64}$/.test(previousTxid)) {
         throw new Error("Signed transaction contains a malformed input transaction hash.");
       }
@@ -1219,7 +1219,7 @@ async function verifyPusdSpendAndBroadcast(sessions, tip, body) {
   let inputPusd = 0n;
 
   for (const [index, input] of transaction.inputs.entries()) {
-    const outpointTxid = reverseHex(binToHex(input.outpointTransactionHash));
+    const outpointTxid = binToHex(input.outpointTransactionHash);
     const key = outpointTxid + ":" + input.outpointIndex;
     if (seen.has(key)) throw new Error("Signed transaction contains a duplicate input outpoint.");
     seen.add(key);
@@ -2044,7 +2044,7 @@ export function assertPusdMainnetCircleLayout(transaction, sourceOutputs, inputS
       throw new Error("PUSD Mainnet V3 genesis must be funded by the registered initiator and create the exact state, receipt, escrow and change outputs.");
     }
     const first = transaction.inputs[0];
-    if (reverseHex(binToHex(first.outpointTransactionHash)).toLowerCase() !== context.stateCategory ||
+    if (binToHex(first.outpointTransactionHash).toLowerCase() !== context.stateCategory ||
         first.outpointIndex !== 0) {
       throw new Error("PUSD Mainnet V3 genesis state category must come from the first token-free input at vout 0.");
     }
@@ -2298,7 +2298,7 @@ export async function verifyPusdMainnetCircleTransaction(sessions, tip, body) {
   const inputScripts = [];
   let inputSatoshis = 0n;
   for (const [index, input] of transaction.inputs.entries()) {
-    const txid = reverseHex(binToHex(input.outpointTransactionHash)).toLowerCase();
+    const txid = binToHex(input.outpointTransactionHash).toLowerCase();
     const outpoint = txid + ":" + input.outpointIndex;
     if (seen.has(outpoint)) throw new Error("Signed PUSD Mainnet circle transaction contains a duplicate input.");
     seen.add(outpoint);
@@ -2342,7 +2342,7 @@ export async function verifyPusdMainnetCircleTransaction(sessions, tip, body) {
     utxo.txid + ":" + utxo.vout, utxo,
   ]));
   for (const [index, input] of transaction.inputs.entries()) {
-    const txid = reverseHex(binToHex(input.outpointTransactionHash)).toLowerCase();
+    const txid = binToHex(input.outpointTransactionHash).toLowerCase();
     const outpoint = txid + ":" + input.outpointIndex;
     const unspent = initialUnspent.get(outpoint);
     if (!unspent || unspent.height <= 0 ||
@@ -2375,7 +2375,7 @@ export async function verifyPusdMainnetCircleTransaction(sessions, tip, body) {
     utxo.txid + ":" + utxo.vout, utxo,
   ]));
   for (const [index, input] of transaction.inputs.entries()) {
-    const txid = reverseHex(binToHex(input.outpointTransactionHash)).toLowerCase();
+    const txid = binToHex(input.outpointTransactionHash).toLowerCase();
     const current = finalUnspent.get(txid + ":" + input.outpointIndex);
     if (!current || current.height <= 0 ||
         BigInt(current.satoshis) !== sourceOutputs[index].valueSatoshis) {
