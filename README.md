@@ -13,6 +13,29 @@
 
 ---
 
+## How to use AjoChain BLAZE
+
+1. **Get ready.** Install the Selene wallet on your phone. You need BCH for network fees and circle actions. Use Chipnet test BCH to practise, or real BCH on Mainnet.
+2. **Open the app.** Go to [ajochain-blaze.vercel.app](https://ajochain-blaze.vercel.app).
+3. **Choose a network.** Choose **Chipnet** for testing with no real money, or **Mainnet** for real BCH. Mainnet uses real funds. The circle contract has not had an independent audit, so start with small amounts.
+4. **Connect Selene.** Tap Connect wallet, then scan the QR code in Selene or tap **Open in Selene** on your phone. Return to the app and check the connected address in the top bar. Open Wallet details to confirm the receive address Selene currently shows.
+5. **Create a circle.** Choose the circle type available on your selected network. Enter its name, contribution amount and the other members' addresses. Your confirmed Selene receive address is **Member 1**. Review the preview before approving anything. The optional **Test sign · no money sent** control is visible beside the main action. It asks Selene to sign, checks the result against the circle rules, then discards it; nothing is broadcast. The helper copy explains this, and a successful check shows **✓ Signature checked · prepare a fresh preview to send**. If the preview expires after 60 seconds, the Test sign control changes to **Refresh preview first**. To create the circle, use the main create/sign-and-send action and approve it in Selene; running Test sign is optional.
+6. **Invite members.** Copy the circle invite link and share it with the other members. The link carries circle details, not wallet keys.
+7. **Join and deposit.** Open or paste the invite link in BLAZE and add the circle to My circles. Connect the wallet registered for your member slot. Open the circle, prepare the member-deposit preview, check the amount and fees, then sign and send in Selene. A wallet that is not a registered member cannot deposit into that member slot.
+8. **Payout or cancel.** A payout can be prepared when the on-chain circle status says it is ready; a connected wallet sponsors the miner fee and the recipient follows the circle's payout order. Cancellation is limited to the registered initiator and is available only before the first payout. The app disables actions that are not currently allowed; follow the reason shown beside the button.
+9. **Find your circles.** Open **My circles** and use the **Active** and **Completed** tabs. BLAZE checks eligible circles against blockchain data. Discovery uses your connected wallet's derived address history; saved invite details alone are not proof of membership or payment.
+10. **Troubleshoot.** If Selene disconnects, open Wallet and tap **Reconnect**. If a preview is older than 60 seconds, refresh the circle/chain preview and prepare a new one before asking Selene to sign. If the app and Selene are on different networks, switch to the intended network in Selene, then confirm the receive address again in BLAZE.
+
+**Mainnet reminder:** Mainnet uses real BCH. Confirm the network, address, contribution and miner fee in Selene before approving. Start small while the contract has not been independently audited.
+
+## Demo links
+
+- **BLAZE build (live):** https://ajochain-blaze.vercel.app
+- **Pre-BLAZE app (Nov 10, 2026 release):** https://ajochain.vercel.app
+- **Pre-BLAZE source:** https://github.com/Afar88/Ajochain — baseline commit [069acb5](https://github.com/Afar88/Ajochain/commit/069acb55e246a85fbe3ba25736fa34055388c7cc), the last commit before the Nov 14, 2026 14:00 UTC BLAZE kickoff.
+
+---
+
 ## What is AjoChain BLAZE?
 
 AjoChain BLAZE is a non-custodial savings-circle application for people who want to contribute to a shared rotation and receive payouts according to transparent, enforceable rules.
@@ -120,6 +143,16 @@ npm run build
 
 BLAZE is separate from the legacy AjoChain deployment. It has no Neon/PostgreSQL connection and does not use the legacy database as a source of circle identity or payment truth. Browser-local storage is used for local drafts, saved preferences and convenience state; those records are not proof of an on-chain circle or contribution.
 
+## Mainnet proof
+
+The public proof ledger is maintained in [docs/MAINNET_PROOF.md](docs/MAINNET_PROOF.md). Its transaction table is reserved for transactions decoded from a public Fulcrum server and matched to their confirmed block inclusion.
+
+**Circle genesis candidate (supplied, not yet Fulcrum-verified):** [48a5840dbe7c5c41525406461e32b31998393411ca793f4dd19131b0369f7473](https://blockchair.com/bitcoin-cash/transaction/48a5840dbe7c5c41525406461e32b31998393411ca793f4dd19131b0369f7473)
+
+**BCH Mainnet covenant address:** `p0chq232z0p58nqazzmltt7yw52te48gm5sqj74gn3e3yma7g44tu7k3rz880`
+
+The candidate transaction and output description are project-supplied details pending independent Fulcrum decoding. They are not presented as verified proof until the ledger records a matching raw-transaction decode and block height.
+
 ## Mainnet safety gates
 
 Before any real-value PUSD or BCH circle release, the project still needs:
@@ -143,6 +176,33 @@ The active BLAZE application is deployed through the dedicated Vercel project **
 - Repository: https://github.com/Afar88/ajochain-blaze
 
 Keep this project isolated from legacy AjoChain deployments. The optional API adapter uses a BLAZE-specific Electrum provider manifest. No Neon, Postgres, Redis or legacy database is required for on-chain circle discovery. Never put provider credentials in browser variables.
+
+## Built before vs during BLAZE
+
+The BLAZE build has a clear project boundary: **Nov 14, 2026 at 14:00 UTC**.
+
+### Before BLAZE
+
+The pre-BLAZE AjoChain project is [Afar88/Ajochain](https://github.com/Afar88/Ajochain), through commit [`069acb5`](https://github.com/Afar88/Ajochain/commit/069acb55e246a85fbe3ba25736fa34055388c7cc), committed **Nov 14, 2026 at 09:48:47 UTC**—before the 14:00 UTC kickoff. This includes the build week of **Nov 7–14, 2026**. The last public release of that app was deployed on **Nov 10, 2026**.
+
+That work established the earlier AjoChain application, its Chipnet circle experiments, wallet pairing and recovery, V1/V2 circle flows, member accounting groundwork and the original mobile UI.
+
+### During BLAZE
+
+The BLAZE period includes the work in this repository, [Afar88/ajochain-blaze](https://github.com/Afar88/ajochain-blaze), created on **Nov 14, 2026**, plus commits to the original Ajochain repository after the 14:00 UTC kickoff. The old repository's post-kickoff history includes the Nov 14 evening merges for the refreshed V2/legacy create experience, mobile wallet foreground recovery and registry/local-save documentation, followed by the Nov 16 ACR v3 integration and mobile UI refresh.
+
+Commit-history highlights from the BLAZE build include:
+
+- **BCH Mainnet V3 circles**, with guarded circle creation, member deposits and lifecycle actions.
+- **On-chain discovery markers** and wallet-derived history scanning, so eligible circles can be found from chain data without a central circle registry or invite link.
+- **Selene receive-address picker** and explicit confirmation of the creator's receive address as Member 1.
+- **Read-only Electrum quorum verification**, including operator identity requirements and independent Mainnet verification checks.
+- **Active and Completed** circle views based on on-chain status.
+- **Navy/red theme** and a more readable, responsive mobile-first interface.
+- **Stronger WizardConnect wallet recovery**, including saved-session restoration and clearer reconnect states.
+- **Optional Test sign checks**: Selene approval verification paths that do not broadcast a payment.
+
+These are engineering and product-history milestones, not an independent security audit. The Mainnet safety gates below still apply.
 
 ## Documentation map
 
