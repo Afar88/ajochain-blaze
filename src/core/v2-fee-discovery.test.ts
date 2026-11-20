@@ -229,26 +229,34 @@ describe("on-chain circle discovery", () => {
   });
 
 
-  it("discovers the same Mainnet genesis circle from its creator and another member through the verified quorum", async () => {
+  it("discovers the same Mainnet genesis circle from its real creator and member addresses through the verified quorum", async () => {
+    const creatorAddress = "bitcoincash:qr0n65a7etj6falr32y2q288qtm0q2sj0qvn5zlrsn";
+    const memberAddress = "bitcoincash:qp7zcd6jr5rmrjdayfecy2ypywsu8tqnfqxcred43h";
+    const creatorScript = cashAddressToLockingBytecode(creatorAddress);
+    if (typeof creatorScript === "string") throw new Error(creatorScript);
+    const creatorPkh = creatorScript.bytecode.slice(3, 23);
     const mainnetParams: V2FeeCircleParams = {
       ...params,
       covenant: "fee-v3-auto-reserve-mainnet",
       network: "mainnet",
       members: [
-        pkhToAddress(pkh(2), "mainnet"),
-        pkhToAddress(pkh(1), "mainnet"),
+        creatorAddress,
+        memberAddress,
         pkhToAddress(pkh(3), "mainnet"),
       ],
-      initiator: pkhToAddress(pkh(1), "mainnet"),
+      initiator: creatorAddress,
       treasury: MAINNET_PROJECT_TREASURY_ADDRESS,
     };
-    const transaction = genesisTx(mainnetParams, contractBytecode(mainnetParams), pkh(1));
+    const transaction = genesisTx(mainnetParams, contractBytecode(mainnetParams), creatorPkh);
     const raw = binToHex(encodeTransaction(transaction));
     const txid = binToHex(hashTransactionUiOrder(hexToBin(raw))).toLowerCase();
-    const scriptHash = (address: string) =>
-      binToHex(sha256.hash((cashAddressToLockingBytecode(address) as { bytecode: Uint8Array }).bytecode).reverse());
-    const creatorScriptHash = scriptHash(mainnetParams.initiator);
-    const memberScriptHash = scriptHash(mainnetParams.members[0]);
+    const scriptHash = (address: string) => {
+      const output = cashAddressToLockingBytecode(address);
+      if (typeof output === "string") throw new Error(output);
+      return binToHex(sha256.hash(output.bytecode).reverse());
+    };
+    const creatorScriptHash = scriptHash(creatorAddress);
+    const memberScriptHash = scriptHash(memberAddress);
     const endpoint = {
       performRequest: async (method: string, requestedScriptHash: string) => {
         if (method !== "blockchain.scripthash.get_history") throw new Error("Unexpected Mainnet discovery RPC: " + method);
@@ -259,7 +267,7 @@ describe("on-chain circle discovery", () => {
       getRawTransaction: async () => raw,
     } as unknown as import("cashscript").ElectrumNetworkProvider;
 
-    for (const walletAddress of [mainnetParams.initiator, mainnetParams.members[0]]) {
+    for (const walletAddress of [creatorAddress, memberAddress]) {
       const provider = new MainnetQuorumNetworkProvider([endpoint, { ...endpoint }]);
       (provider as unknown as { verifyTip: () => Promise<{ height: number; hash: string }> }).verifyTip = async () => ({
         height: 978_200, hash: "dd".repeat(32),
