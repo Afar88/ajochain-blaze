@@ -119,6 +119,39 @@ export function wizardRelayStatusMessage(status: string, detail?: string): strin
     : "WizardConnect relay is reconnecting. Keep this page open and return after Selene.";
 }
 
+function normalizeWizardConnectWalletIdentity(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const identity = value.trim().toLowerCase();
+  return /^[0-9a-f]{64}$/.test(identity) ? identity : null;
+}
+
+/**
+ * Preserve receive-address confirmation across a relay handshake only when
+ * the same authenticated WizardConnect wallet public key returns. The actual
+ * derived receive address is checked again before each Mainnet-sensitive step.
+ */
+export function shouldPreserveReceiveAddressConfirmation(
+  previousIdentity: string | null,
+  nextIdentity: string | null,
+): boolean {
+  const previous = normalizeWizardConnectWalletIdentity(previousIdentity);
+  const next = normalizeWizardConnectWalletIdentity(nextIdentity);
+  return previous !== null && next !== null && previous === next;
+}
+
+export function walletAddressSnapshotsMatch(
+  expected: readonly WalletAddressEntry[],
+  current: readonly WalletAddressEntry[],
+): boolean {
+  return expected.length === current.length && expected.every((entry, index) => {
+    const candidate = current[index];
+    return candidate !== undefined &&
+      entry.branch === candidate.branch &&
+      entry.index === candidate.index &&
+      entry.address.toLowerCase() === candidate.address.toLowerCase();
+  });
+}
+
 const PATHS_STORAGE_KEY = 'ajochain:wizardconnect-paths:v1';
 const RECEIVE_INDEX_STORAGE_KEY = 'ajochain:wizardconnect-receive-index:v1';
 
@@ -469,8 +502,16 @@ class WizardWallet {
   // Foreground/focus/online can fire in quick succession on mobile browsers.
   private lastResumeAttemptAt = 0;
   private confirmedReceiveAddresses: Partial<Record<Net, string>> = {};
+  /** Authenticated WizardConnect wallet Nostr public key for the active session. */
+  private sessionWalletIdentity: string | null = null;
 
   onChange(fn: Listener) { this.listeners.push(fn); return () => { this.listeners = this.listeners.filter((listener) => listener !== fn); }; }
+
+  /** Stable wallet identity from the authenticated wallet_ready handshake. */
+  getSessionIdentity(): string | null {
+    return this.sessionWalletIdentity;
+  }
+
   private emit() { this.listeners.forEach((f) => f()); }
 
   private clearConnectionWatchdog() {
@@ -515,6 +556,7 @@ class WizardWallet {
     // A fresh pairing starts at index 0 and can be matched again by the user.
     this.receiveIndex = existing ? loadReceiveIndex() : 0;
     this.confirmedReceiveAddresses = {};
+    this.sessionWalletIdentity = normalizeWizardConnectWalletIdentity(existing?.walletPublicKey);
     this.state = 'connecting';
     const generation = ++this.generation;
     const icon = new URL('favicon.svg', location.href).toString();
@@ -524,11 +566,21 @@ class WizardWallet {
     restorePublicPaths(mgr);
     this.mgr = mgr;
 
-    mgr.on('walletready', () => {
+    mgr.on('walletready', (msg) => {
       if (!this.isCurrent(mgr, generation)) return;
       this.clearConnectionWatchdog();
       this.walletName = mgr.walletName;
-      this.confirmedReceiveAddresses = {};
+      const nextIdentity = normalizeWizardConnectWalletIdentity(msg?.public_key);
+      if (!shouldPreserveReceiveAddressConfirmation(this.sessionWalletIdentity, nextIdentity)) {
+        this.confirmedReceiveAddresses = {};
+        if (this.sessionWalletIdentity && nextIdentity && this.sessionWalletIdentity !== nextIdentity) {
+          // A different authenticated wallet connected: discard its predecessor's
+          // receive index as well as its confirmation.
+          this.receiveIndex = 0;
+          try { localStorage.setItem(RECEIVE_INDEX_STORAGE_KEY, "0"); } catch { /* best effort */ }
+        }
+      }
+      this.sessionWalletIdentity = nextIdentity;
       savePublicPaths(mgr);
       this.error = null;
       this.state = 'connected';
@@ -554,6 +606,7 @@ class WizardWallet {
       this.walletName = null;
       this.receiveIndex = loadReceiveIndex();
       this.confirmedReceiveAddresses = {};
+      this.sessionWalletIdentity = null;
       this.state = 'disconnected';
       this.error = detailText || (protocolMismatch
         ? "Selene and AjoChain could not agree on a WizardConnect protocol. Start a fresh pairing."
@@ -622,6 +675,7 @@ class WizardWallet {
     this.walletName = null;
     this.receiveIndex = 0;
     this.confirmedReceiveAddresses = {};
+    this.sessionWalletIdentity = null;
     try {
       localStorage.removeItem(PATHS_STORAGE_KEY);
       localStorage.removeItem(RECEIVE_INDEX_STORAGE_KEY);
@@ -713,6 +767,7 @@ class WizardWallet {
       this.walletName = null;
       this.receiveIndex = 0;
       this.confirmedReceiveAddresses = {};
+      this.sessionWalletIdentity = null;
       try {
         localStorage.removeItem(PATHS_STORAGE_KEY);
         localStorage.removeItem(RECEIVE_INDEX_STORAGE_KEY);
@@ -784,6 +839,78 @@ class WizardWallet {
     if (!this.confirmedReceiveAddresses[network]) return;
     delete this.confirmedReceiveAddresses[network];
     this.emit();
+  }
+
+  /**
+   * Wait through a temporary relay interruption, but resume only when the
+   * same authenticated wallet and previously confirmed receive address return.
+   */
+  waitForConfirmedSession(
+    expectedIdentity: string,
+    expectedAddress: string,
+    expectedWalletAddresses: readonly WalletAddressEntry[],
+    network: Net,
+    timeoutMs = 20_000,
+  ): Promise<void> {
+    const identity = normalizeWizardConnectWalletIdentity(expectedIdentity);
+    if (!identity || !expectedAddress.trim()) {
+      return Promise.reject(new Error("A verified Selene wallet identity and receive address are required."));
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let unsubscribe = () => {};
+
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        unsubscribe();
+        if (error) reject(error);
+        else resolve();
+      };
+
+      const check = () => {
+        if (this.sessionWalletIdentity && this.sessionWalletIdentity !== identity) {
+          finish(new Error("A different Selene wallet reconnected. Sync its Mainnet receive address before gathering."));
+          return;
+        }
+        if (this.state === "disconnected" || this.state === "disconnecting") {
+          finish(new Error("Selene disconnected from WizardConnect. Reconnect the same wallet and retry gathering."));
+          return;
+        }
+        if (this.state !== "connected") return;
+        if (this.sessionWalletIdentity !== identity || !this.mgr) {
+          finish(new Error("AjoChain could not verify that the original Selene wallet reconnected. Sync the address and retry."));
+          return;
+        }
+        const currentAddress = this.address(network);
+        if (!currentAddress ||
+            currentAddress.toLowerCase() !== expectedAddress.toLowerCase() ||
+            !this.isReceiveAddressConfirmed(network)) {
+          finish(new Error("Selene's active receive address changed. Nothing was broadcast; sync the current address and prepare a fresh gather."));
+          return;
+        }
+        try {
+          const currentWalletAddresses = this.listWalletAddresses(network);
+          if (!walletAddressSnapshotsMatch(expectedWalletAddresses, currentWalletAddresses)) {
+            finish(new Error("Selene's receive/change address set changed during the scan. The old coin-scan result was discarded; scan again with the current wallet."));
+            return;
+          }
+        } catch {
+          finish(new Error("AjoChain could not verify Selene's current receive/change addresses. The gather was stopped before broadcast."));
+          return;
+        }
+        finish();
+      };
+
+      unsubscribe = this.onChange(check);
+      timer = setTimeout(() => {
+        finish(new Error("Selene did not reconnect in time to revalidate this gather. Nothing was broadcast; reconnect the same wallet and review its activity before retrying."));
+      }, Math.max(1_000, timeoutMs));
+      check();
+    });
   }
 
   /** Public receive and change addresses of the connected wallet, for coin discovery. */

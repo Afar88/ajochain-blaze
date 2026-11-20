@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { decodeCashAddress } from "@bitauth/libauth";
 import {
   wizardRelayStatusMessage,
+  shouldPreserveReceiveAddressConfirmation,
+  walletAddressSnapshotsMatch,
   isCurrentReceiveAddressConfirmed,
   buildWizardSignRequest,
   assertP2pkhWalletInputCoverage,
@@ -179,6 +181,50 @@ describe("WizardConnect covenant-input sighash inspection", () => {
   });
 });
 
+
+describe("WizardConnect wallet address snapshot validation", () => {
+  const original = [
+    { branch: "receive" as const, index: 0, address: "bitcoincash:qexample1" },
+    { branch: "change" as const, index: 0, address: "bitcoincash:qexample2" },
+  ];
+
+  it("accepts the same receive/change path and address snapshot", () => {
+    expect(walletAddressSnapshotsMatch(original, [...original])).toBe(true);
+    expect(walletAddressSnapshotsMatch(original, original.map((entry) => ({
+      ...entry, address: entry.address.toUpperCase(),
+    })))).toBe(true);
+  });
+
+  it("rejects changed addresses, paths, ordering, and address counts", () => {
+    expect(walletAddressSnapshotsMatch(original, [
+      original[0], { ...original[1], address: "bitcoincash:qchanged" },
+    ])).toBe(false);
+    expect(walletAddressSnapshotsMatch(original, [
+      original[0], { ...original[1], index: 1 },
+    ])).toBe(false);
+    expect(walletAddressSnapshotsMatch(original, [...original].reverse())).toBe(false);
+    expect(walletAddressSnapshotsMatch(original, original.slice(0, 1))).toBe(false);
+  });
+});
+
+describe("WizardConnect receive-address confirmation across relay handshakes", () => {
+  const walletIdentity = "ab".repeat(32);
+
+  it("preserves confirmation for the same authenticated wallet across reconnect handshakes", () => {
+    expect(shouldPreserveReceiveAddressConfirmation(walletIdentity, walletIdentity)).toBe(true);
+    expect(shouldPreserveReceiveAddressConfirmation(walletIdentity.toUpperCase(), walletIdentity)).toBe(true);
+  });
+
+  it("does not preserve confirmation when a different wallet reconnects", () => {
+    expect(shouldPreserveReceiveAddressConfirmation(walletIdentity, "cd".repeat(32))).toBe(false);
+  });
+
+  it("fails closed when either handshake omits a valid wallet identity", () => {
+    expect(shouldPreserveReceiveAddressConfirmation(walletIdentity, null)).toBe(false);
+    expect(shouldPreserveReceiveAddressConfirmation(null, walletIdentity)).toBe(false);
+    expect(shouldPreserveReceiveAddressConfirmation(walletIdentity, "not-a-public-key")).toBe(false);
+  });
+});
 
 describe("WizardConnect relay recovery messaging", () => {
   it("shows temporary subscription closures as recoverable reconnects", () => {

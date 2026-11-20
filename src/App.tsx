@@ -580,6 +580,11 @@ export default function App() {
       setGatherMessage("Sync the Mainnet receive address currently shown in Selene under Wallet Details before gathering real BCH.");
       return;
     }
+    const gatherWalletIdentity = gatherNetwork === "mainnet" ? walletClient.getSessionIdentity() : null;
+    if (gatherNetwork === "mainnet" && !gatherWalletIdentity) {
+      setGatherMessage("WizardConnect has not supplied a verifiable Selene wallet identity. Reconnect Selene before gathering Mainnet BCH.");
+      return;
+    }
     setGatherBusy(true);
     setGatherMessage("Scanning this wallet's " + (gatherNetwork === "mainnet" ? "Mainnet" : "Chipnet") + " receive and change addresses…");
     try {
@@ -614,21 +619,22 @@ export default function App() {
       const realFundsWarning = gatherNetwork === "mainnet"
         ? "\n\nThis uses real BCH. The only output returns to your connected wallet address. CashTokens and pending circle setup coins are not moved."
         : "\n\nCashTokens and pending circle setup coins are not moved.";
-      if (gatherNetwork === "mainnet" &&
-          (!walletClient.isReceiveAddressConfirmed("mainnet") ||
-           walletClient.address("mainnet") !== destinationAddress)) {
-        throw new Error("Selene's confirmed Mainnet address or connection changed during the coin scan. Sync the address and retry.");
+      if (gatherNetwork === "mainnet" && gatherWalletIdentity) {
+        setGatherMessage("Coin scan complete. Checking that the same Selene wallet and confirmed receive address are back online…");
+        await walletClient.waitForConfirmedSession(gatherWalletIdentity, destinationAddress, walletAddresses, "mainnet", 25_000);
       }
       if (!window.confirm(
         "Gather " + plan.inputCount + " " + networkLabel + " BCH coin(s) into one coin at " + plan.destination + "?\n\n" +
         "Total " + plan.totalSatoshis.toString() + " sats, estimated miner fee " + plan.fee.toString() + " sats." +
         realFundsWarning,
       )) { setGatherMessage(""); return; }
-      if (gatherNetwork === "mainnet" &&
-          (!walletClient.isReceiveAddressConfirmed("mainnet") ||
-           walletClient.address("mainnet") !== destinationAddress)) {
-        throw new Error("Selene's confirmed Mainnet address changed before signing. Sync the address and prepare a fresh gather.");
+      if (gatherNetwork === "mainnet" && gatherWalletIdentity) {
+        setGatherMessage("Preparing a single signing request for Selene…");
+        await walletClient.waitForConfirmedSession(gatherWalletIdentity, destinationAddress, walletAddresses, "mainnet", 20_000);
       }
+      // WizardConnect retains pending signing requests and re-delivers them
+      // after wallet_ready; keep one request/sequence and never retry it here.
+      setGatherMessage("Waiting for Selene to approve the BCH gather…");
       const signed = await walletClient.signAndVerify(
         plan.wc,
         plan.walletInputs,
@@ -636,10 +642,9 @@ export default function App() {
         plan.inputPaths,
       );
       if (gatherNetwork === "mainnet") {
-        if (!walletClient.isReceiveAddressConfirmed("mainnet") ||
-            walletClient.address("mainnet") !== destinationAddress) {
-          throw new Error("Selene's confirmed Mainnet address or connection changed after signing. The signed bytes were not broadcast; sync the address and retry.");
-        }
+        if (!gatherWalletIdentity) throw new Error("The original Selene wallet identity is unavailable. The signed transaction was not broadcast.");
+        setGatherMessage("Signature received. Rechecking the same Selene wallet before submitting the BCH gather…");
+        await walletClient.waitForConfirmedSession(gatherWalletIdentity, destinationAddress, walletAddresses, "mainnet", 20_000);
         const response = await fetch("/api/bch/gather", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
