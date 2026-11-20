@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import {
-  Activity, ArrowRight, Check, ChevronDown, Coins, Home,
+  Activity, ArrowRight, Check, ChevronDown, Home,
   Monitor, MoreVertical, Moon, ShieldCheck, Sun, Users, Wallet, X,
 } from "lucide-react";
 import { getDefaultNetwork, NETWORKS, type NetworkId } from "./core/network-config";
