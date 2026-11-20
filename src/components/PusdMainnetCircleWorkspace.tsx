@@ -242,7 +242,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     });
     return () => { current = false; };
   }, [selectedCircle]);
-remove hash invite  const memberAddresses = useMemo(() =>
+  const memberAddresses = useMemo(() =>
     membersText.split(/\r?\n/).map((address) => address.trim()).filter(Boolean),
   [membersText]);
 
