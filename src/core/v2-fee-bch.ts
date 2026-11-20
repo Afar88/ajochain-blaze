@@ -840,6 +840,34 @@ async function readV2FeeClosingBlockTime(
   }
 }
 
+async function findV2FeeStateTransactionBlockTime(
+  provider: NetworkProvider,
+  contract: Contract,
+  stateTxid: string,
+): Promise<number | null> {
+  const electrum = provider as NetworkProvider & { performRequest?: (name: string, ...args: (string | number)[]) => Promise<unknown> };
+  if (typeof electrum.performRequest !== "function") return null;
+  try {
+    const scriptHash = binToHex(sha256.hash(
+      typeof contract.lockingBytecode === "string" ? hexToBin(contract.lockingBytecode) : contract.lockingBytecode,
+    ).reverse());
+    const history = await electrum.performRequest("blockchain.scripthash.get_history", scriptHash);
+    if (!Array.isArray(history)) return null;
+    const record = history.find((entry) =>
+      entry && typeof entry === "object" &&
+      typeof (entry as { tx_hash?: unknown }).tx_hash === "string" &&
+      (entry as { tx_hash: string }).tx_hash.toLowerCase() === stateTxid.toLowerCase(),
+    ) as { height?: unknown } | undefined;
+    if (!record || typeof record.height !== "number") return null;
+    return await readV2FeeClosingBlockTime(
+      electrum as NetworkProvider & { performRequest: (name: string, ...args: (string | number)[]) => Promise<unknown> },
+      record.height,
+    );
+  } catch {
+    return null;
+  }
+}
+
 async function findV2FeeClosingTransaction(
   provider: NetworkProvider,
   contract: Contract,
@@ -921,6 +949,9 @@ export async function readV2FeeCircle(params: V2FeeCircleParams) {
   const credits = receipts.map(u => v2FeeCreditFromCommitment(u.token!.nft!.commitment));
   if (state.satoshis !== credits.reduce((sum, credit) => sum + credit, STATE_DUST)) throw new Error('State BCH does not match the exact member-credit total. Stop and investigate.');
   const memberAccounting = summarizeV2FeeMemberAccounting(params, round, credits);
+  const completedAt = completed
+    ? await findV2FeeStateTransactionBlockTime(provider, contract, state.txid)
+    : null;
   const requiredPerMember = isFeeV2EscrowCovenant(params.covenant)
     ? BigInt(params.members.length - round) * params.contribution
     : params.contribution;
@@ -932,7 +963,7 @@ export async function readV2FeeCircle(params: V2FeeCircleParams) {
     hasPaid,
     completed,
     closedAs: null as V2FeeClosedAs | null,
-    completedAt: null as number | null,
+    completedAt,
     stateSatoshis: state.satoshis,
     credits,
     memberAccounting,
