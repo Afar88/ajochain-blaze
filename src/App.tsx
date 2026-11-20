@@ -1565,6 +1565,53 @@ export default function App() {
     BigInt(selectedReceiveAddressChoice.confirmedSatoshis) === 0n &&
     (BigInt(selectedReceiveAddressChoice.unconfirmedSatoshis) > 0n || selectedReceiveAddressChoice.hasPendingHistory));
 
+
+  const renderCircleRows = (circles: MenuCircle[], compact = false) => (
+    <div className={compact ? "my-circles-list compact-list" : "my-circles-list"}>
+      {circles.map((circle) => (
+        <div className="my-circle-entry" key={circle.id}>
+          <button type="button" className="my-circle-row" onClick={() => openMenuCircle(circle)}>
+            <span className="my-circle-copy">
+              <b>{circle.name}</b>
+              <span>{circle.asset} · {circle.contributionLabel} · {circle.memberCount} members</span>
+              <small>{circle.status === "completed" || circle.status === "cancelled"
+                ? (circle.status === "cancelled" ? "Cancelled" : "Completed") +
+                  (circle.completedAt ? " · " + new Date(circle.completedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "")
+                : circle.status === "unknown"
+                  ? "Status unavailable · latest chain read failed"
+                  : circle.round === null
+                    ? "Checking round progress · " + circle.memberCount + " members"
+                    : "Round " + Math.min(circle.round + 1, circle.memberCount) + " of " + circle.memberCount}</small>
+            </span>
+            <span className={
+              circle.status === "completed" ? "my-circle-status completed"
+                : circle.status === "cancelled" ? "my-circle-status cancelled"
+                  : circle.status === "unknown" ? "my-circle-status unavailable" : "my-circle-status"
+            }>{circle.status === "completed" ? "Completed"
+              : circle.status === "cancelled" ? "Cancelled"
+                : circle.status === "unknown" ? "Status unavailable" : "Active"}</span>
+            <ArrowRight size={17} />
+          </button>
+          {circle.status === "unknown" && (
+            <button type="button" className="secondary-button circle-status-retry"
+              onClick={() => retryCircleStatus(circle)}>Retry status check</button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderCircleTabs = () => (
+    <div className="my-circles-tabs" role="tablist" aria-label="Circle status">
+      <button type="button" role="tab" aria-selected={circleStatusTab === "active"}
+        className={circleStatusTab === "active" ? "selected" : ""}
+        onClick={() => setCircleStatusTab("active")}>Active ({networkCircleCounts.active})</button>
+      <button type="button" role="tab" aria-selected={circleStatusTab === "completed"}
+        className={circleStatusTab === "completed" ? "selected" : ""}
+        onClick={() => setCircleStatusTab("completed")}>Completed ({networkCircleCounts.completed})</button>
+    </div>
+  );
+
   return (
     <main className="app-shell compact-app">
       <header className="app-header">
@@ -1572,6 +1619,12 @@ export default function App() {
           <span className="brand-mark">a</span><span>AjoChain</span>
         </a>
         <div className="header-actions">
+          <button type="button" className="header-network-pill" onClick={() => {
+            setMenuCircles(readSavedCircleMenuRecords());
+            setMenuOpen(true);
+          }} aria-label={"Selected network: " + NETWORKS[network].label + ". Open network options."}>
+            <span className="network-dot" />{network === "mainnet" ? "Mainnet" : "Chipnet"}
+          </button>
           {connected && (
             <button className="header-wallet-chip" type="button" onClick={() => setShowWallet(true)}>
               <span className="wallet-live-dot" />{shortAddress(walletAddress)}
@@ -1667,8 +1720,46 @@ export default function App() {
       </header>
 
       <div className="page-body">
+
         {page === "overview" && (
           <>
+            <section className="overview-network-notice" aria-label="Selected network notice">
+              <div className="overview-notice-icon"><ShieldCheck size={18} /></div>
+              <div className="overview-notice-copy">
+                <span className="section-kicker">NETWORK NOTICE</span>
+                <b>{network === "mainnet" ? "Bitcoin Cash Mainnet · real funds" : "Chipnet · testing only"}</b>
+                <p>{network === "mainnet"
+                  ? "Mainnet uses real BCH and PUSD. Review every amount and miner fee; wallet approval is required. Circle contracts are unaudited."
+                  : "Chipnet is a testing network. Test BCH has no real-money value and cannot be used as Mainnet funds."}</p>
+              </div>
+              <button type="button" className="secondary-button overview-network-change"
+                onClick={() => setMenuOpen(true)}>Change network</button>
+            </section>
+
+            <section className="overview-my-circles section-card" aria-labelledby="overview-circles-title">
+              <div className="section-heading overview-circles-heading">
+                <div><span className="section-kicker">YOUR SAVINGS</span><h2 id="overview-circles-title">My circles</h2>
+                  <p>{NETWORKS[network].label} circles, classified from read-only chain status.</p></div>
+                <button type="button" className="text-action" onClick={() => navigate("my-circles")}>View all <ArrowRight size={14} /></button>
+              </div>
+              {renderCircleTabs()}
+              {visibleStatusCircles.length === 0 ? (
+                <div className="my-circles-empty overview-empty">
+                  <h2>{circleStatusTab === "active" ? "No active circles yet" : "No completed circles yet"}</h2>
+                  <p>{circleStatusTab === "active"
+                    ? "Create your first circle or restore an invite. New circles appear here after their status is checked."
+                    : "Completed payouts and confirmed cancellations appear here."}</p>
+                  <button type="button" className="secondary-button" onClick={() => navigate("my-circles")}>Open My circles</button>
+                </div>
+              ) : renderCircleRows(visibleStatusCircles.slice(0, 3), true)}
+              {visibleNetworkCircles.length > 3 && (
+                <button type="button" className="text-action overview-view-more" onClick={() => navigate("my-circles")}>
+                  View all {visibleNetworkCircles.length} circles <ArrowRight size={14} />
+                </button>
+              )}
+              <span className="circle-scan-summary" role="status">✓ {NETWORKS[network].label}: {networkCircleCounts.active} active, {networkCircleCounts.completed} completed</span>
+            </section>
+
             <section className="welcome-hero">
               <div className="welcome-kicker"><span /> AJO · ESUSU · ON BITCOIN CASH</div>
               <h1>Your Ajo savings circle,<br /><em>on Bitcoin Cash.</em></h1>
@@ -1676,6 +1767,15 @@ export default function App() {
               <button className="primary-button hero-cta" type="button" onClick={() => navigate("create-circle")}>
                 Create a circle <ArrowRight size={16} />
               </button>
+            </section>
+
+            <section className="overview-activity section-card" aria-labelledby="overview-activity-title">
+              <div className="section-heading"><div><span className="section-kicker">LATEST RECORDS</span><h2 id="overview-activity-title">Activity</h2></div>
+                <button type="button" className="text-action" onClick={() => navigate("activity")}>All activity <ArrowRight size={14} /></button>
+              </div>
+              <Suspense fallback={<p className="classic-empty">Loading chain-backed activity…</p>}>
+                <ActivityRecords />
+              </Suspense>
             </section>
 
             <section className="how-ajo-works" aria-labelledby="how-ajo-works-title">
@@ -1794,12 +1894,18 @@ export default function App() {
           </section>
         )}
 
+
         {page === "my-circles" && (
           <section className="page-section my-circles-page">
             <div className="page-intro">
               <span className="section-kicker">YOUR SAVINGS CIRCLES</span>
               <h1>{network === "mainnet" ? "Mainnet circles" : "Chipnet test circles"}</h1>
-              <p>Circles are shown only for the network selected in the navigation menu.</p>
+              <p>Circles are shown only for the network selected in the navigation menu. Status is read from the selected network's blockchain.</p>
+            </div>
+            <div className="circle-scan-summary-row">
+              <span className="circle-scan-summary" role="status">✓ {NETWORKS[network].label}: {networkCircleCounts.active} active, {networkCircleCounts.completed} completed</span>
+              {visibleNetworkCircles.some((circle) => circle.status === "unknown") &&
+                <span className="circle-scan-warning" role="status">{visibleNetworkCircles.filter((circle) => circle.status === "unknown").length} status check(s) unavailable</span>}
             </div>
             {network === "mainnet" && (
               <section className="pusd-mainnet-saved mainnet-invite-join" aria-label="Join a Mainnet circle">
@@ -1816,55 +1922,23 @@ export default function App() {
                 {mainnetInviteNotice && <p className="classic-notice" role="status">{mainnetInviteNotice}</p>}
               </section>
             )}
-            <div className="my-circles-tabs" role="tablist" aria-label="Circle status">
-              <button type="button" role="tab" aria-selected={circleStatusTab === "active"}
-                className={circleStatusTab === "active" ? "selected" : ""}
-                onClick={() => setCircleStatusTab("active")}>Active</button>
-              <button type="button" role="tab" aria-selected={circleStatusTab === "completed"}
-                className={circleStatusTab === "completed" ? "selected" : ""}
-                onClick={() => setCircleStatusTab("completed")}>Completed</button>
-            </div>
+            {renderCircleTabs()}
             {visibleStatusCircles.length === 0 ? (
               <div className="my-circles-empty">
                 {circleStatusTab === "active" ? (
                   <>
                     <h2>No active circles on {network === "mainnet" ? "Mainnet" : "Chipnet"} yet</h2>
-                    <p>New circles appear here as soon as they are saved on this network.</p>
+                    <p>New circles appear here as soon as they are saved and their chain status is checked.</p>
                     <button type="button" className="primary-button" onClick={() => navigate("create-circle")}>Create a circle</button>
                   </>
                 ) : (
                   <>
                     <h2>No completed circles yet</h2>
-                    <p>Circles move here after the blockchain confirms that every payout is complete.</p>
+                    <p>Completed payouts and confirmed cancellations move here after the blockchain check. Cancelled circles are labelled separately.</p>
                   </>
                 )}
               </div>
-            ) : (
-              <div className="my-circles-list">
-                {visibleStatusCircles.map((circle) => (
-                  <button type="button" key={circle.id} className="my-circle-row" onClick={() => {
-                    setSelectedMenuCircle(circle.id);
-                    setCircleWorkspace(circle.kind === "v2-fee" ? "bch-fair-round"
-                      : circle.kind === "classic" ? "bch-classic"
-                        : circle.kind === "bch-mainnet" ? "bch-mainnet" : "pusd-mainnet");
-                    setPage("circle-detail");
-                    setMenuOpen(false);
-                  }}>
-                    <span className="my-circle-copy">
-                      <b>{circle.name}</b>
-                      <span>{circle.asset} · {circle.contributionLabel} · {circle.memberCount} members</span>
-                      <small>{circle.status === "completed"
-                        ? "Completed" + (circle.completedAt ? " · " + new Date(circle.completedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "")
-                        : circle.round === null
-                          ? "Round progress pending · " + circle.memberCount + " members"
-                          : "Round " + Math.min(circle.round + 1, circle.memberCount) + " of " + circle.memberCount}</small>
-                    </span>
-                    <span className={circle.status === "completed" ? "my-circle-status completed" : "my-circle-status"}>{circle.status === "completed" ? "Completed" : "Active"}</span>
-                    <ArrowRight size={17} />
-                  </button>
-                ))}
-              </div>
-            )}
+            ) : renderCircleRows(visibleStatusCircles)}
           </section>
         )}
 
