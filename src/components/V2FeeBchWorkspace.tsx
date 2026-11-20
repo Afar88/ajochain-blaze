@@ -5,7 +5,7 @@ import { CashTokensGenesisUtxoMissingError, classicAddressToPkh, getClassicProvi
 import { formatBch, type NetworkId } from "../core/network";
 import { wallet } from "../core/wizard-wallet";
 import { dedupeSavedV2FeeCircleRecords, getV2FeeCircleRecordIdentity } from "../core/v2-fee-circle-records";
-import { updateSavedCircleProgress } from "../circles/saved-circle-status";
+import { updateSavedCircleChainStatus } from "../circles/saved-circle-status";
 import { encodeV2FeeCircleParams } from "../core/v2-fee-discovery";
 import {
   buildV2FeeMemberOrder,
@@ -124,7 +124,7 @@ export default function V2FeeBchWorkspace({
   const persistChainProgress = (params: V2FeeCircleParams, encoded: string, result: Snapshot) => {
     const identity = getV2FeeCircleRecordIdentity(encoded);
     if (!identity) return;
-    updateSavedCircleProgress(window.localStorage, {
+    updateSavedCircleChainStatus(window.localStorage, {
       id: "v2:" + identity.key,
       encoded,
       network: params.network,
@@ -133,7 +133,8 @@ export default function V2FeeBchWorkspace({
       asset: "BCH",
       contribution: params.contribution.toString(),
       memberCount: params.members.length,
-    }, result.round, result.completed);
+    }, result.closedAs === "cancelled" ? "cancelled" : result.completed ? "completed" : "active",
+    result.round, result.completedAt ?? null);
   };
 
   const refresh = async (params = active) => {
