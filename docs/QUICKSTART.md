@@ -122,7 +122,7 @@ UPSTASH_REDIS_REST_TOKEN=your-private-write-token
 
 There is no in-memory fallback: missing credentials or an unavailable ledger blocks the affected submission before relay. The PUSD V3 circle-broadcast gate is enabled in code and uses this ledger; ordinary PUSD wallet transfers remain hard-disabled by their separate compile-time guards. Adding credentials does not enable ordinary PUSD transfers. The credentials are not required merely to run the UI, discover circles, or perform read-only verification. Do not reuse legacy AjoChain or other project databases.
 
-The repository includes a Vercel catch-all API adapter at api/[...path].mjs. The API health endpoint is /api/health. It reports read-only status and explicitly reports that provider-operator independence and Mainnet release approval have not been verified.
+The repository includes a Vercel catch-all API adapter at api/[...path].mjs. The API health endpoint is /api/health. It reports provider status and separate BCH-circle, PUSD-circle, ordinary-transfer and gather gate values; it does not certify provider-operator independence or Mainnet release approval.
 
 ## 7. What is and is not enabled
 

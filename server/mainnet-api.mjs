@@ -2821,7 +2821,9 @@ export function createMainnetApiServer() {
             tipHeight: tip.height,
             tipHash: tip.hash,
             broadcastEnabled: MAINNET_BROADCAST_ENABLED,
+            bchCircleBroadcastEnabled: BCH_MAINNET_CIRCLE_BROADCAST_ENABLED,
             bchGatherBroadcastEnabled: BCH_MAINNET_GATHER_BROADCAST_ENABLED,
+            pusdCircleBroadcastEnabled: PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED,
             mainnetReleaseApproved: false,
             pusdDurableSubmissionLedgerConfigured: isPusdBroadcastLedgerConfigured(),
           });

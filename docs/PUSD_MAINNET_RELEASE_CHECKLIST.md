@@ -1,6 +1,6 @@
 # PUSD Mainnet spending release checklist
 
-**Current status: READ-ONLY. PUSD Mainnet spending is not approved.**
+**Current status: ordinary PUSD Mainnet wallet transfers remain disabled. The separate PUSD V3 circle-broadcast gate is enabled in code, but the circle flow is not independently security-approved.**
 
 External reviewer handoff: [`MAINNET_EXTERNAL_REVIEW_BRIEF.md`](./MAINNET_EXTERNAL_REVIEW_BRIEF.md).
 

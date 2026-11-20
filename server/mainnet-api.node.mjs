@@ -41,6 +41,8 @@ import {
   MAINNET_BROADCAST_ENABLED,
   BCH_MAINNET_CIRCLE_BROADCAST_ENABLED,
   BCH_MAINNET_GATHER_BROADCAST_ENABLED,
+  PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED,
+  broadcastPusdMainnetCircleTransaction,
   broadcastBchMainnetCircleTransaction,
   broadcastBchMainnetGatherTransaction,
   validateBchMainnetGatherLayout,
@@ -1321,6 +1323,22 @@ test("BCH Mainnet circle broadcast is gated and refuses before any verification 
   await assert.rejects(
     broadcastBchMainnetCircleTransaction(sessions, { height: 1, hash: "00" }, { operation: "bogus" }, true),
     /Unsupported BCH Mainnet circle verification operation/,
+  );
+  assert.equal(called, false);
+});
+
+test("PUSD Mainnet V3 circle broadcast has its own gate and refuses before verification when disabled", async () => {
+  assert.equal(PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED, true);
+  let called = false;
+  const sessions = [{ call: async () => { called = true; } }, { call: async () => { called = true; } }];
+  await assert.rejects(
+    broadcastPusdMainnetCircleTransaction(
+      sessions,
+      { height: 1, hash: "00" },
+      { operation: "payout" },
+      false,
+    ),
+    /PUSD Mainnet circle broadcast is disabled/,
   );
   assert.equal(called, false);
 });
