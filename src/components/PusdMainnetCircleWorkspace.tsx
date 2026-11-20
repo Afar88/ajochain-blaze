@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
 import { PUSD_ASSET, formatAssetAmount, parseAssetAmount } from "../core/assets";
 import { classicAddressToPkh } from "../core/classic-bch";
@@ -121,19 +121,6 @@ function encodeCircleInvite(circle: PusdMainnetCircleParams): string {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
-function decodeCircleInvite(value: string): PusdMainnetCircleParams {
-  const trimmed = value.trim();
-  const marker = trimmed.indexOf(INVITE_ROUTE);
-  const encoded = marker >= 0 ? trimmed.slice(marker + INVITE_ROUTE.length) : trimmed;
-  const binary = atob(encoded.replace(/-/g, "+").replace(/_/g, "/"));
-  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-  const circle = deserializeCircle(new TextDecoder().decode(bytes));
-  if (!circle || circle.network !== "mainnet" || circle.version !== 3) {
-    throw new Error("This invite is not for a PUSD Mainnet V3 circle.");
-  }
-  return circle;
-}
-
 function persistActiveCircle(circle: PusdMainnetCircleParams) {
   const stored: StoredCircle = {
     ...circle,
@@ -219,13 +206,18 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
   } | null>(null);
   const [genesisSigningPlan, setGenesisSigningPlan] = useState<MainnetSigningPlan | null>(null);
   const [actionSigningPlan, setActionSigningPlan] = useState<MainnetSigningPlan | null>(null);
+  const [creationResult, setCreationResult] = useState<{ txid: string; explorerUrl: string; inviteUrl: string } | null>(null);
+  const creationSummaryRef = useRef<HTMLDivElement>(null);
   const [, setDeployedCircles] = useState<PusdMainnetCircleParams[]>(readDeployedCircles);
-  const [inviteInput, setInviteInput] = useState("");
 
   useEffect(() => {
     onBusyChange?.(busy || lifecycleBusy);
     return () => onBusyChange?.(false);
   }, [busy, lifecycleBusy, onBusyChange]);
+
+  useEffect(() => {
+    if (preparedPlan) creationSummaryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [preparedPlan]);
 
   useEffect(() => {
     if (!selectedCircle) return;
@@ -250,24 +242,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     });
     return () => { current = false; };
   }, [selectedCircle]);
-  useEffect(() => {
-    const hash = window.location.hash;
-    if (!hash.startsWith(INVITE_ROUTE)) return;
-    try {
-      const circle = decodeCircleInvite(hash);
-      setActiveCircle(circle);
-      persistActiveCircle(circle);
-      setDeployedCircles(addDeployedCircle(circle));
-      setCircleSnapshot(null);
-      setGenesisSigningPlan(null);
-      setActionSigningPlan(null);
-      setNotice("PUSD Mainnet circle invite loaded. Check the circle on the blockchain before acting.");
-    } catch {
-      setError("This link is not a valid PUSD Mainnet V3 circle invite.");
-    }
-  }, []);
-
-  const memberAddresses = useMemo(() =>
+remove hash invite  const memberAddresses = useMemo(() =>
     membersText.split(/\r?\n/).map((address) => address.trim()).filter(Boolean),
   [membersText]);
 
@@ -326,24 +301,25 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     }
   };
 
-  const prepareCreationPlan = async () => {
+  const prepareCreationPlan = async (): Promise<MainnetSigningPlan | null> => {
     setNotice("");
     setError("");
     setPreparedPlan(null);
     setGenesisSigningPlan(null);
     setActionSigningPlan(null);
+    setCreationResult(null);
     if (network !== "mainnet") {
       setError("PUSD circle creation plans are Mainnet-only.");
-      return;
+      return null;
     }
     if (!walletConnected || wallet.state !== "connected") {
       setError("Connect Selene through WizardConnect before preparing a Mainnet creation plan.");
-      return;
+      return null;
     }
     const initiatorAddress = wallet.address("mainnet");
     if (!initiatorAddress) {
       setError("The connected wallet does not expose a verified Mainnet receive address.");
-      return;
+      return null;
     }
     setBusy(true);
     try {
@@ -354,16 +330,14 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         contribution: units,
         maxFee: BigInt(maxFee.trim()),
       }, initiatorAddress);
-      setGenesisSigningPlan({
+      const signingPlan: MainnetSigningPlan = {
         wc: plan.wc, walletInputs: plan.walletInputs,
         prompt: "Check PUSD Mainnet circle setup for " + name.trim(),
         createdAt: Date.now(),
         operation: "genesis",
         circle: plan.params,
-      });
-      setActiveCircle(plan.params);
-      persistActiveCircle(plan.params);
-      setCircleSnapshot(null);
+      };
+      setGenesisSigningPlan(signingPlan);
       setPreparedPlan({
         contractAddress: plan.contractAddress!,
         escrowAddresses: plan.escrowAddresses ?? [],
@@ -371,15 +345,17 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         transactionSizeBytes: plan.transactionSizeBytes,
       });
       setNotice("PUSD circle setup preview ready. Nothing has been signed or sent.");
+      return signingPlan;
     } catch (cause) {
       setError(errorMessage(cause));
+      return null;
     } finally {
       setBusy(false);
     }
   };
 
-  const verifyMainnetSignature = async (target: "genesis" | "action", send = false) => {
-    const signingPlan = target === "genesis" ? genesisSigningPlan : actionSigningPlan;
+  const verifyMainnetSignature = async (target: "genesis" | "action", send = false, signingPlanOverride?: MainnetSigningPlan | null) => {
+    const signingPlan = signingPlanOverride ?? (target === "genesis" ? genesisSigningPlan : actionSigningPlan);
     if (!signingPlan) return;
     if (network !== "mainnet" || !walletConnected || wallet.state !== "connected") {
       setError("Reconnect Selene on BCH Mainnet before starting PUSD signature verification.");
@@ -424,10 +400,21 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
           relayed.txid + " (relay: " + relayed.relayStatus + "). It is not confirmed yet; refresh the circle state after it confirms.";
         setNotice(sent);
         if (target === "genesis") {
+          if (!/^[0-9a-f]{64}$/i.test(relayed.txid)) {
+            throw new Error("Selene approved the transaction, but the broadcast response did not include a valid transaction ID. The circle was not added to My circles.");
+          }
+          const inviteUrl = window.location.origin + window.location.pathname + INVITE_ROUTE + encodeCircleInvite(signingPlan.circle);
+          setCreationResult({
+            txid: relayed.txid,
+            explorerUrl: "https://blockexplorer.cash/mainnet/tx/" + relayed.txid,
+            inviteUrl,
+          });
+          setActiveCircle(signingPlan.circle);
           try {
+            persistActiveCircle(signingPlan.circle);
             setDeployedCircles(addDeployedCircle(signingPlan.circle));
           } catch {
-            setNotice(sent + " This browser could not add it to the saved circle list; copy the invite now to keep it.");
+            setNotice(sent + " The transaction was sent, but this browser could not save the circle locally. Its invite is shown below.");
           }
         }
         return;
@@ -443,6 +430,15 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     } finally {
       setLifecycleBusy(false);
     }
+  };
+
+  const createCircleInSelene = async () => {
+    let signingPlan = genesisSigningPlan;
+    if (!signingPlan || Date.now() - signingPlan.createdAt > 60_000) {
+      signingPlan = await prepareCreationPlan();
+    }
+    if (!signingPlan) return;
+    await verifyMainnetSignature("genesis", true, signingPlan);
   };
 
   const readActiveOnChainState = async () => {
@@ -645,16 +641,21 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         <div className="pusd-mainnet-actions">
           <button className="secondary-button" type="submit" disabled={network !== "mainnet"}>Save Mainnet circle draft</button>
           <button className="primary-button" type="button" onClick={() => void prepareCreationPlan()} disabled={network !== "mainnet" || !walletConnected || busy}>
-            {busy ? "Preparing preview…" : "Preview circle setup"} <ArrowRight size={15} />
+            {busy ? "Preparing preview…" : "Continue"} <ArrowRight size={15} />
           </button>
         </div>
       </form>
 
-      {preparedPlan && (
-        <div className="pusd-mainnet-breakdown" role="status">
-          <b>Circle setup preview ready</b>
-          <p className="field-hint">Review the estimated network fee. Nothing has been signed or sent yet.</p>
-          <div><span>Estimated BCH network fee</span><strong>{preparedPlan.feeEstimate} sats</strong></div>
+      {preparedPlan && genesisSigningPlan && (
+        <div ref={creationSummaryRef} className="pusd-mainnet-breakdown mainnet-create-summary" role="status">
+          <b>Review your circle</b>
+          <button type="button" className="primary-button mainnet-create-primary" disabled={lifecycleBusy || busy || !walletConnected}
+            onClick={() => void createCircleInSelene()}>
+            {lifecycleBusy ? "Approve in Selene…" : "Create circle in Selene"}
+          </button>
+          <div><span>Members</span><strong>{genesisSigningPlan.circle.members.length}</strong></div>
+          <div><span>Contribution per member</span><strong>{formatAssetAmount("PUSD", genesisSigningPlan.circle.contribution)} PUSD</strong></div>
+          <div><span>Estimated network fee</span><strong>{preparedPlan.feeEstimate} sats</strong></div>
           <details className="technical-details">
             <summary>Technical details</summary>
             <div><span>PUSD circle contract address</span><strong><code>{preparedPlan.contractAddress}</code></strong></div>
@@ -662,10 +663,27 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
               <div key={address}><span>Member {index + 1} escrow address</span><strong><code>{address}</code></strong></div>
             ))}
             <p>Estimated transaction size: {preparedPlan.transactionSizeBytes} bytes.</p>
+            <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected}
+              onClick={() => void verifyMainnetSignature("genesis")}>Check Selene approval · no payment</button>
           </details>
-          <small>Nothing has been created or paid yet.</small>
-          {genesisSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis")}>Check Selene approval · no payment</button>}
-          {genesisSigningPlan && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis", true)}>Sign and send on Mainnet</button>}
+          <small>Nothing has been created yet. The circle is saved only after the Mainnet broadcast returns a transaction ID.</small>
+        </div>
+      )}
+      {creationResult && (
+        <div className="pusd-mainnet-breakdown mainnet-create-success" role="status">
+          <b>Circle created</b>
+          <p>Selene approved the transaction and the Mainnet relay returned a transaction ID.</p>
+          <div><span>Transaction ID</span><strong><a href={creationResult.explorerUrl} target="_blank" rel="noreferrer">{creationResult.txid}</a></strong></div>
+          <div className="mainnet-create-invite">
+            <span>Invite link to share</span>
+            <a href={creationResult.inviteUrl}>{creationResult.inviteUrl}</a>
+            <button type="button" className="secondary-button" onClick={() => {
+              void navigator.clipboard.writeText(creationResult.inviteUrl).then(
+                () => setNotice("Invite link copied. Share it with your circle members."),
+                () => setNotice("Invite link: " + creationResult.inviteUrl),
+              );
+            }}>Copy invite link</button>
+          </div>
         </div>
       )}
       {activeCircle && (
@@ -715,7 +733,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       {error && <p className="classic-error" role="alert">{error}</p>}
       {notice && <p className="classic-notice" role="status">{notice}</p>}
 
-      {activeCircle && (
+      {activeCircle && (selectedCircle || creationResult) && (
         <div className="pusd-mainnet-invite">
           <button type="button" className="secondary-button" onClick={() => {
             const link = window.location.origin + window.location.pathname + INVITE_ROUTE + encodeCircleInvite(activeCircle);
@@ -727,29 +745,6 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
           <small>Members open this link to load the circle. It contains the circle parameters, not keys.</small>
         </div>
       )}
-
-      <div className="pusd-mainnet-deployed">
-        <div className="section-heading"><div><span className="section-kicker">INVITE</span><h3>Add an existing PUSD Mainnet circle</h3></div></div>
-        <div className="pusd-mainnet-invite-import">
-          <input value={inviteInput} onChange={(event) => setInviteInput(event.target.value)} placeholder="Paste a PUSD Mainnet circle invite" autoComplete="off" />
-          <button type="button" className="secondary-button" onClick={() => {
-            try {
-              const circle = decodeCircleInvite(inviteInput);
-              setActiveCircle(circle);
-              persistActiveCircle(circle);
-              setDeployedCircles(addDeployedCircle(circle));
-              setCircleSnapshot(null);
-              setGenesisSigningPlan(null);
-              setActionSigningPlan(null);
-              setInviteInput("");
-              setNotice("PUSD Mainnet circle invite loaded. Check its chain state before taking action.");
-            } catch (cause) {
-              setError(errorMessage(cause));
-            }
-          }}>Import invite</button>
-        </div>
-        <p className="classic-empty">Saved circles appear in My circles, grouped by the selected network.</p>
-      </div>
 
       <div className="pusd-mainnet-build-status">
         <LockKeyhole size={16} />
