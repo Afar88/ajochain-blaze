@@ -906,7 +906,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
               <div><span>Estimated miner fee</span><strong>{actionPreview.feeEstimate} sats</strong></div>
               <div><span>Transaction size</span><strong>{actionPreview.size}</strong></div>
               <div><span>Wallet-owned inputs requiring signatures</span><strong>{actionPreview.walletInputCount}</strong></div>
-              <small>Sign and send uses real BCH. Re-read state before each new action; inputs must be confirmed.</small>
+              <small>Before every action, the app re-reads state and requires confirmed inputs.</small>
               {actionSigningPlan && <details className="advanced-actions" open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
                 <summary>Advanced</summary>
                 <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected}
@@ -938,7 +938,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
 
       <div className="pusd-mainnet-build-status">
         <LockKeyhole size={16} />
-        <span><b>Real BCH on Mainnet</b><small>Every transaction is checked by the server (exact transaction intent, 0x61 sighashes, confirmed inputs, BCH 2026 VM) before it is sent once. The Mainnet action rechecks the exact transaction, confirmed inputs and BCH virtual-machine validation before submission.</small></span>
+        <span><b>Mainnet transaction checks</b><small>Before relay submission, the server checks exact transaction intent, signature hashes, confirmed inputs and BCH 2026 VM validation.</small></span>
       </div>
     </section>
   );
