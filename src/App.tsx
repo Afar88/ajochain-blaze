@@ -435,8 +435,6 @@ export default function App() {
 
   const walletAddress = walletClient?.address(network) ?? null;
   const connected = walletView.state === "connected";
-  const otherNetworkAddress = walletClient?.address(network === "mainnet" ? "chipnet" : "mainnet") ?? null;
-  const walletNetworkMismatch = connected && !walletAddress && Boolean(otherNetworkAddress);
   const walletStateLabel = walletView.state === "connecting" ? "Connecting"
     : walletView.state === "reconnecting" ? "Reconnecting"
       : walletView.state === "disconnecting" ? "Disconnecting"
@@ -1711,7 +1709,6 @@ export default function App() {
               <Copy size={15} />
             </button>
           )}
-          {walletNetworkMismatch && <span className="header-wallet-mismatch" role="status">Wallet on other network</span>}
           <button
             className={menuOpen ? "menu-trigger menu-trigger-open" : "menu-trigger"}
             type="button"
@@ -2173,7 +2170,7 @@ export default function App() {
             </div>
             {connected ? (
               <div className="wallet-detail-body">
-                <div className="wallet-address-card"><span>{NETWORKS[network].label}</span><code>{walletAddress ?? "Address not available yet"}</code>{walletAddress && <button type="button" className="secondary-button wallet-copy-address" onClick={() => { void navigator.clipboard.writeText(walletAddress).catch(() => undefined); }}><Copy size={14} /> Copy address</button>}{walletNetworkMismatch && <small className="wallet-network-mismatch" role="alert">Selene is connected to the other network. Switch to {NETWORKS[network].label} and reconnect.</small>}{walletAddress
+                <div className="wallet-address-card"><span>{NETWORKS[network].label}</span><code>{walletAddress ?? "Address not available yet"}</code>{walletAddress && <button type="button" className="secondary-button wallet-copy-address" onClick={() => { void navigator.clipboard.writeText(walletAddress).catch(() => undefined); }}><Copy size={14} /> Copy address</button>}{walletAddress
                   ? <small>Derived receive address · index {walletView.receiveIndex}. Receive and change addresses are derived from this connected Selene wallet. Choose the address Selene is currently showing before creating or managing a Mainnet circle.</small>
                   : <small className="wallet-match-message">WizardConnect is connected, but no valid live receive key is available yet. Check the Selene session and reconnect if needed.</small>}</div>
                 {network === "mainnet" && <section className="receive-address-picker" aria-labelledby="receive-address-picker-title">
