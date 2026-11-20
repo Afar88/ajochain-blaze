@@ -16,7 +16,8 @@ function relativeLuminance(hex: string): number {
   const linear = channels.map((value) => value <= 0.04045
     ? value / 12.92
     : ((value + 0.055) / 1.055) ** 2.4);
-  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+  const [red = 0, green = 0, blue = 0] = linear;
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
 }
 
 function contrastRatio(foreground: string, background: string): number {
@@ -70,7 +71,7 @@ describe("Navy/red theme and responsive stylesheet", () => {
       "#13203A", "#1A2A4A", "#2A3A5C", "#F3E6E6", "#B9A9B0",
       "#E0313A", "#F04B53", "#9E1B22",
     ]);
-    const literals = [...css.matchAll(/#[0-9a-f]{3,8}\\b/gi)].map(([value]) => value.toUpperCase());
+    const literals = [...css.matchAll(/#[0-9a-f]{3,8}\b/gi)].map(([value]) => value.toUpperCase());
     expect(literals.length).toBeGreaterThan(0);
     expect(literals.every((value) => approved.has(value))).toBe(true);
   });
