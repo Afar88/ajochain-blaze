@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
-  Activity, ArrowRight, Check, ChevronDown, Home,
+  Activity, ArrowRight, Check, ChevronDown, Copy, Home,
   Monitor, MoreVertical, Moon, ShieldCheck, Sun, Users, Wallet, X,
 } from "lucide-react";
 import { getDefaultNetwork, NETWORKS, type NetworkId } from "./core/network-config";
@@ -240,6 +240,12 @@ type PusdView = {
   utxos: AuthenticatedPusdUtxo[];
   rawPreviousTransactions: Record<string, string>;
 };
+
+export function circleRiskNoticeText(network: NetworkId): string {
+  return network === "mainnet"
+    ? "Real BCH. The circle contract hasn't had an independent audit yet. Start with small amounts."
+    : "Test network. No real money.";
+}
 
 const formatBchSatoshis = (satoshis: bigint) => {
   const whole = (satoshis / 100_000_000n).toString();
