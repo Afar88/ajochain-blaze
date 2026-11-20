@@ -365,7 +365,7 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
     <section className="classic-workspace section-card" aria-labelledby="classic-workspace-title">
       <div className="section-heading classic-workspace-heading">
         <div>
-          <span className="section-kicker">CLASSIC BCH · V1 CONTRACT</span>
+          <span className="section-kicker">CLASSIC BCH · OLDER SAVINGS</span>
           <h2 id="classic-workspace-title">Create and manage circles</h2>
           <p>Create Chipnet circles, contribute, collect payouts, and restore with an invite.</p>
         </div>
@@ -383,7 +383,7 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
       <div className="classic-workspace-grid">
         <div className="classic-create-panel">
           <h3>Start a Classic BCH circle</h3>
-          <p>2–5 unique BCH member addresses in payout order. Classic V1 is an aggregate pot: the contract controls payout order but does not prove which member funded a contribution.</p>
+          <p>2–5 unique BCH member addresses in payout order. This older circle uses one shared BCH pot and a fixed payout order; it does not track who made each contribution.</p>
           <form onSubmit={startCircle}>
             <label>Circle name
               <input value={name} onChange={(event) => setName(event.target.value)} maxLength={60} required />

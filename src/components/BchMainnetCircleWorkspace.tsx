@@ -506,7 +506,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
       setNotice(
         "Independent BCH Mainnet verification passed (" + inputCount + " inputs, " + outputCount +
         " outputs, txid " + (verification.txid || "verified") +
-        "). Selene intent, exact V3 covenant, confirmed provider-quorum UTXOs and BCH 2026 VM checks passed. The signed bytes were discarded. Nothing was broadcast and no circle state changed.",
+        "). Selene approval passed the independent check. Nothing was sent and no circle state changed.",
       );
     } catch (cause) {
       setError(errorMessage(cause));
@@ -621,7 +621,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
       }
       setGenesisSigningPlan({
         wc: plan.wc, walletInputs: plan.walletInputs,
-        prompt: "Verify BCH Mainnet circle genesis for " + name.trim(),
+        prompt: "Verify BCH Mainnet circle setup for " + name.trim(),
         createdAt: Date.now(),
         operation: "genesis", circle: plan.params,
       });
@@ -648,7 +648,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
     <section className="pusd-mainnet-workspace section-card" aria-labelledby="bch-mainnet-title">
       <div className="section-heading">
         <div>
-          <span className="section-kicker">BITCOIN CASH · V3 AUTO-RESERVE</span>
+          <span className="section-kicker">BITCOIN CASH · MAINNET SAVINGS</span>
           <h2 id="bch-mainnet-title">Create a BCH Mainnet circle</h2>
           <p>Member-specific contribution records, a next-round reserve for each non-final recipient, and a fixed 1% project fee.</p>
         </div>
@@ -656,8 +656,8 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
       </div>
 
       <div className="pusd-mainnet-safety">
-        <div><ShieldCheck size={17} /><span><b>Mainnet circle rules selected</b><small>Separate V3 circle version · not the older Chipnet circle</small></span></div>
-        <span className="asset-state neutral">Real BCH · unaudited contract</span>
+        <div><ShieldCheck size={17} /><span><b>Mainnet circle rules selected</b><small>Separate Mainnet circle · not the older Chipnet circle</small></span></div>
+        <span className="asset-state neutral">Real BCH · circle rules not audited</span>
       </div>
 
       {network !== "mainnet" && (
@@ -731,7 +731,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
             <div><span>Transaction shape</span><strong>{preview.inputCount} inputs · {preview.outputCount} outputs</strong></div>
           </details>
           <small>Nothing has been sent or created yet.</small>
-          {genesisSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis")}>Verify Selene signature · no broadcast</button>}
+          {genesisSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis")}>Check Selene approval · no payment</button>}
           {genesisSigningPlan && BCH_MAINNET_CIRCLE_SEND_ENABLED && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis", true)}>Sign and send on Mainnet</button>}
         </div>
       )}

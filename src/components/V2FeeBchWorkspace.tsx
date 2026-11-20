@@ -193,7 +193,7 @@ export default function V2FeeBchWorkspace({
     setError("");
     setNotice("");
     if (network !== "chipnet") {
-      setError("Switch the app network to Chipnet. This fee covenant is an experimental Chipnet release only.");
+      setError("Switch to Chipnet. This experimental circle uses test coins only.");
       return;
     }
     if (!walletConnected || wallet.state !== "connected") {

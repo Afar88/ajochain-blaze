@@ -300,7 +300,7 @@ export default function App() {
       setPusdView({
         status: "idle", amount: 0n,
         detail: network !== "mainnet"
-          ? "PUSD is a Mainnet CashToken. Switch to Bitcoin Cash Mainnet to check your balance."
+          ? "PUSD is available on Bitcoin Cash Mainnet. Switch networks to check your balance."
           : "Connect your wallet to check PUSD.",
         utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
       });
@@ -337,7 +337,7 @@ export default function App() {
         setPusdView({
           status: "ready",
           amount: result.balance,
-          detail: result.providerConfidence + " Electrum providers agreed · block " +
+          detail: "Balance checked on the blockchain · block " +
             result.tipHeight.toLocaleString() + " · " + result.utxos.length + " PUSD coins found",
           utxoCount: result.utxos.length,
           providerConfidence: result.providerConfidence,
@@ -1037,11 +1037,11 @@ export default function App() {
             <article className="asset-detail-card">
               <div className="asset-detail-heading">
                 <span className="asset-symbol pusd-symbol">P</span>
-                <div><span className="section-kicker">PARYONUSD · CASHTOKEN</span><h2>PUSD</h2><p>Canonical issuer-published Mainnet category.</p></div>
+                <div><span className="section-kicker">PARYONUSD · DOLLAR TOKEN</span><h2>PUSD</h2><p>Official ParyonUSD asset on Mainnet.</p></div>
                 <span className="asset-state neutral">Mainnet only</span>
               </div>
               <div className="pusd-balance-panel">
-                <span className="status-label">AUTHENTICATED WALLET BALANCE</span>
+                <span className="status-label">YOUR PUSD BALANCE</span>
                 <strong>{pusdView.status === "ready" ? formatAssetAmount("PUSD", pusdView.amount) + " PUSD" : pusdView.status === "loading" ? "Checking…" : pusdView.status === "error" ? "Unavailable" : "Not checked"}</strong>
                 <small>{pusdView.detail}</small>
                 <button type="button" className="secondary-button" onClick={() => {
@@ -1049,10 +1049,10 @@ export default function App() {
                   if (network !== "mainnet") { changeNetwork("mainnet"); return; }
                   setPusdRefresh((value) => value + 1);
                 }} disabled={pusdView.status === "loading"}>
-                  {pusdView.status === "loading" ? "Verifying…" : !connected ? "Connect wallet" : network !== "mainnet" ? "Switch to Mainnet" : "Refresh verified balance"}
+                  {pusdView.status === "loading" ? "Checking…" : !connected ? "Connect wallet" : network !== "mainnet" ? "Switch to Mainnet" : "Refresh balance"}
                 </button>
-                {pusdView.status === "ready" && <span className="field-hint">{pusdView.utxoCount} PUSD coins checked on the blockchain
-                  <details className="technical-details"><summary>Technical details</summary><p>{pusdView.providerConfidence} independent providers · block {pusdView.tipHeight.toLocaleString()} · {pusdView.utxoCount} authenticated CashToken UTXOs.</p></details></span>}
+                {pusdView.status === "ready" && <div className="field-hint">{pusdView.utxoCount} PUSD coins checked on the blockchain
+                  <details className="technical-details"><summary>Technical details</summary><p>{pusdView.providerConfidence} independent providers · block {pusdView.tipHeight.toLocaleString()} · {pusdView.utxoCount} authenticated CashToken UTXOs.</p></details></div>}
               </div>
               <div className="pusd-transfer-box">
                 <div><span className="section-kicker">TRANSFER PLANNER</span><h3>Prepare a PUSD transfer</h3>
@@ -1078,9 +1078,9 @@ export default function App() {
                     <div><span>Recipient receives</span><strong>{formatAssetAmount("PUSD", pusdTransferPlan.recipientPusdAmount)} PUSD</strong></div>
                     <div><span>PUSD returned to your wallet</span><strong>{formatAssetAmount("PUSD", pusdTransferPlan.changePusdAmount)} PUSD</strong></div>
                     <div><span>Estimated BCH miner fee</span><strong>{pusdTransferPlan.minerFeeSatoshis.toString()} sats</strong></div>
-                    <div><span>Recipient token carrier</span><strong>{pusdTransferPlan.recipientCarrierSatoshis.toString()} sats</strong></div>
-                    <div><span>Selected authenticated inputs</span><strong>{pusdTransferPlan.selectedUtxos.length}</strong></div>
-                    <small>Estimated size {pusdTransferPlan.estimatedSizeBytes} bytes · fee rate {pusdTransferPlan.feeRateSatoshisPerKb.toString()} sats/kB. The plan must be rebuilt from fresh chain data before any signature.</small>
+                    <div><span>BCH needed for delivery</span><strong>{pusdTransferPlan.recipientCarrierSatoshis.toString()} sats</strong></div>
+                    <div><span>Coins selected</span><strong>{pusdTransferPlan.selectedUtxos.length}</strong></div>
+                    <details className="technical-details"><summary>Technical details</summary><p>Estimated size {pusdTransferPlan.estimatedSizeBytes} bytes · fee rate {pusdTransferPlan.feeRateSatoshisPerKb.toString()} sats/kB. The plan must be rebuilt from fresh chain data before any signature.</p></details>
                   </div>
                 )}
                 <button type="button" className="secondary-button" disabled={!pusdTransferPlan || pusdSignatureBusy || !connected || network !== "mainnet"}
@@ -1094,8 +1094,7 @@ export default function App() {
                 </button>
                 <small className="field-hint">PUSD sending stays locked until raw transaction inspection, independent wallet testing, fee/carrier validation, and security review are completed. This preview is not a payment.</small>
               </div>
-              <div className="asset-detail-row"><span>Token category</span><code>{PUSD_ASSET.categoryId}</code></div>
-              <div className="asset-detail-row"><span>Display precision</span><b>2 decimals</b></div>
+              <details className="technical-details"><summary>Technical details</summary><div className="asset-detail-row"><span>Token identifier</span><code>{PUSD_ASSET.categoryId}</code></div><div className="asset-detail-row"><span>Display precision</span><b>2 decimals</b></div></details>
               <div className="asset-detail-row"><span>PUSD circle rules</span><b className="locked-state">Mainnet V3 build · signing locked</b></div>
             </article>
           </section>

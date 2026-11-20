@@ -214,7 +214,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
       setCircleSnapshot(null);
       setGenesisSigningPlan(null);
       setActionSigningPlan(null);
-      setNotice("PUSD Mainnet circle invite loaded. Re-read the on-chain state before acting.");
+      setNotice("PUSD Mainnet circle invite loaded. Check the circle on the blockchain before acting.");
     } catch {
       setError("This link is not a valid PUSD Mainnet V3 circle invite.");
     }
@@ -309,7 +309,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
       }, initiatorAddress);
       setGenesisSigningPlan({
         wc: plan.wc, walletInputs: plan.walletInputs,
-        prompt: "Server-verify PUSD Mainnet circle genesis for " + name.trim(),
+        prompt: "Check PUSD Mainnet circle setup for " + name.trim(),
         createdAt: Date.now(),
         operation: "genesis",
         circle: plan.params,
@@ -323,7 +323,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
         feeEstimate: plan.feeEstimate.toString(),
         transactionSizeBytes: plan.transactionSizeBytes,
       });
-      setNotice("Mainnet PUSD genesis transaction plan prepared. It is unsigned; nothing has been broadcast.");
+      setNotice("PUSD circle setup preview ready. Nothing has been signed or sent.");
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -579,11 +579,11 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
         </label>
         <label>Maximum BCH miner fee per action (satoshis)
           <input value={maxFee} onChange={(event) => setMaxFee(event.target.value)} inputMode="numeric" required />
-          <small>Miner fees and token carrier satoshis are funded separately from PUSD contributions.</small>
+          <small>Network fees and the small BCH amount needed to deliver PUSD are separate from PUSD contributions.</small>
         </label>
 
         <div className="pusd-mainnet-treasury">
-          <span>Immutable 1% project-fee destination shared with BCH Mainnet</span>
+          <span>1% project fee goes to this published address</span>
           <code>{MAINNET_PROJECT_TREASURY_ADDRESS}</code>
         </div>
 
@@ -601,22 +601,26 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
         <div className="pusd-mainnet-actions">
           <button className="secondary-button" type="submit" disabled={network !== "mainnet"}>Save Mainnet circle draft</button>
           <button className="primary-button" type="button" onClick={() => void prepareCreationPlan()} disabled={network !== "mainnet" || !walletConnected || busy}>
-            {busy ? "Preparing Mainnet plan…" : "Prepare on-chain creation plan"} <ArrowRight size={15} />
+            {busy ? "Preparing preview…" : "Preview circle setup"} <ArrowRight size={15} />
           </button>
         </div>
       </form>
 
       {preparedPlan && (
         <div className="pusd-mainnet-breakdown" role="status">
-          <b>Unsigned Mainnet genesis plan ready</b>
-          <div><span>PUSD circle contract</span><strong><code>{preparedPlan.contractAddress}</code></strong></div>
-          {preparedPlan.escrowAddresses.map((address, index) => (
-            <div key={address}><span>Member {index + 1} escrow</span><strong><code>{address}</code></strong></div>
-          ))}
-          <div><span>Estimated BCH miner fee</span><strong>{preparedPlan.feeEstimate} sats</strong></div>
-          <div><span>Estimated transaction size</span><strong>{preparedPlan.transactionSizeBytes} bytes</strong></div>
-          <small>No contract has been deployed. This preview is not a payment or deployment.</small>
-          {genesisSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis")}>Verify Selene signature · no broadcast</button>}
+          <b>Circle setup preview ready</b>
+          <p className="field-hint">Review the estimated network fee. Nothing has been signed or sent yet.</p>
+          <div><span>Estimated BCH network fee</span><strong>{preparedPlan.feeEstimate} sats</strong></div>
+          <details className="technical-details">
+            <summary>Technical details</summary>
+            <div><span>PUSD circle contract address</span><strong><code>{preparedPlan.contractAddress}</code></strong></div>
+            {preparedPlan.escrowAddresses.map((address, index) => (
+              <div key={address}><span>Member {index + 1} escrow address</span><strong><code>{address}</code></strong></div>
+            ))}
+            <p>Estimated transaction size: {preparedPlan.transactionSizeBytes} bytes.</p>
+          </details>
+          <small>Nothing has been created or paid yet.</small>
+          {genesisSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis")}>Check Selene approval · no payment</button>}
           {genesisSigningPlan && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis", true)}>Sign and send on Mainnet</button>}
         </div>
       )}
@@ -625,7 +629,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
           <div className="section-heading">
             <div><span className="section-kicker">CIRCLE LIFECYCLE · MAINNET READ-ONLY</span><h3>{activeCircle.name}</h3></div>
             <button type="button" className="secondary-button" disabled={lifecycleBusy} onClick={() => void readActiveOnChainState()}>
-              {lifecycleBusy ? "Reading…" : "Read on-chain status"}
+              {lifecycleBusy ? "Checking…" : "Check circle status"}
             </button>
           </div>
           <p className="classic-empty">Local circle identity saved for tracking. A saved setup preview does not mean the circle has been created on the blockchain.</p>
@@ -652,15 +656,16 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
             <div className="pusd-mainnet-breakdown" role="status">
               <b>{actionPreview.title}</b>
               <p>{actionPreview.summary}</p>
-              <div><span>Estimated BCH miner fee</span><strong>{actionPreview.feeEstimate} sats</strong></div>
-              <div><span>Estimated transaction size</span><strong>{actionPreview.size} bytes</strong></div>
-              <div><span>Wallet-owned inputs requiring signatures</span><strong>{actionPreview.walletInputCount}</strong></div>
-              <small>Verified transactions are relayed to BCH Mainnet. Re-read state before each new action.</small>
-              {actionSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action")}>Verify Selene signature · no broadcast</button>}
+              <div><span>Estimated BCH network fee</span><strong>{actionPreview.feeEstimate} sats</strong></div>
+              <details className="technical-details">
+                <summary>Technical details</summary>
+                <p>Estimated transaction size: {actionPreview.size} bytes. Wallet items to approve: {actionPreview.walletInputCount}.</p>
+                <p>Payments are checked before they are sent. Check circle status again before each new action.</p>
+              </details>
+              {actionSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action")}>Check Selene approval · no payment</button>}
               {actionSigningPlan && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action", true)}>Sign and send on Mainnet</button>}
             </div>
-          )}
-        </div>
+          )}       </div>
       )}
 
       {error && <p className="classic-error" role="alert">{error}</p>}
@@ -708,7 +713,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
                 setCircleSnapshot(null);
                 setGenesisSigningPlan(null);
                 setActionSigningPlan(null);
-                setNotice("Opened " + circle.name + ". Re-read the on-chain state before acting.");
+                setNotice("Opened " + circle.name + ". Check the circle on the blockchain before acting.");
               }}>
                 <b>{circle.name}</b>
                 <small>{circle.members.length} members · {formatAssetAmount("PUSD", circle.contribution)} PUSD each · {circle.stateCategory.slice(0, 10)}…</small>
