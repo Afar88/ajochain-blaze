@@ -11,6 +11,20 @@ function outsideThemeTokens(stylesheet: string): string {
   return stylesheet.replace(/:root(?:\[data-theme="dark"\])?\s*\{[^}]*\}/g, "");
 }
 
+function relativeLuminance(hex: string): number {
+  const channels = [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255);
+  const linear = channels.map((value) => value <= 0.04045
+    ? value / 12.92
+    : ((value + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const [lighter, darker] = [relativeLuminance(foreground), relativeLuminance(background)]
+    .sort((left, right) => right - left);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 function columnsAt(width: number): 1 | 2 {
   return width < 768 ? 1 : 2;
 }
@@ -47,6 +61,27 @@ describe("Navy/red theme and responsive stylesheet", () => {
     expect(componentStyles).not.toMatch(/\bgreen\b|--green|--lime/i);
     expect(componentStyles).not.toMatch(/\brgba?\s*\(|\bhsla?\s*\(/i);
     expect(css).not.toMatch(/#fff(?:fff)?\b|\bwhite\b(?!-)|\bgreen\b|--green|--lime/i);
+  });
+
+  it("rejects all unapproved theme colour literals, including near-white and green", () => {
+    const approved = new Set([
+      "#F4E4E2", "#FAEDEB", "#F7E8E6", "#E2C4C1", "#0F1B33",
+      "#4A5370", "#C8202A", "#8E1820", "#FF6A3D", "#0B1426",
+      "#13203A", "#1A2A4A", "#2A3A5C", "#F3E6E6", "#B9A9B0",
+      "#E0313A", "#F04B53", "#9E1B22",
+    ]);
+    const literals = [...css.matchAll(/#[0-9a-f]{3,8}\\b/gi)].map(([value]) => value.toUpperCase());
+    expect(literals.length).toBeGreaterThan(0);
+    expect(literals.every((value) => approved.has(value))).toBe(true);
+  });
+
+  it("keeps red-button foreground contrast at WCAG AA in both themes", () => {
+    expect(css).toContain("--button-bg:#C8202A");
+    expect(css).toContain("--button-bg:#9E1B22");
+    expect(css).toContain("background:var(--button-bg)");
+    expect(css).toContain("color:var(--on-primary)");
+    expect(contrastRatio("#FAEDEB", "#C8202A")).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio("#F3E6E6", "#9E1B22")).toBeGreaterThanOrEqual(4.5);
   });
 
   it("defines the required light and navy dark palettes", () => {
