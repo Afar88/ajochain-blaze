@@ -1787,18 +1787,7 @@ export default function App() {
 
         {page === "overview" && (
           <>
-            <section className="overview-network-notice" aria-label="Selected network notice">
-              <div className="overview-notice-icon"><ShieldCheck size={18} /></div>
-              <div className="overview-notice-copy">
-                <span className="section-kicker">NETWORK NOTICE</span>
-                <b>{network === "mainnet" ? "Bitcoin Cash Mainnet · real funds" : "Chipnet · testing only"}</b>
-                <p>{network === "mainnet"
-                  ? "Mainnet uses real BCH and PUSD. Review every amount and miner fee; wallet approval is required. Circle contracts are unaudited."
-                  : "Chipnet is a testing network. Test BCH has no real-money value and cannot be used as Mainnet funds."}</p>
-              </div>
-              <button type="button" className="secondary-button overview-network-change"
-                onClick={() => setMenuOpen(true)}>Change network</button>
-            </section>
+            {renderCircleRiskNotice()}
 
             <section className="overview-my-circles section-card" aria-labelledby="overview-circles-title">
               <div className="section-heading overview-circles-heading">
@@ -1882,6 +1871,7 @@ export default function App() {
 
         {page === "create-circle" && (
           <section className="page-section create-circle-page">
+            {renderCircleRiskNotice()}
             {createCircleView === "choose" ? (
               <>
                 <div className="page-intro">
@@ -1961,6 +1951,7 @@ export default function App() {
 
         {page === "my-circles" && (
           <section className="page-section my-circles-page">
+            {renderCircleRiskNotice()}
             <div className="page-intro">
               <span className="section-kicker">YOUR SAVINGS CIRCLES</span>
               <h1>{network === "mainnet" ? "Mainnet circles" : "Chipnet test circles"}</h1>
@@ -2008,6 +1999,7 @@ export default function App() {
 
         {page === "circle-detail" && selectedCircleRecord && (
           <section className="page-section">
+            {renderCircleRiskNotice()}
             <button type="button" className="secondary-button my-circles-back" onClick={() => {
               setMenuCircles(readSavedCircleMenuRecords());
               setSelectedMenuCircle(null);
