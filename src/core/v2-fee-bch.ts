@@ -882,7 +882,7 @@ export async function readV2FeeCircle(params: V2FeeCircleParams) {
         completedAt: closing.completedAt,
         stateSatoshis: 0n,
         credits: params.members.map(() => 0n),
-        memberAccounting: closedAs === 'completed' ? accounting : accounting.map((account) => ({
+        memberAccounting: closing.closedAs === 'completed' ? accounting : accounting.map((account) => ({
           ...account,
           totalPaidIn: null,
           payoutReceived: false,
