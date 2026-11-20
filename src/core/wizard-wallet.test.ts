@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { decodeCashAddress } from "@bitauth/libauth";
 import {
   wizardRelayStatusMessage,
+  shouldRestoreSavedWizardSession,
   shouldPreserveReceiveAddressConfirmation,
   walletAddressSnapshotsMatch,
   isCurrentReceiveAddressConfirmed,
@@ -226,6 +227,20 @@ describe("WizardConnect receive-address confirmation across relay handshakes", (
     expect(shouldPreserveReceiveAddressConfirmation(walletIdentity, null)).toBe(false);
     expect(shouldPreserveReceiveAddressConfirmation(null, walletIdentity)).toBe(false);
     expect(shouldPreserveReceiveAddressConfirmation(walletIdentity, "not-a-public-key")).toBe(false);
+  });
+});
+
+describe("WizardConnect saved-session restoration", () => {
+  it("restores an existing session after reload or when the page returns from Selene", () => {
+    expect(shouldRestoreSavedWizardSession("idle", true)).toBe(true);
+    expect(shouldRestoreSavedWizardSession("disconnected", true)).toBe(true);
+  });
+
+  it("does not restore without saved credentials or while a session is already active", () => {
+    expect(shouldRestoreSavedWizardSession("idle", false)).toBe(false);
+    expect(shouldRestoreSavedWizardSession("connecting", true)).toBe(false);
+    expect(shouldRestoreSavedWizardSession("reconnecting", true)).toBe(false);
+    expect(shouldRestoreSavedWizardSession("connected", true)).toBe(false);
   });
 });
 
