@@ -17,13 +17,13 @@ describe("BLAZE navy/red theme contract", () => {
       "#13203A", "#1A2A4A", "#2A3A5C", "#F3E6E6", "#B9A9B0",
       "#E0313A", "#F04B53", "#9E1B22",
     ]);
-    const literals = [...stylesheet.matchAll(/#[0-9a-f]{3,8}\\b/gi)].map(([value]) => value.toUpperCase());
+    const literals = [...stylesheet.matchAll(/#[0-9a-f]{3,8}\b/gi)].map(([value]) => value.toUpperCase());
 
     expect(literals.length).toBeGreaterThan(0);
     expect(literals.every((value) => approved.has(value))).toBe(true);
-    expect(stylesheet).not.toMatch(/--green\\b|--lime\\b/i);
-    expect(stylesheet).not.toMatch(/\\bwhite\\b(?!-)|\\bgreen\\b|\\blime\\b/i);
-    expect(stylesheet).not.toMatch(/rgba?\\(/i);
+    expect(stylesheet).not.toMatch(/--green\b|--lime\b/i);
+    expect(stylesheet).not.toMatch(/\bwhite\b(?!-)|\bgreen\b|\blime\b/i);
+    expect(stylesheet).not.toMatch(/rgba?\(/i);
   });
 
   it("defines the requested light and dark palette tokens", () => {
@@ -47,10 +47,10 @@ describe("BLAZE navy/red theme contract", () => {
   });
 
   it("uses the shared surface token for the Member 1 instruction panel", () => {
-    expect(stylesheet).toMatch(/\\.creator-member-preview\\s*\\{[^}]*background:\\s*var\\(--surface\\)/s);
+    expect(stylesheet).toMatch(/\.creator-member-preview\s*\{[^}]*background:\s*var\(--surface\)/s);
   });
 
   it("uses a deep-red action surface with a theme-aware foreground for AA contrast", () => {
-    expect(stylesheet).toMatch(/\\.primary-button\\{[^}]*background:var\\(--primary-deep\\)[^}]*color:var\\(--on-primary\\)/s);
+    expect(stylesheet).toMatch(/\.primary-button\{[^}]*background:var\(--primary-deep\)[^}]*color:var\(--on-primary\)/s);
   });
 });
