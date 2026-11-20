@@ -70,6 +70,17 @@ describe("saved circle network and lifecycle filters", () => {
     expect(readSavedCircleMetadata(storage)[0].encoded).toBe(mainnet.encoded);
   });
 
+  it("never rewrites legacy saved-circle entries while adding lifecycle metadata", () => {
+    const storage = memoryStorage();
+    const legacyEntry = JSON.stringify([{ encoded: mainnet.encoded, savedAt: 123 }]);
+    storage.setItem("legacy-classic-circles", legacyEntry);
+
+    ensureSavedCircleMetadata(storage, [mainnet]);
+    updateSavedCircleProgress(storage, mainnet, 2, false, 1_800_000_000_000);
+
+    expect(storage.getItem("legacy-classic-circles")).toBe(legacyEntry);
+  });
+
   it("returns a completed circle to Active when a fresh chain read is not complete", () => {
     const storage = memoryStorage();
     ensureSavedCircleMetadata(storage, [mainnet]);
