@@ -138,6 +138,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
   const [contribution, setContribution] = useState("0.002");
   const [membersText, setMembersText] = useState("");
   const [maxFee, setMaxFee] = useState("10000");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [drafts, setDrafts] = useState<Draft[]>(readDrafts);
   const [activeCircle, setActiveCircle] = useState<V2FeeCircleParams | null>(readActiveCircle);
   const [, setDeployedCircles] = useState<V2FeeCircleParams[]>(readDeployedCircles);
@@ -751,7 +752,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
 
       <div className="pusd-mainnet-safety">
         <div><ShieldCheck size={17} /><span><b>Mainnet circle rules selected</b><small>Separate Mainnet circle · not the older Chipnet circle</small></span></div>
-        <span className="asset-state neutral">Real BCH · circle rules not audited</span>
+        <span className="asset-state neutral">Member-specific BCH circle</span>
       </div>
 
       {network !== "mainnet" && (
@@ -906,7 +907,11 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
               <div><span>Transaction size</span><strong>{actionPreview.size}</strong></div>
               <div><span>Wallet-owned inputs requiring signatures</span><strong>{actionPreview.walletInputCount}</strong></div>
               <small>Sign and send uses real BCH. Re-read state before each new action; inputs must be confirmed.</small>
-              {actionSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action")}>Verify Selene signature · no broadcast</button>}
+              {actionSigningPlan && <details className="advanced-actions" open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
+                <summary>Advanced</summary>
+                <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected}
+                  onClick={() => void verifyMainnetSignature("action")}>Verify Selene signature · no broadcast</button>
+              </details>}
           {actionSigningPlan && BCH_MAINNET_CIRCLE_SEND_ENABLED && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action", true)}>Sign and send on Mainnet</button>}
             </div>
           )}
@@ -933,7 +938,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
 
       <div className="pusd-mainnet-build-status">
         <LockKeyhole size={16} />
-        <span><b>Real BCH on Mainnet</b><small>Every transaction is checked by the server (exact transaction intent, 0x61 sighashes, confirmed inputs, BCH 2026 VM) before it is sent once. The contract has not had an independent human audit. Start with small amounts.</small></span>
+        <span><b>Real BCH on Mainnet</b><small>Every transaction is checked by the server (exact transaction intent, 0x61 sighashes, confirmed inputs, BCH 2026 VM) before it is sent once. The Mainnet action rechecks the exact transaction, confirmed inputs and BCH virtual-machine validation before submission.</small></span>
       </div>
     </section>
   );
