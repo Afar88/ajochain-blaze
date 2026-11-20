@@ -844,7 +844,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
               {actionSigningPlan && <details className="advanced-actions">
                 <summary>Advanced</summary>
                 <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action")}>Check Selene approval · no payment</button>
-              </details>
+              </details>}
               {actionSigningPlan && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action", true)}>Sign and send on Mainnet</button>}
             </div>
           )}       </div>
