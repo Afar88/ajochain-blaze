@@ -749,10 +749,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
         <span className="classic-network mainnet">Bitcoin Cash Mainnet</span>
       </div>
 
-      <div className="pusd-mainnet-safety">
-        <div><ShieldCheck size={17} /><span><b>Mainnet circle rules selected</b><small>Separate Mainnet circle · not the older Chipnet circle</small></span></div>
-        <span className="asset-state neutral">Real BCH · circle rules not audited</span>
-      </div>
+
 
       {network !== "mainnet" && (
         <p className="classic-error" role="status">Switch the app network to Bitcoin Cash Mainnet to prepare this circle. The Chipnet workspace remains separate below.</p>
@@ -832,8 +829,11 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
             <div><span>State CashToken category</span><strong><code>{preview.stateCategory}</code></strong></div>
             <div><span>Transaction shape</span><strong>{preview.inputCount} inputs · {preview.outputCount} outputs</strong></div>
             <div><span>Estimated change back to your wallet</span><strong>{preview.estimatedChange} sats</strong></div>
+            <details className="advanced-actions">
+              <summary>Advanced</summary>
             <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected}
               onClick={() => void verifyMainnetSignature("genesis")}>Check Selene approval · no payment</button>
+            </details>
           </details>
           <small>Nothing has been created yet. The circle is saved only after the Mainnet broadcast returns a transaction ID.</small>
         </div>
@@ -906,7 +906,10 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
               <div><span>Transaction size</span><strong>{actionPreview.size}</strong></div>
               <div><span>Wallet-owned inputs requiring signatures</span><strong>{actionPreview.walletInputCount}</strong></div>
               <small>Sign and send uses real BCH. Re-read state before each new action; inputs must be confirmed.</small>
-              {actionSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action")}>Verify Selene signature · no broadcast</button>}
+              {actionSigningPlan && <details className="advanced-actions">
+                <summary>Advanced</summary>
+                <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action")}>Verify Selene signature · no broadcast</button>
+              </details>
           {actionSigningPlan && BCH_MAINNET_CIRCLE_SEND_ENABLED && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action", true)}>Sign and send on Mainnet</button>}
             </div>
           )}
@@ -933,7 +936,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
 
       <div className="pusd-mainnet-build-status">
         <LockKeyhole size={16} />
-        <span><b>Real BCH on Mainnet</b><small>Every transaction is checked by the server (exact transaction intent, 0x61 sighashes, confirmed inputs, BCH 2026 VM) before it is sent once. The contract has not had an independent human audit. Start with small amounts.</small></span>
+        <span><b>Real BCH on Mainnet</b><small>Transactions are checked before broadcast. Confirm each amount and fee in Selene before approving.</small></span>
       </div>
     </section>
   );
