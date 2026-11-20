@@ -20,13 +20,13 @@ describe("Circle network notices", () => {
 describe("Advanced verification controls", () => {
   it("keeps the Mainnet no-broadcast verification behind a closed Advanced disclosure", () => {
     expect(bch).toMatch(/<details className="advanced-actions" open={advancedOpen}/);
-    expect(bch).toMatch(/<summary>Advanced<\\/summary>[\\s\\S]*?Verify Selene signature · no broadcast/);
+    expect(bch).toMatch(/<summary>Advanced<\/summary>[\s\S]*?Verify Selene signature · no broadcast/);
     expect(bch).toContain('verifyMainnetSignature("action", true)');
     expect(bch).toContain("Sign and send on Mainnet");
   });
 
   it("keeps the PUSD no-payment approval check behind Advanced", () => {
     expect(pusd).toMatch(/<details className="advanced-actions" open={advancedOpen}/);
-    expect(pusd).toMatch(/<summary>Advanced<\\/summary>[\\s\\S]*?Check Selene approval · no payment/);
+    expect(pusd).toMatch(/<summary>Advanced<\/summary>[\s\S]*?Check Selene approval · no payment/);
   });
 });
