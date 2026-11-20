@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import stylesheet from "./styles.css?raw";
+import { readFileSync } from "node:fs";\n\nconst stylesheet = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
 
 describe("BLAZE theme-aware surfaces", () => {
   it("does not hard-code pure white as a component background or border", () => {
