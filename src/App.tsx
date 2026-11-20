@@ -488,10 +488,6 @@ export default function App() {
   }, [riskNoticeStorageKey]);
 
   useEffect(() => {
-    try {
-      setRiskNoticeCollapsed(window.localStorage.getItem(riskNoticeStorageKey) === "collapsed");
-
-  useEffect(() => {
     // A network change can also mean Selene is showing a different receive
     // address. Require the user to sync the address for the newly selected
     // BCH network rather than carrying an old confirmation across networks.
@@ -2158,7 +2154,12 @@ export default function App() {
       </div>
 
       {walletView.error && <div className="global-wallet-error" role="alert"><ShieldCheck size={17} /><span>{walletView.error}</span><div className="global-wallet-error-actions">
-        <button onClick={() => { if (walletClient && !walletClient.retrySavedSession()) walletClient.connect(); }}>Retry saved session</button>
+        <button onClick={() => {
+          if (!walletClient) return;
+          if (walletClient.retrySavedSession()) return;
+          if (walletClient.state === "disconnected") walletClient.startFreshPairing();
+          else if (walletClient.state === "idle") walletClient.connect();
+        }}>Reconnect</button>
         <button onClick={() => walletClient?.startFreshPairing()}>Fresh pairing</button>
       </div></div>}
 
