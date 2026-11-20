@@ -151,6 +151,11 @@ export function deriveWizardConnectReceiveAddress(
 
 export type WalletState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnecting' | 'disconnected';
 
+/** Only a valid saved session can be resumed, and only from an inactive UI state. */
+export function shouldRestoreSavedWizardSession(state: WalletState, hasSavedSession: boolean): boolean {
+  return hasSavedSession && (state === "idle" || state === "disconnected");
+}
+
 type Listener = () => void;
 
 /** Keep temporary relay drops visible as recoverable, rather than as a dead wallet session. */
@@ -595,8 +600,18 @@ class WizardWallet {
     this.connectionWatchdog = setTimeout(() => {
       if (!this.isCurrent(mgr, generation) || this.state !== "connecting") return;
       this.error = existing
-        ? "Selene has not completed the saved-session handshake. Retry the saved session or start a fresh pairing."
-        : "Still waiting for Selene. Keep AjoChain open, or start a fresh pairing.";
+        ? "Selene did not reconnect in time. Tap Reconnect to retry the saved session."
+        : "Selene did not respond in time. Tap Reconnect to try again.";
+      const relay = this.relay;
+      // End the spinner and release the stale relay while preserving encrypted
+      // saved credentials. A resumed session must not silently create a new QR.
+      this.generation++;
+      this.mgr = null;
+      this.relay = null;
+      this.uri = null;
+      this.qrUri = null;
+      this.state = "disconnected";
+      this.cleanup(mgr, relay, false);
       this.emit();
     }, 20_000);
   }
@@ -724,11 +739,13 @@ class WizardWallet {
     } catch (e) {
       if (this.isCurrent(mgr, generation)) {
         this.clearConnectionWatchdog();
-        this.error = e instanceof Error ? e.message : 'Failed to start WizardConnect relay';
+        this.error = e instanceof Error ? e.message : 'Could not reach WizardConnect. Tap Reconnect to try again.';
         this.mgr = null;
         this.relay = null;
-        this.state = 'idle';
-        this.cleanup(mgr, null);
+        this.uri = null;
+        this.qrUri = null;
+        this.state = existing ? 'disconnected' : 'idle';
+        this.cleanup(mgr, null, !existing);
       }
     }
     this.emit();
@@ -764,7 +781,7 @@ class WizardWallet {
 
   /** Resume a stored WizardConnect session after reload or mobile app switching. */
   tryResume(): boolean {
-    if (this.state !== 'idle' && this.state !== 'disconnected') return false;
+    if (!shouldRestoreSavedWizardSession(this.state, true)) return false;
     const now = Date.now();
     if (now - this.lastResumeAttemptAt < 5000) return false;
     try {
