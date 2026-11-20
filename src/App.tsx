@@ -1295,6 +1295,7 @@ export default function App() {
 
         {page === "circle-detail" && selectedCircleRecord && (
           <section className="page-section">
+            <button type="button" className="secondary-button my-circles-back" onClick={() => navigate("my-circles")}>← Back to My circles</button>
             <div className="page-intro">
               <span className="section-kicker">YOUR SAVINGS CIRCLE</span>
               <h1>{selectedCircleRecord?.name ?? "Circle details"}</h1>
