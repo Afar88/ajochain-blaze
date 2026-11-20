@@ -2573,9 +2573,25 @@ export async function broadcastBchMainnetGatherTransaction(
     throw new Error("BCH Mainnet wallet gathering is disabled until its release gate is approved.");
   }
   const verification = await verifyBchMainnetGatherTransaction(sessions, tip, body);
+  let relay;
+  // A gather only consolidates the connected wallet's own token-free P2PKH
+  // coins into one of that wallet's derived addresses. Relaying the exact
+  // same signed bytes twice cannot pay anyone twice, and
+  // broadcastPusdTransactionOnce already resolves ambiguous relays by txid
+  // lookup. So the durable ledger is used when configured, but its absence
+  // no longer blocks a wallet-only gather.
+  if (!isPusdBroadcastLedgerConfigured()) {
+    relay = await broadcastPusdTransactionOnce(sessions, body.signedTransactionHex, verification.txid);
+    return {
+      ...verification,
+      broadcast: true,
+      relayStatus: relay.relayStatus,
+      message: "Verified Mainnet BCH was consolidated back to the connected wallet and relayed (" +
+        relay.relayStatus + "). The transaction is not confirmed yet.",
+    };
+  }
   const ledger = createUpstashPusdBroadcastLedger();
   const reservation = await ledger.reserve(verification.txid, body.signedTransactionHex);
-  let relay;
   if (!reservation.acquired) {
     if (reservation.record.status === "accepted" ||
         reservation.record.status === "already-known") {
