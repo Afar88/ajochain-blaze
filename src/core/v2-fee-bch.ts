@@ -809,23 +809,52 @@ export function classifyV2FeeClosingTransaction(params: V2FeeCircleParams, tx: T
   return null;
 }
 
+async function readV2FeeClosingBlockTime(
+  electrum: NetworkProvider & { performRequest: (name: string, ...args: (string | number)[]) => Promise<unknown> },
+  height: number,
+): Promise<number | null> {
+  if (!Number.isSafeInteger(height) || height <= 0) return null;
+  try {
+    const response = await electrum.performRequest("blockchain.block.header", height);
+    const header = typeof response === "string"
+      ? response
+      : response && typeof response === "object" && "hex" in response &&
+          typeof (response as { hex?: unknown }).hex === "string"
+        ? (response as { hex: string }).hex
+        : "";
+    if (!/^[0-9a-f]{160,}$/i.test(header)) return null;
+    // BCH block header nTime is the 4-byte little-endian field at byte offset 68.
+    const timestampHex = header.slice(136, 144);
+    const seconds = Number.parseInt(timestampHex.match(/../g)!.reverse().join(""), 16);
+    return Number.isSafeInteger(seconds) && seconds > 0 ? seconds * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 async function findV2FeeClosingTransaction(
   provider: NetworkProvider,
   contract: Contract,
   params: V2FeeCircleParams,
-): Promise<V2FeeClosedAs | null> {
-  const electrum = provider as NetworkProvider & { performRequest?: (name: string, ...args: string[]) => Promise<unknown> };
+): Promise<{ closedAs: V2FeeClosedAs; completedAt: number | null } | null> {
+  const electrum = provider as NetworkProvider & { performRequest?: (name: string, ...args: (string | number)[]) => Promise<unknown> };
   if (typeof electrum.performRequest !== 'function') return null;
   const scriptHash = binToHex(sha256.hash(typeof contract.lockingBytecode === "string" ? hexToBin(contract.lockingBytecode) : contract.lockingBytecode).reverse());
   const history = await electrum.performRequest('blockchain.scripthash.get_history', scriptHash);
   if (!Array.isArray(history)) return null;
   for (const entry of [...history].reverse()) {
-    const txid = (entry as { tx_hash?: unknown })?.tx_hash;
+    const record = entry as { tx_hash?: unknown; height?: unknown };
+    const txid = record?.tx_hash;
     if (typeof txid !== 'string') continue;
     const decoded = decodeTransaction(hexToBin(await provider.getRawTransaction(txid)));
     if (typeof decoded === 'string') continue;
     const closedAs = classifyV2FeeClosingTransaction(params, decoded);
-    if (closedAs) return closedAs;
+    if (closedAs) {
+      const completedAt = closedAs === "completed" && typeof record.height === "number"
+        ? await readV2FeeClosingBlockTime(electrum, record.height)
+        : null;
+      return { closedAs, completedAt };
+    }
   }
   return null;
 }
@@ -838,8 +867,8 @@ export async function readV2FeeCircle(params: V2FeeCircleParams) {
   const utxos = await getV2FeeCircleTokenUtxos(contract);
   if (v2FeeCovenantClosesOnCompletion(params.covenant) &&
       !utxos.some((utxo) => utxo.token?.category === params.stateCategory)) {
-    const closedAs = await findV2FeeClosingTransaction(provider, contract, params);
-    if (closedAs) {
+    const closing = await findV2FeeClosingTransaction(provider, contract, params);
+    if (closing) {
       const memberCount = params.members.length;
       const accounting = summarizeV2FeeMemberAccounting(params, memberCount, params.members.map(() => 0n));
       return {
@@ -847,9 +876,10 @@ export async function readV2FeeCircle(params: V2FeeCircleParams) {
         contract,
         utxos,
         round: memberCount,
-        hasPaid: closedAs === 'completed',
+        hasPaid: closing.closedAs === 'completed',
         completed: true,
-        closedAs: closedAs as V2FeeClosedAs | null,
+        closedAs: closing.closedAs,
+        completedAt: closing.completedAt,
         stateSatoshis: 0n,
         credits: params.members.map(() => 0n),
         memberAccounting: closedAs === 'completed' ? accounting : accounting.map((account) => ({
@@ -891,6 +921,7 @@ export async function readV2FeeCircle(params: V2FeeCircleParams) {
     hasPaid,
     completed,
     closedAs: null as V2FeeClosedAs | null,
+    completedAt: null as number | null,
     stateSatoshis: state.satoshis,
     credits,
     memberAccounting,
