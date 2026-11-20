@@ -5,6 +5,7 @@ describe("BLAZE theme-aware surfaces", () => {
   it("does not hard-code pure white as a component background or border", () => {
     expect(stylesheet).not.toMatch(/\bbackground(?:-color)?\s*:\s*(?:#fff(?:fff)?|white)(?=\s*(?:;|}))/i);
     expect(stylesheet).not.toMatch(/\bborder(?:-[a-z]+)?\s*:[^;{}]*\bwhite\b/i);
+    expect(stylesheet).not.toMatch(/var\(\s*--(?:paper|surface)\s*,\s*#fff(?:fff)?\s*\)/i);
   });
 
   it("defines separate light and dark surface tokens", () => {
