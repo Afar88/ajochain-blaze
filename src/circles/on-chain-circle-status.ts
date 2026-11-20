@@ -2,6 +2,7 @@ export type ChainCircleClosedAs = "completed" | "cancelled";
 export type ChainCircleSnapshot = {
   round: number | null;
   completed: boolean;
+  stateVerified?: boolean;
   closedAs?: ChainCircleClosedAs | null;
   completedAt?: number | null;
 };
@@ -19,7 +20,10 @@ export function classifyCircleStatus(snapshot: ChainCircleSnapshot): CircleStatu
   if (snapshot.closedAs === "completed" || snapshot.completed) {
     return { status: "completed", round: snapshot.round, completedAt: snapshot.completedAt ?? null };
   }
-  return { status: "active", round: snapshot.round, completedAt: null };
+  if (snapshot.stateVerified === true && snapshot.round !== null && snapshot.round >= 0) {
+    return { status: "active", round: snapshot.round, completedAt: null };
+  }
+  return unknownCircleStatus();
 }
 
 export function unknownCircleStatus(): CircleStatusResult {

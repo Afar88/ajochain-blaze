@@ -3,9 +3,14 @@ import { checkCircleStatusesWithLimits, classifyCircleStatus, countCircleStatuse
 
 describe("on-chain circle status classification", () => {
   it("classifies an unspent state with remaining rounds as Active", () => {
-    expect(classifyCircleStatus({ round: 1, completed: false })).toEqual({
+    expect(classifyCircleStatus({ round: 1, completed: false, stateVerified: true })).toEqual({
       status: "active", round: 1, completedAt: null,
     });
+  });
+
+  it("keeps a missing or unverified state NFT Unknown rather than guessing Active", () => {
+    expect(classifyCircleStatus({ round: null, completed: false, stateVerified: false }).status).toBe("unknown");
+    expect(classifyCircleStatus({ round: 1, completed: false }).status).toBe("unknown");
   });
 
   it("classifies a final payout as Completed and carries its block time", () => {

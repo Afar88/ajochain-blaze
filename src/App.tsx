@@ -528,6 +528,7 @@ export default function App() {
         return {
           round: snapshot.round,
           completed: snapshot.completed,
+          stateVerified: !snapshot.completed && snapshot.round !== null,
           closedAs: snapshot.closedAs ?? null,
           completedAt: snapshot.completedAt ?? null,
         };
@@ -539,6 +540,7 @@ export default function App() {
         return {
           round: snapshot.status.round,
           completed: snapshot.status.completed,
+          stateVerified: snapshot.status.stateVerified,
           completedAt: null,
         };
       }
@@ -569,7 +571,7 @@ export default function App() {
           stateCategory: value.stateCategory,
           treasury: value.treasury,
         });
-        return { round: snapshot.round, completed: snapshot.completed, completedAt: null };
+        return { round: snapshot.round, completed: snapshot.completed, stateVerified: true, completedAt: null };
       }
       throw new Error("No read-only status checker is available for this saved circle type.");
     };
