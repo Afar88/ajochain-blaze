@@ -10,7 +10,6 @@ import transactionStatusHandler from "../api/transaction/status.mjs";
 import {
   assertPreviousTransactionsAgree,
   parseMainnetElectrumProviderConfig,
-  createUpstashMainnetRateLimiter,
   assertBchMainnetStateCommitment,
   createBchMainnetV3ContractContext,
   assertBchMainnetPayoutLayout,
@@ -42,6 +41,8 @@ import {
   MAINNET_BROADCAST_ENABLED,
   BCH_MAINNET_CIRCLE_BROADCAST_ENABLED,
   BCH_MAINNET_GATHER_BROADCAST_ENABLED,
+  PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED,
+  broadcastPusdMainnetCircleTransaction,
   broadcastBchMainnetCircleTransaction,
   broadcastBchMainnetGatherTransaction,
   validateBchMainnetGatherLayout,
@@ -144,68 +145,6 @@ const bchMainnetVerificationCircle = {
   treasury: "bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q",
 };
 
-
-test("Upstash Mainnet rate limit is atomic across independent serverless instances", async () => {
-  const store = new Map();
-  let now = 1_800_000_000_000;
-  const fetchImpl = async (_url, init) => {
-    const [command, script, numberOfKeys, key, ttl] = JSON.parse(init.body);
-    assert.equal(command, "EVAL");
-    assert.equal(numberOfKeys, "1");
-    assert.match(script, /INCR/);
-    assert.match(script, /PEXPIRE/);
-    assert.equal(ttl, "65000");
-    const count = (store.get(key) ?? 0) + 1;
-    store.set(key, count);
-    return { ok: true, status: 200, json: async () => ({ result: count }) };
-  };
-  const firstInstance = createUpstashMainnetRateLimiter({
-    url: "https://redis.example.test",
-    token: "private-test-token",
-    fetchImpl,
-    now: () => now,
-    maxRequests: 2,
-    windowMs: 60_000,
-    useForwardedIp: true,
-  });
-  const secondInstance = createUpstashMainnetRateLimiter({
-    url: "https://redis.example.test",
-    token: "private-test-token",
-    fetchImpl,
-    now: () => now,
-    maxRequests: 2,
-    windowMs: 60_000,
-    useForwardedIp: true,
-  });
-  const clientA = { headers: { "x-vercel-forwarded-for": "203.0.113.10" }, socket: {} };
-  const clientB = { headers: { "x-vercel-forwarded-for": "203.0.113.11" }, socket: {} };
-  assert.equal((await firstInstance.consume(clientA)).remaining, 1);
-  assert.equal((await secondInstance.consume(clientA)).remaining, 0);
-  await assert.rejects(firstInstance.consume(clientA), /Rate limit exceeded/i);
-  assert.equal((await secondInstance.consume(clientB)).count, 1);
-  now += 60_000;
-  assert.equal((await firstInstance.consume(clientA)).count, 1);
-  const keys = [...store.keys()];
-  assert.ok(keys.every((item) => item.startsWith("ajochain:{mainnet-spend}:rate:v1:")));
-  assert.ok(keys.every((item) => !item.includes("203.0.113.")));
-});
-
-test("Upstash Mainnet rate limiter fails closed for invalid IP, absent credentials and storage outage", async () => {
-  assert.throws(() => createUpstashMainnetRateLimiter({
-    url: "", token: "", fetchImpl: async () => ({}),
-  }), /not configured/i);
-  const invalidIp = createUpstashMainnetRateLimiter({
-    url: "https://redis.example.test", token: "private-test-token",
-    fetchImpl: async () => ({ ok: true, json: async () => ({ result: 1 }) }),
-    useForwardedIp: true,
-  });
-  await assert.rejects(invalidIp.consume({ headers: { "x-vercel-forwarded-for": "spoofed" }, socket: {} }), /valid client IP/i);
-  const outage = createUpstashMainnetRateLimiter({
-    url: "https://redis.example.test", token: "private-test-token",
-    fetchImpl: async () => { throw new Error("network down"); },
-  });
-  await assert.rejects(outage.consume({ headers: {}, socket: { remoteAddress: "127.0.0.1" } }), /rate limiter is unavailable/i);
-});
 
 test("Mainnet Electrum provider manifest requires unique operator identities", () => {
   const providers = parseMainnetElectrumProviderConfig(
@@ -1045,19 +984,34 @@ test("PUSD submission-status route returns 503 when private ledger credentials a
   }
 });
 
-test("nested PUSD circle verifier route rejects unknown operations before network access", async () => {
-  const response = await invokeServerlessRoute(
-    pusdCircleVerifyHandler,
-    {
-      ...mockApiRequest("POST", "/api/pusd/circle/verify"),
-      headers: { "content-type": "application/json" },
-      [Symbol.asyncIterator]: async function* () {
-        yield Buffer.from(JSON.stringify({ operation: "unknown" }));
+test("on-chain verification API does not require hosted Redis rate-limiter credentials", async () => {
+  const originalVercel = process.env.VERCEL;
+  const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const originalToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  process.env.VERCEL = "1";
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  try {
+    const response = await invokeServerlessRoute(
+      pusdCircleVerifyHandler,
+      {
+        ...mockApiRequest("POST", "/api/pusd/circle/verify"),
+        headers: { "content-type": "application/json" },
+        [Symbol.asyncIterator]: async function* () {
+          yield Buffer.from(JSON.stringify({ operation: "unknown" }));
+        },
       },
-    },
-  );
-  assert.equal(response.statusCode, 400);
-  assert.match(JSON.parse(response.body).error, /Unsupported PUSD Mainnet circle verification operation/);
+    );
+    assert.equal(response.statusCode, 400);
+    assert.match(JSON.parse(response.body).error, /Unsupported PUSD Mainnet circle verification operation/);
+  } finally {
+    if (originalVercel === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = originalVercel;
+    if (originalUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+    else process.env.UPSTASH_REDIS_REST_URL = originalUrl;
+    if (originalToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    else process.env.UPSTASH_REDIS_REST_TOKEN = originalToken;
+  }
 });
 
 test("nested PUSD submission-status Vercel route validates the transaction ID before ledger access", async () => {
@@ -1369,6 +1323,22 @@ test("BCH Mainnet circle broadcast is gated and refuses before any verification 
   await assert.rejects(
     broadcastBchMainnetCircleTransaction(sessions, { height: 1, hash: "00" }, { operation: "bogus" }, true),
     /Unsupported BCH Mainnet circle verification operation/,
+  );
+  assert.equal(called, false);
+});
+
+test("PUSD Mainnet V3 circle broadcast has its own gate and refuses before verification when disabled", async () => {
+  assert.equal(PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED, true);
+  let called = false;
+  const sessions = [{ call: async () => { called = true; } }, { call: async () => { called = true; } }];
+  await assert.rejects(
+    broadcastPusdMainnetCircleTransaction(
+      sessions,
+      { height: 1, hash: "00" },
+      { operation: "payout" },
+      false,
+    ),
+    /PUSD Mainnet circle broadcast is disabled/,
   );
   assert.equal(called, false);
 });

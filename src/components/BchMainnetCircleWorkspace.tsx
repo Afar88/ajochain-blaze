@@ -19,7 +19,11 @@ import { MAINNET_PROJECT_TREASURY_ADDRESS } from "../core/project-treasury";
 import { wallet } from "../core/wizard-wallet";
 import type { NetworkId } from "../core/network-config";
 
-type Props = { network: NetworkId; walletConnected: boolean };
+type Props = {
+  network: NetworkId;
+  walletConnected: boolean;
+  onOpenWalletDetails: () => void;
+};
 
 type Draft = { name: string; contribution: string; members: string[]; initiator?: string; maxFee: string; savedAt: number };
 const STORAGE_KEY = "ajochain-blaze:bch-mainnet-circle-drafts:v1";
@@ -118,7 +122,7 @@ function errorMessage(cause: unknown) {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-export default function BchMainnetCircleWorkspace({ network, walletConnected }: Props) {
+export default function BchMainnetCircleWorkspace({ network, walletConnected, onOpenWalletDetails }: Props) {
   const [name, setName] = useState("My BCH Ajo Circle");
   const [contribution, setContribution] = useState("0.002");
   const [membersText, setMembersText] = useState("");
@@ -671,8 +675,13 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected }: 
         <div className="creator-member-preview">
           <b>Member 1 · You, the initiator</b>
           {initiatorAddress
-            ? <><code>{initiatorAddress}</code><small>{initiatorAddressConfirmed ? "Confirmed from Selene's current Receive screen" : "Not yet confirmed · sync the current Selene address in Wallet Details"}</small></>
+            ? <><code>{initiatorAddress}</code><small>{initiatorAddressConfirmed ? "Confirmed from Selene's current Receive screen" : "Candidate address derived from this connected wallet · not yet matched to Selene's displayed Receive address"}</small></>
             : "Connect Selene and sync the address currently shown on its Mainnet Receive screen. Your address will be added first automatically."}
+          {initiatorAddress && !initiatorAddressConfirmed && (
+            <button className="secondary-button" type="button" onClick={onOpenWalletDetails}>
+              Open Wallet Details to sync Selene address
+            </button>
+          )}
         </div>
         <label>Other members' Mainnet addresses · one per line
           <textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder={"bitcoincash:…\nbitcoincash:…"} required />

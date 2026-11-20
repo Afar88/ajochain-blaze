@@ -1,6 +1,6 @@
 # Mainnet release checklist
 
-**Current status: NOT APPROVED FOR REAL-VALUE CIRCLE OPERATIONS.**
+**Current status: PATHS ARE SEPARATELY GATED.** BCH V3 Mainnet signing/broadcast is enabled in its dedicated code path; Classic BCH and PUSD retain their separate guards. This checklist records outstanding independent review and operational evidence, not a blanket instruction to disable the V3 path.
 
 External reviewer handoff: [`MAINNET_EXTERNAL_REVIEW_BRIEF.md`](./MAINNET_EXTERNAL_REVIEW_BRIEF.md).
 
@@ -33,7 +33,7 @@ CI now emits the exact source SHA-256, compiled artifact JSON SHA-256 and compil
 - [ ] Test each payout position: recipient reserve equals all remaining installments; already-paid members retain their full remaining reserve; unpaid members only need the current installment; final recipient reserve is zero.
 - [ ] Reconcile every receipt commitment and the state UTXO value after every payout, including duplicate observations, reorgs, missing receipts and conflicting outputs.
 - [ ] Verify exact recipient net payout, immutable 1% treasury output, reserve backing and separately funded miner fee in the actual signed transaction.
-- [ ] The `fee-v3-auto-reserve-mainnet` adapter uses the Mainnet quorum reader, Mainnet address validation, and the exact shared BCH/PUSD treasury. The Mainnet workspace now has a read-only server preflight for signed genesis, deposit, payout and cancellation transactions: it independently derives the V3 script from the compiled artifact, checks confirmed Electrum-quorum UTXOs, exact lifecycle layout and BCH 2026 VM execution. It never reserves, relays or broadcasts. Independently audit the exact compiled artifact and constructor binding, then complete real two-wallet device tests and the separate reviewed submission path before release.
+- [ ] The `fee-v3-auto-reserve-mainnet` adapter uses the Mainnet quorum reader, Mainnet address validation, and the exact shared BCH/PUSD treasury. The BCH V3 Mainnet workspace has its own explicit Selene signing and `/api/bch/broadcast` path, controlled by `BCH_MAINNET_CIRCLE_SEND_ENABLED` in the client and `BCH_MAINNET_CIRCLE_BROADCAST_ENABLED` in the API. These are separate from the Classic BCH `BCH_MAINNET_OPERATIONS_ENABLED` gate. Preserve the V3 path while completing two-wallet device tests, full lifecycle/confirmation/reorg validation and independent review of the exact compiled artifact and constructor binding.
 - [ ] Complete the same external security review, current-consensus VM validation, independent wallet signing and confirmation testing required for all real-value BCH circles.
 
 ## PUSD transfers
@@ -58,17 +58,18 @@ CI now emits the exact source SHA-256, compiled artifact JSON SHA-256 and compil
 ## Production operations
 
 - [ ] Configure `ELECTRUM_SERVERS` and the same-order `ELECTRUM_PROVIDER_OPERATORS` list in the BLAZE server environment. The API rejects missing, duplicate or mismatched operator IDs and reports only the declared IDs in health responses. These labels are not proof: attach operator ownership, hosting/fault-domain and endpoint-control evidence for every provider; verify monitoring, timeouts and failover separately.
-- [ ] PUSD API environment configured with the minimum required settings; no private endpoint credentials are exposed to the browser.
-- [ ] Shared Upstash Redis rate limiting is configured and tested across multiple Vercel instances; the serverless path fails closed when the shared limiter is unavailable. Local development alone uses the in-memory limiter. Also test request-size limits, origin handling, error handling, alerting, and incident response in the deployed environment.
+- [ ] Configure the private Electrum provider manifest for API-backed Mainnet reads. Configure `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` for the PUSD V3 circle-broadcast, PUSD transfer and BCH wallet-gather submission paths that use the durable idempotency ledger; missing ledger credentials must fail those submissions closed. Do not expose either provider or ledger credentials to the browser.
+- [ ] Configure and test deployment-wide Vercel Firewall/WAF rate limits for public `/api/*` traffic, with route-specific protection for expensive verification and submission endpoints. The Node adapter's in-memory limiter is per process only and is not sufficient across serverless instances.
+- [ ] Confirm on-chain circle discovery works directly from BCH wallet history and transaction data without any Neon, Postgres, Upstash or central registry dependency. Test request-size limits, origin handling and error handling for optional API routes separately; those routes do not own or index circle state.
 - [ ] Production build, CI, dependency review, and security scans pass on the exact release commit.
 - [ ] Backup/recovery plan for circle invite metadata and clear disclosure that local browser storage is not a durable account.
 - [ ] A staged production release and rollback procedure is tested before opening real-value transactions.
 
 ## Current hard stops
 
-- BCH Mainnet circle signing/broadcast is locked by `BCH_MAINNET_OPERATIONS_ENABLED = false`.
-- PUSD Mainnet spending is locked by `PUSD_MAINNET_SPENDING_ENABLED = false` in the client and `MAINNET_BROADCAST_ENABLED = false` in the API. Runtime environment variables cannot override the API lock.
-- V2 full-cycle escrow remains Chipnet-only. BCH V3 now has an unsigned Mainnet genesis-preview adapter, but deposits, payouts, cancellation signing and every Mainnet broadcast remain disabled pending full review.
-- PUSD circle/escrow contracts are prototypes and are not an active product flow.
+- Classic BCH Mainnet operations remain locked by `BCH_MAINNET_OPERATIONS_ENABLED = false`. The dedicated BCH V3 circle send path has separate client/server gates (`BCH_MAINNET_CIRCLE_SEND_ENABLED` and `BCH_MAINNET_CIRCLE_BROADCAST_ENABLED`), which are enabled in the current code. Do not use the Classic gate to disable or describe the V3 path.
+- Ordinary PUSD Mainnet wallet transfers are locked by `PUSD_MAINNET_SPENDING_ENABLED = false` in the client and `MAINNET_BROADCAST_ENABLED = false` in the API. The separate `PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED` gate for PUSD V3 circle lifecycle transactions is enabled in code and relies on the durable Upstash input ledger. Runtime environment variables cannot override the ordinary-transfer API lock.
+- V2 full-cycle escrow remains Chipnet-only. BCH V3 Mainnet has on-chain discovery and a dedicated sign/broadcast path. Its independent audit and full wallet/confirmation/reorg evidence remain distinct release work; do not describe the whole BCH V3 path as read-only.
+- PUSD V3 circle lifecycle broadcasting is enabled in code, but the flow is not independently security-approved. Treat all outstanding PUSD circle audit, wallet, fee, confirmation and reorganisation items as hard stops before real-value use.
 
 Do not remove a hard stop until the corresponding section has evidence, independent approval, and a release commit that has passed the complete test suite. Do not mark the product “Mainnet ready” while any required item remains unchecked.
