@@ -1,0 +1,123 @@
+export type SavedCircleNetwork = "mainnet" | "chipnet";
+export type SavedCircleStatus = "active" | "completed";
+
+export type SavedCircleDescriptor = {
+  id: string;
+  encoded: string;
+  network: SavedCircleNetwork;
+  kind: string;
+  name: string;
+  asset: "BCH" | "PUSD";
+  contribution: string;
+  memberCount: number;
+};
+
+export type SavedCircleMetadata = SavedCircleDescriptor & {
+  status: SavedCircleStatus;
+  completedAt: number | null;
+  round: number | null;
+  checkedAt: number | null;
+};
+
+type KeyValueStorage = Pick<Storage, "getItem" | "setItem">;
+
+export const SAVED_CIRCLE_METADATA_KEY = "ajochain-blaze:saved-circle-metadata:v1";
+
+function isMetadata(value: unknown): value is SavedCircleMetadata {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Record<string, unknown>;
+  return typeof item.id === "string" &&
+    typeof item.encoded === "string" &&
+    (item.network === "mainnet" || item.network === "chipnet") &&
+    typeof item.kind === "string" &&
+    typeof item.name === "string" &&
+    (item.asset === "BCH" || item.asset === "PUSD") &&
+    typeof item.contribution === "string" &&
+    Number.isInteger(item.memberCount) &&
+    (item.status === "active" || item.status === "completed");
+}
+
+export function readSavedCircleMetadata(storage: KeyValueStorage): SavedCircleMetadata[] {
+  try {
+    const raw: unknown = JSON.parse(storage.getItem(SAVED_CIRCLE_METADATA_KEY) || "[]");
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(isMetadata).map((item) => ({
+      ...item,
+      completedAt: Number.isSafeInteger(item.completedAt) ? item.completedAt : null,
+      round: Number.isInteger(item.round) && Number(item.round) >= 0 ? Number(item.round) : null,
+      checkedAt: Number.isSafeInteger(item.checkedAt) ? item.checkedAt : null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Add status metadata without rewriting any legacy saved-circle storage entry.
+ * The original encoded invite is copied byte-for-byte into this additive index.
+ */
+export function ensureSavedCircleMetadata(
+  storage: KeyValueStorage,
+  circles: SavedCircleDescriptor[],
+): SavedCircleMetadata[] {
+  const existing = readSavedCircleMetadata(storage);
+  const byId = new Map(existing.map((record) => [record.id, record]));
+  const next = circles.map((circle): SavedCircleMetadata => {
+    const previous = byId.get(circle.id);
+    return previous
+      ? { ...previous, ...circle }
+      : {
+          ...circle,
+          status: "active",
+          completedAt: null,
+          round: null,
+          checkedAt: null,
+        };
+  });
+  const present = new Set(next.map((record) => record.id));
+  const preserved = existing.filter((record) => !present.has(record.id));
+  const merged = [...next, ...preserved];
+  if (JSON.stringify(merged) !== JSON.stringify(existing)) {
+    try { storage.setItem(SAVED_CIRCLE_METADATA_KEY, JSON.stringify(merged)); } catch { /* local storage may be unavailable */ }
+  }
+  return next;
+}
+
+export function updateSavedCircleProgress(
+  storage: KeyValueStorage,
+  circle: SavedCircleDescriptor,
+  round: number | null,
+  completed: boolean,
+  now = Date.now(),
+): SavedCircleMetadata {
+  const records = readSavedCircleMetadata(storage);
+  const previous = records.find((record) => record.id === circle.id);
+  const record: SavedCircleMetadata = {
+    ...previous,
+    ...circle,
+    status: completed ? "completed" : "active",
+    completedAt: completed ? previous?.completedAt ?? now : null,
+    round: Number.isInteger(round) && round !== null && round >= 0 ? round : null,
+    checkedAt: now,
+  };
+  const next = [...records.filter((entry) => entry.id !== circle.id), record];
+  storage.setItem(SAVED_CIRCLE_METADATA_KEY, JSON.stringify(next));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("ajochain:saved-circles-changed"));
+  }
+  return record;
+}
+
+export function filterSavedCirclesByNetwork<T extends { network: SavedCircleNetwork }>(
+  circles: T[],
+  network: SavedCircleNetwork,
+): T[] {
+  return circles.filter((circle) => circle.network === network);
+}
+
+export function filterSavedCirclesByStatus<T extends { status: SavedCircleStatus }>(
+  circles: T[],
+  status: SavedCircleStatus,
+): T[] {
+  return circles.filter((circle) => circle.status === status);
+}
