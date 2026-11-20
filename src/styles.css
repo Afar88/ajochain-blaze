@@ -1505,3 +1505,8 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
 :root[data-theme="dark"] .app-shell .circle-choice-status {
   color: var(--primary-hover);
 }
+
+.app-shell .test-sign-control { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; }
+.app-shell .test-sign-button { min-height: 44px; font-weight: 700; }
+.app-shell .test-sign-helper { flex-basis: 100%; font-size: 14px; font-weight: 600; color: var(--muted); }
+.app-shell .test-sign-checked { display: inline-flex; align-items: center; min-height: 32px; padding: 4px 12px; border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--ink); background: var(--surface-raised); border: 2px solid var(--primary); }

@@ -1,3 +1,4 @@
+import { TestSignControl } from "./TestSignControl";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ArrowRight, Copy, LockKeyhole, ShieldCheck } from "lucide-react";
 import { PUSD_ASSET, formatAssetAmount, parseAssetAmount } from "../core/assets";
@@ -191,6 +192,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
   const [maxFee, setMaxFee] = useState("20000");
   const [drafts, setDrafts] = useState<Draft[]>(readDrafts);
   const [notice, setNotice] = useState("");
+  const [testSignChecked, setTestSignChecked] = useState<"genesis" | "action" | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [activeCircle, setActiveCircle] = useState<PusdMainnetCircleParams | null>(readActiveCircle);
@@ -423,6 +425,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     setLifecycleBusy(true);
     setError("");
     setNotice("");
+    setTestSignChecked(null);
     try {
       const walletAddress = wallet.address("mainnet");
       if (!walletAddress) throw new Error("The connected Selene session does not expose a Mainnet P2PKH signing address.");
@@ -488,6 +491,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       setNotice(
         "Selene approval passed the independent check. Nothing was sent and no circle details changed.",
       );
+      setTestSignChecked(target);
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -772,12 +776,9 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
               <div key={address}><span>Member {index + 1} escrow address</span><strong><code>{address}</code></strong></div>
             ))}
             <p>Estimated transaction size: {preparedPlan.transactionSizeBytes} bytes.</p>
-            <details className="advanced-actions">
-              <summary>Advanced</summary>
-            <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected}
-              onClick={() => void verifyMainnetSignature("genesis")}>Check Selene approval · no payment</button>
-            </details>
           </details>
+          <TestSignControl planCreatedAt={genesisSigningPlan?.createdAt ?? null} disabled={lifecycleBusy || !walletConnected}
+            checked={testSignChecked === "genesis"} onTest={() => void verifyMainnetSignature("genesis")} />
           <small>Nothing has been created yet. The circle is saved only after the Mainnet broadcast returns a transaction ID.</small>
         </div>
       )}
@@ -850,10 +851,8 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
                 <p>Estimated transaction size: {actionPreview.size} bytes. Wallet items to approve: {actionPreview.walletInputCount}.</p>
                 <p>Payments are checked before they are sent. Check circle status again before each new action.</p>
               </details>
-              {actionSigningPlan && <details className="advanced-actions">
-                <summary>Advanced</summary>
-                <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action")}>Check Selene approval · no payment</button>
-              </details>}
+              <TestSignControl planCreatedAt={actionSigningPlan?.createdAt ?? null} disabled={lifecycleBusy || !walletConnected}
+                checked={testSignChecked === "action"} onTest={() => void verifyMainnetSignature("action")} />
               {actionSigningPlan && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action", true)}>Sign and send on Mainnet</button>}
             </div>
           )}       </div>

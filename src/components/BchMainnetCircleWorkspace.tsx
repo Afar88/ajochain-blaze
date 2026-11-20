@@ -1,3 +1,4 @@
+import { TestSignControl } from "./TestSignControl";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ArrowRight, Copy, LockKeyhole } from "lucide-react";
 import { encodeV2FeeCircleParams } from "../core/v2-fee-discovery";
@@ -162,6 +163,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [testSignChecked, setTestSignChecked] = useState<"genesis" | "action" | null>(null);
   const [preview, setPreview] = useState<{
     contractAddress: string;
     stateCategory: string;
@@ -505,6 +507,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
     setLifecycleBusy(true);
     setError("");
     setNotice("");
+    setTestSignChecked(null);
     try {
       if (send && !BCH_MAINNET_CIRCLE_SEND_ENABLED) throw new Error("BCH Mainnet circle sending is locked.");
       const verified = await wallet.signAndVerify(
@@ -585,6 +588,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
       setNotice(
         "Your Selene approval passed an independent check. Nothing was sent and no circle details changed.",
       );
+      setTestSignChecked(target);
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -838,12 +842,9 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
             <div><span>State CashToken category</span><strong><code>{preview.stateCategory}</code></strong></div>
             <div><span>Transaction shape</span><strong>{preview.inputCount} inputs · {preview.outputCount} outputs</strong></div>
             <div><span>Estimated change back to your wallet</span><strong>{preview.estimatedChange} sats</strong></div>
-            <details className="advanced-actions">
-              <summary>Advanced</summary>
-            <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected}
-              onClick={() => void verifyMainnetSignature("genesis")}>Check Selene approval · no payment</button>
-            </details>
           </details>
+          <TestSignControl planCreatedAt={genesisSigningPlan?.createdAt ?? null} disabled={lifecycleBusy || !walletConnected}
+            checked={testSignChecked === "genesis"} onTest={() => void verifyMainnetSignature("genesis")} />
           <small>Nothing has been created yet. The circle is saved only after the Mainnet broadcast returns a transaction ID.</small>
         </div>
       )}
@@ -915,10 +916,8 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
               <div><span>Transaction size</span><strong>{actionPreview.size}</strong></div>
               <div><span>Wallet-owned inputs requiring signatures</span><strong>{actionPreview.walletInputCount}</strong></div>
               <small>Sign and send uses real BCH. Re-read state before each new action; inputs must be confirmed.</small>
-              {actionSigningPlan && <details className="advanced-actions">
-                <summary>Advanced</summary>
-                <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action")}>Verify Selene signature · no broadcast</button>
-              </details>}
+              <TestSignControl planCreatedAt={actionSigningPlan?.createdAt ?? null} disabled={lifecycleBusy || !walletConnected}
+                checked={testSignChecked === "action"} onTest={() => void verifyMainnetSignature("action")} />
           {actionSigningPlan && BCH_MAINNET_CIRCLE_SEND_ENABLED && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action", true)}>Sign and send on Mainnet</button>}
             </div>
           )}
