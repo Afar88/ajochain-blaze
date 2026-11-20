@@ -1685,15 +1685,22 @@ export default function App() {
           }} aria-label={"Selected network: " + NETWORKS[network].label + ". Open network options."}>
             <span className="network-dot" />{network === "mainnet" ? "Mainnet" : "Chipnet"}
           </button>
-          {connected ? (
-            <button className="header-wallet-chip" type="button" onClick={() => setShowWallet(true)}>
-              <span className="wallet-live-dot" />{shortAddress(walletAddress)}
-            </button>
-          ) : (
-            <button className="header-wallet-chip header-connect-button" type="button" onClick={openWallet}>
-              Connect
+          <button
+            className={"header-wallet-chip wallet-state-" + walletView.state}
+            type="button"
+            onClick={openWallet}
+            aria-label={"Wallet status: " + walletStateLabel + ". Open wallet details."}
+          >
+            <span className={"wallet-state-dot " + (connected ? "is-connected" : "is-idle")} />
+            {connected && walletAddress ? shortAddress(walletAddress) : walletStateLabel}
+          </button>
+          {connected && walletAddress && (
+            <button className="header-wallet-copy" type="button" aria-label="Copy wallet address"
+              onClick={() => { void navigator.clipboard.writeText(walletAddress).catch(() => undefined); }}>
+              <Copy size={15} />
             </button>
           )}
+          {walletNetworkMismatch && <span className="header-wallet-mismatch" role="status">Wallet on other network</span>}
           <button
             className={menuOpen ? "menu-trigger menu-trigger-open" : "menu-trigger"}
             type="button"
@@ -2150,7 +2157,7 @@ export default function App() {
             </div>
             {connected ? (
               <div className="wallet-detail-body">
-                <div className="wallet-address-card"><span>{NETWORKS[network].label}</span><code>{walletAddress ?? "Address not available yet"}</code>{walletAddress
+                <div className="wallet-address-card"><span>{NETWORKS[network].label}</span><code>{walletAddress ?? "Address not available yet"}</code>{walletAddress && <button type="button" className="secondary-button wallet-copy-address" onClick={() => { void navigator.clipboard.writeText(walletAddress).catch(() => undefined); }}><Copy size={14} /> Copy address</button>}{walletNetworkMismatch && <small className="wallet-network-mismatch" role="alert">Selene is connected to the other network. Switch to {NETWORKS[network].label} and reconnect.</small>}{walletAddress
                   ? <small>Derived receive address · index {walletView.receiveIndex}. Receive and change addresses are derived from this connected Selene wallet. Choose the address Selene is currently showing before creating or managing a Mainnet circle.</small>
                   : <small className="wallet-match-message">WizardConnect is connected, but no valid live receive key is available yet. Check the Selene session and reconnect if needed.</small>}</div>
                 {network === "mainnet" && <section className="receive-address-picker" aria-labelledby="receive-address-picker-title">
@@ -2286,7 +2293,8 @@ export default function App() {
                   <button className="primary-button" onClick={() => {
                     if (!walletClient) { openWallet(); return; }
                     if (!walletClient.retrySavedSession()) {
-                      if (walletClient.state === "idle" || walletClient.state === "disconnected") walletClient.connect();
+                      if (walletClient.state === "idle") walletClient.connect();
+                      else if (walletClient.state === "disconnected") walletClient.startFreshPairing();
                     }
                   }}>Retry saved session / connect</button>
                   <button className="secondary-button" onClick={() => walletClient?.startFreshPairing()}>Start fresh pairing</button>
