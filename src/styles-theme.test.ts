@@ -21,12 +21,13 @@ describe("Navy/red theme and responsive stylesheet", () => {
     expect(css.trim()).not.toBe("");
   });
 
-  it("keeps every non-token color on a CSS variable", () => {
+  it("keeps every non-token color on a CSS variable and removes all white/green values", () => {
     const componentStyles = outsideThemeTokens(css);
     expect(componentStyles).not.toMatch(/#(?:[0-9a-f]{3,8})\b/i);
     expect(componentStyles).not.toMatch(/\bwhite\b(?!-)/i);
     expect(componentStyles).not.toMatch(/\bgreen\b|--green|--lime/i);
     expect(componentStyles).not.toMatch(/\brgba?\s*\(|\bhsla?\s*\(/i);
+    expect(css).not.toMatch(/#fff(?:fff)?\b|\bwhite\b(?!-)|\bgreen\b|--green|--lime/i);
   });
 
   it("defines the required light and navy dark palettes", () => {
@@ -42,9 +43,13 @@ describe("Navy/red theme and responsive stylesheet", () => {
     expect(css).toMatch(/\.creator-member-preview\s*\{[^}]*background:\s*var\(--surface\)/s);
   });
 
-  it("matches mobile and desktop layout snapshots at 390px and 1440px", () => {
+  it("matches mobile, tablet and desktop layout breakpoints", () => {
+    expect(columnsAt(360)).toBe(1);
     expect(columnsAt(390)).toBe(1);
+    expect(columnsAt(768)).toBe(2);
+    expect(columnsAt(1024)).toBe(2);
     expect(columnsAt(1440)).toBe(2);
+    expect(columnsAt(1920)).toBe(2);
     expect(css).toMatch(/@media\s*\(max-width:\s*767px\)[\s\S]*?grid-template-columns:\s*minmax\(0,1fr\)/i);
     expect(css).toMatch(/@media\s*\(min-width:\s*1200px\)[\s\S]*?max-width:\s*1280px/i);
   });
