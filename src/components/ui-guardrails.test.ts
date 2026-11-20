@@ -34,8 +34,14 @@ describe("front-end warning and advanced-action guardrails", () => {
   });
 
   it("provides a copy action beside both Mainnet Member 1 addresses", () => {
-    expect(bch).toMatch(/<div className="creator-member-preview">[\\s\\S]*?<code>\\{initiatorAddress\\}<\\/code>[\\s\\S]*?Copy address/);
-    expect(pusd).toMatch(/<div className="creator-member-preview">[\\s\\S]*?<code>\\{initiatorAddress\\}<\\/code>[\\s\\S]*?Copy address/);
+    for (const source of [bchSource, pusdSource]) {
+      const start = source.indexOf('<div className="creator-member-preview">');
+      const end = source.indexOf("</div>", start);
+      const preview = source.slice(start, end);
+      expect(start).toBeGreaterThanOrEqual(0);
+      expect(preview).toContain("<code>{initiatorAddress}</code>");
+      expect(preview).toContain("Copy address");
+    }
   });
 
   it("keeps both PUSD dry-run checks inside a collapsed Advanced disclosure", () => {
