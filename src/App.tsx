@@ -473,10 +473,23 @@ export default function App() {
   ) ?? null;
 
   useEffect(() => {
+    let timer: number | undefined;
+    try {
+      const wasCollapsed = window.localStorage.getItem(riskNoticeStorageKey) === "collapsed";
+      setRiskNoticeCollapsed(wasCollapsed);
+      if (!wasCollapsed) {
+        timer = window.setTimeout(() => {
+          setRiskNoticeCollapsed(true);
+          try { window.localStorage.setItem(riskNoticeStorageKey, "collapsed"); } catch { /* optional persistence */ }
+        }, 6_000);
+      }
+    } catch { setRiskNoticeCollapsed(false); }
+    return () => { if (timer !== undefined) window.clearTimeout(timer); };
+  }, [riskNoticeStorageKey]);
+
+  useEffect(() => {
     try {
       setRiskNoticeCollapsed(window.localStorage.getItem(riskNoticeStorageKey) === "collapsed");
-    } catch { setRiskNoticeCollapsed(false); }
-  }, [riskNoticeStorageKey]);
 
   useEffect(() => {
     // A network change can also mean Selene is showing a different receive
@@ -1233,7 +1246,9 @@ export default function App() {
     setShowWallet(true);
     const start = (client: WalletClient) => {
       setWalletClient(client);
-      if (client.state === "disconnected" || client.state === "idle") {
+      if (client.state === "disconnected") {
+        if (!client.retrySavedSession()) client.startFreshPairing();
+      } else if (client.state === "idle") {
         // A fresh page starts idle even when an encrypted WizardConnect session
         // exists. Try that saved session before creating a new pairing.
         if (!client.tryResume()) client.connect();
@@ -1860,7 +1875,7 @@ export default function App() {
               <article className="overview-status-card">
                 <div className="status-card-icon"><ShieldCheck size={18} /></div>
                 <div><span className="status-label">NETWORK</span><b>{NETWORKS[network].label}</b>
-                  <small>{network === "chipnet" ? "Testing environment · no real funds" : "Real money · you approve every payment in your wallet"}</small></div>
+                  <small>{network === "chipnet" ? "Chipnet testing environment" : "Mainnet · wallet approval required"}</small></div>
                 <button type="button" className="status-action" onClick={() => setMenuOpen(true)}>Change <ChevronDown size={13} /></button>
               </article>
             </section>
@@ -1889,7 +1904,7 @@ export default function App() {
                 <section className="circle-choice-guide" aria-label="Choose a circle type">
                   <div className="circle-choice-heading">
                     <div><span className="section-kicker">CHOOSE YOUR CIRCLE</span><h2>What kind of circle do you want?</h2>
-                      <p>{network === "mainnet" ? "Choose BCH or PUSD. These are separate circles with their own member lists and payments." : "Try the circle options on Chipnet first. Test coins have no real-money value."}</p></div>
+                      <p>{network === "mainnet" ? "Choose BCH or PUSD. These are separate circles with their own member lists and payments." : "Try the circle options on Chipnet first."}</p></div>
                   </div>
                   <div className="circle-choice-grid">
                     {network === "mainnet" && <>
@@ -2276,7 +2291,7 @@ export default function App() {
                         <button type="button" className="secondary-button" onClick={() => { setGatherResult(null); setGatherPlan(null); }}>Try again</button>
                       </div>
                     )}
-                    {network === "mainnet" && <small className="field-hint">Mainnet uses real BCH. Review the total and fee before asking Selene to approve. The coins return to your wallet.</small>}
+                    {network === "mainnet" && <small className="field-hint">Check the total and fee before asking Selene to approve. The coins return to your wallet.</small>}
                   </section>
                 </>}
                 <button className="secondary-button" disabled={discoveryBusy} onClick={() => setDiscoveryRun((run) => run + 1)}>{discoveryBusy ? "Checking circles…" : discoveryMessage ? "Retry discovery" : "Check for my circles"}</button>
