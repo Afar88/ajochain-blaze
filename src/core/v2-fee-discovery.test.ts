@@ -233,12 +233,15 @@ describe("on-chain circle discovery", () => {
     const walletAddresses = Array.from({ length: 8 }, (_, index) =>
       pkhToAddress(pkh(index + 1), "chipnet"),
     );
+    const circleMembers = [walletAddresses[5], walletAddresses[1], walletAddresses[0]];
     const circles = [1, 2, 3].map((number) => {
       const circleParams = {
         ...params,
+        members: circleMembers,
+        initiator: walletAddresses[5],
         stateCategory: number.toString(16).padStart(64, "0"),
       };
-      const raw = binToHex(encodeTransaction(genesisTx(circleParams, contractBytecode(circleParams))));
+      const raw = binToHex(encodeTransaction(genesisTx(circleParams, contractBytecode(circleParams), pkh(6))));
       const txid = binToHex(hashTransactionUiOrder(hexToBin(raw))).toLowerCase();
       return {
         raw,
@@ -251,7 +254,7 @@ describe("on-chain circle discovery", () => {
       };
     });
     const targetScriptHash = binToHex(sha256.hash(
-      (cashAddressToLockingBytecode(params.members[0]) as { bytecode: Uint8Array }).bytecode,
+      (cashAddressToLockingBytecode(walletAddresses[5]) as { bytecode: Uint8Array }).bytecode,
     ).reverse());
     const histories: Record<string, unknown> = {
       [targetScriptHash]: circles.map(({ txid }, index) => ({ tx_hash: txid, height: 100 + index })),
