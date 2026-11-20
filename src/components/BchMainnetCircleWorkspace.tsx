@@ -20,6 +20,12 @@ import { getV2FeeCircleRecordIdentity } from "../core/v2-fee-circle-records";
 import { updateSavedCircleProgress } from "../circles/saved-circle-status";
 import { wallet } from "../core/wizard-wallet";
 import type { NetworkId } from "../core/network-config";
+import {
+  getCancellationDisabledReason,
+  getDepositDisabledReason,
+  getPayoutDisabledReason,
+  shouldRenderCircleCreation,
+} from "./mainnet-circle-lifecycle-ui";
 
 type Props = {
   network: NetworkId;
@@ -149,6 +155,8 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
   const [genesisSigningPlan, setGenesisSigningPlan] = useState<MainnetSigningPlan | null>(null);
   const [actionSigningPlan, setActionSigningPlan] = useState<MainnetSigningPlan | null>(null);
   const [creationResult, setCreationResult] = useState<{ txid: string; explorerUrl: string; inviteUrl: string } | null>(null);
+  const [openCircleKey, setOpenCircleKey] = useState<string | null>(null);
+  const autoStatusReadKeyRef = useRef<string | null>(null);
   const creationSummaryRef = useRef<HTMLDivElement>(null);
 
   const [busy, setBusy] = useState(false);
@@ -162,6 +170,18 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
     inputCount: number;
     outputCount: number;
   } | null>(null);
+  const isCircleOpen = Boolean(activeCircle && openCircleKey);
+  const payoutDisabledReason = getPayoutDisabledReason({
+    hasStatus: Boolean(circleSnapshot),
+    walletConnected,
+    payoutReady: Boolean(circleSnapshot?.ready),
+  });
+  const cancellationDisabledReason = getCancellationDisabledReason({
+    hasStatus: Boolean(circleSnapshot),
+    walletConnected,
+    cancellationAllowed: Boolean(circleSnapshot && !circleSnapshot.hasPaid && circleSnapshot.round === 0),
+  });
+  const depositDisabledReason = getDepositDisabledReason(walletConnected);
 
   useEffect(() => {
     onBusyChange?.(busy || lifecycleBusy);
@@ -324,7 +344,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
       const snapshot = await readV2FeeCircle(activeCircle);
       setCircleSnapshot(snapshot);
       persistChainProgress(activeCircle, encodeV2FeeCircleParams(activeCircle), snapshot);
-      setNotice("BCH Mainnet circle details checked on the blockchain. This is a read-only status check.");
+      setNotice("BCH Mainnet circle status refreshed from the blockchain.");
     } catch (cause) {
       setCircleSnapshot(null);
       setError(errorMessage(cause));
@@ -332,6 +352,17 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
       setLifecycleBusy(false);
     }
   };
+
+  useEffect(() => {
+    if (!activeCircle || !openCircleKey) {
+      autoStatusReadKeyRef.current = null;
+      return;
+    }
+    const readKey = openCircleKey + ":" + activeCircle.stateCategory;
+    if (autoStatusReadKeyRef.current === readKey) return;
+    autoStatusReadKeyRef.current = readKey;
+    void readActiveOnChainState();
+  }, [activeCircle?.stateCategory, openCircleKey]);
 
   const prepareDepositPreview = async () => {
     if (!activeCircle) return;
@@ -538,6 +569,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
             inviteUrl,
           });
           setActiveCircle(signingPlan.circle);
+          setOpenCircleKey("created:" + verification.txid);
           try {
             persistActiveCircle(signingPlan.circle);
             setDeployedCircles(addDeployedCircle(signingPlan.circle));
@@ -576,32 +608,39 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
     setActionSigningPlan(null);
     setGenesisSigningPlan(null);
     setPreview(null);
+    setCreationResult(null);
+    setOpenCircleKey(null);
     setError("");
   };
 
   useEffect(() => {
     if (!selectedCircle) return;
-    let current = true;
     try {
       const circle = decodeV2FeeCircle(selectedCircle);
       if (circle.network !== "mainnet" || circle.covenant !== "fee-v3-auto-reserve-mainnet") {
         throw new Error("This saved circle is not a BCH Mainnet circle.");
       }
       selectCircle(circle);
-      void readV2FeeCircle(circle).then((snapshot) => {
-        if (!current) return;
-        setCircleSnapshot(snapshot);
-        persistChainProgress(circle, selectedCircle, snapshot);
-      }).catch((cause: unknown) => {
-        if (current) setError(errorMessage(cause));
-      });
+      setOpenCircleKey("selected:" + selectedCircle);
     } catch (cause) {
       setError(errorMessage(cause));
     }
-    return () => { current = false; };
   // The selected-circle key changes when a different menu record is opened.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCircle]);
+
+  const closeCircleAndCreateNew = () => {
+    setOpenCircleKey(null);
+    setActiveCircle(null);
+    setCircleSnapshot(null);
+    setActionPreview(null);
+    setActionSigningPlan(null);
+    setGenesisSigningPlan(null);
+    setPreview(null);
+    setCreationResult(null);
+    setError("");
+    setNotice("");
+  };
 
   const copyInvite = async () => {
     if (!activeCircle) return;
@@ -699,6 +738,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
 
   return (
     <section className="pusd-mainnet-workspace section-card" aria-labelledby="bch-mainnet-title">
+      {shouldRenderCircleCreation(isCircleOpen) && <>
       <div className="section-heading">
         <div>
           <span className="section-kicker">BITCOIN CASH · MAINNET SAVINGS</span>
@@ -797,6 +837,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
           <small>Nothing has been created yet. The circle is saved only after the Mainnet broadcast returns a transaction ID.</small>
         </div>
       )}
+      </>}
       {creationResult && (
         <div className="pusd-mainnet-breakdown mainnet-create-success" role="status">
           <b>Circle created</b>
@@ -814,15 +855,19 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
           </div>
         </div>
       )}
-      {activeCircle && (selectedCircle || creationResult) && (
+      {isCircleOpen && activeCircle && (
         <div className="pusd-mainnet-saved">
-          <div className="section-heading">
-            <div><span className="section-kicker">CIRCLE LIFECYCLE · MAINNET READ-ONLY</span><h3>{activeCircle.name}</h3></div>
-            <button type="button" className="secondary-button" disabled={lifecycleBusy} onClick={() => void readActiveOnChainState()}>
-              {lifecycleBusy ? "Checking…" : "Check circle status"}
-            </button>
+          <div className="section-heading circle-lifecycle-heading">
+            <div><span className="section-kicker">CIRCLE · BITCOIN CASH MAINNET</span><h3>{activeCircle.name}</h3></div>
+            <div className="circle-lifecycle-toolbar">
+              <button type="button" className="secondary-button circle-lifecycle-refresh" disabled={lifecycleBusy} onClick={() => void readActiveOnChainState()}>
+                {lifecycleBusy ? "Checking…" : "Refresh status"}
+              </button>
+              <button type="button" className="secondary-button circle-lifecycle-new" onClick={closeCircleAndCreateNew}>Create a new circle</button>
+            </div>
           </div>
-          <p className="classic-empty">Circle details are loaded locally. Check the current on-chain state before taking an action.</p>
+          {!circleSnapshot && <p className="classic-empty">Checking circle status…</p>}
+          {circleSnapshot && <p className="classic-empty">Latest BCH Mainnet circle status is verified from the blockchain.</p>}
           <button type="button" className="secondary-button" onClick={() => void copyInvite()}><Copy size={14} /> Copy invite</button>
           {circleSnapshot && (
             <div className="pusd-mainnet-breakdown">
@@ -839,9 +884,18 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
             <input value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} inputMode="decimal" />
           </label>
           <div className="pusd-mainnet-actions">
-            <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void prepareDepositPreview()}>Preview member deposit</button>
-            <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected || !circleSnapshot?.ready} onClick={() => void preparePayoutPreview()}>Preview payout</button>
-            <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected || !circleSnapshot || circleSnapshot.hasPaid || circleSnapshot.round !== 0} onClick={() => void prepareCancelPreview()}>Preview cancellation</button>
+            <div className="lifecycle-action-control">
+              <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void prepareDepositPreview()}>Preview member deposit</button>
+              {depositDisabledReason && <small className="lifecycle-action-reason">{depositDisabledReason}</small>}
+            </div>
+            <div className="lifecycle-action-control">
+              <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected || !circleSnapshot?.ready} onClick={() => void preparePayoutPreview()}>Preview payout</button>
+              {payoutDisabledReason && <small className="lifecycle-action-reason">{payoutDisabledReason}</small>}
+            </div>
+            <div className="lifecycle-action-control">
+              <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected || !circleSnapshot || circleSnapshot.hasPaid || circleSnapshot.round !== 0} onClick={() => void prepareCancelPreview()}>Preview cancellation</button>
+              {cancellationDisabledReason && <small className="lifecycle-action-reason">{cancellationDisabledReason}</small>}
+            </div>
           </div>
           {actionPreview && (
             <div className="pusd-mainnet-breakdown" role="status">

@@ -19,6 +19,12 @@ import {
 import { broadcastPusdMainnetCircleSignedTransaction, verifyPusdMainnetCircleSignedTransaction } from "../core/pusd-api";
 import { wallet } from "../core/wizard-wallet";
 import type { NetworkId } from "../core/network-config";
+import {
+  getCancellationDisabledReason,
+  getDepositDisabledReason,
+  getPayoutDisabledReason,
+  shouldRenderCircleCreation,
+} from "./mainnet-circle-lifecycle-ui";
 import { updateSavedCircleProgress } from "../circles/saved-circle-status";
 
 type Props = { network: NetworkId; walletConnected: boolean; selectedAddressPendingOnly?: boolean; selectedCircle?: string | null; onBusyChange?: (busy: boolean) => void };
@@ -208,8 +214,22 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
   const [genesisSigningPlan, setGenesisSigningPlan] = useState<MainnetSigningPlan | null>(null);
   const [actionSigningPlan, setActionSigningPlan] = useState<MainnetSigningPlan | null>(null);
   const [creationResult, setCreationResult] = useState<{ txid: string; explorerUrl: string; inviteUrl: string } | null>(null);
+  const [openCircleKey, setOpenCircleKey] = useState<string | null>(null);
+  const autoStatusReadKeyRef = useRef<string | null>(null);
   const creationSummaryRef = useRef<HTMLDivElement>(null);
   const [, setDeployedCircles] = useState<PusdMainnetCircleParams[]>(readDeployedCircles);
+  const isCircleOpen = Boolean(activeCircle && openCircleKey);
+  const payoutDisabledReason = getPayoutDisabledReason({
+    hasStatus: Boolean(circleSnapshot),
+    walletConnected,
+    payoutReady: Boolean(circleSnapshot?.ready),
+  });
+  const cancellationDisabledReason = getCancellationDisabledReason({
+    hasStatus: Boolean(circleSnapshot),
+    walletConnected,
+    cancellationAllowed: Boolean(circleSnapshot && circleSnapshot.round === 0 && !circleSnapshot.completed),
+  });
+  const depositDisabledReason = getDepositDisabledReason(walletConnected);
 
   useEffect(() => {
     onBusyChange?.(busy || lifecycleBusy);
@@ -222,26 +242,19 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
 
   useEffect(() => {
     if (!selectedCircle) return;
-    let current = true;
     const circle = deserializeCircle(selectedCircle);
     if (!circle) {
       setError("This saved PUSD circle could not be opened.");
       return;
     }
     setActiveCircle(circle);
+    setOpenCircleKey("selected:" + selectedCircle);
+    setCreationResult(null);
     persistActiveCircle(circle);
     setCircleSnapshot(null);
     setGenesisSigningPlan(null);
     setActionSigningPlan(null);
-    setNotice("Opened " + circle.name + ". Reading its current chain state.");
-    void readPusdMainnetCircle(circle).then((snapshot) => {
-      if (!current) return;
-      setCircleSnapshot(snapshot);
-      persistPusdChainProgress(circle, selectedCircle, snapshot);
-    }).catch((cause: unknown) => {
-      if (current) setError(errorMessage(cause));
-    });
-    return () => { current = false; };
+    setNotice("Opened " + circle.name + ". Checking its latest blockchain status.");
   }, [selectedCircle]);
   const memberAddresses = useMemo(() =>
     membersText.split(/\r?\n/).map((address) => address.trim()).filter(Boolean),
@@ -459,6 +472,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
             inviteUrl,
           });
           setActiveCircle(signingPlan.circle);
+          setOpenCircleKey("created:" + relayed.txid);
           try {
             persistActiveCircle(signingPlan.circle);
             setDeployedCircles(addDeployedCircle(signingPlan.circle));
@@ -506,7 +520,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       const snapshot = await readPusdMainnetCircle(activeCircle);
       setCircleSnapshot(snapshot);
       persistPusdChainProgress(activeCircle, serializeCircle(activeCircle), snapshot);
-      setNotice("Mainnet circle details checked on the blockchain. This is a read-only status check.");
+      setNotice("PUSD Mainnet circle status refreshed from the blockchain.");
     } catch (cause) {
       setCircleSnapshot(null);
       setError(errorMessage(cause));
@@ -514,6 +528,17 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       setLifecycleBusy(false);
     }
   };
+
+  useEffect(() => {
+    if (!activeCircle || !openCircleKey) {
+      autoStatusReadKeyRef.current = null;
+      return;
+    }
+    const readKey = openCircleKey + ":" + activeCircle.stateCategory;
+    if (autoStatusReadKeyRef.current === readKey) return;
+    autoStatusReadKeyRef.current = readKey;
+    void readActiveOnChainState();
+  }, [activeCircle?.stateCategory, openCircleKey]);
 
   const prepareDepositPreview = async () => {
     if (!activeCircle) return;
@@ -629,6 +654,19 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     }
   };
 
+  const closeCircleAndCreateNew = () => {
+    setOpenCircleKey(null);
+    setActiveCircle(null);
+    setCircleSnapshot(null);
+    setActionPreview(null);
+    setActionSigningPlan(null);
+    setGenesisSigningPlan(null);
+    setPreparedPlan(null);
+    setCreationResult(null);
+    setError("");
+    setNotice("");
+  };
+
   const restore = (draft: Draft) => {
     setName(draft.name);
     setContribution(formatAssetAmount("PUSD", BigInt(draft.contribution)));
@@ -640,6 +678,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
 
   return (
     <section className="pusd-mainnet-workspace section-card" aria-labelledby="pusd-mainnet-title">
+      {shouldRenderCircleCreation(isCircleOpen) && <>
       <div className="section-heading">
         <div>
           <span className="section-kicker">PARYONUSD · DOLLAR TOKEN</span>
@@ -730,6 +769,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
           <small>Nothing has been created yet. The circle is saved only after the Mainnet broadcast returns a transaction ID.</small>
         </div>
       )}
+      </>}
       {creationResult && (
         <div className="pusd-mainnet-breakdown mainnet-create-success" role="status">
           <b>Circle created</b>
@@ -747,15 +787,19 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
           </div>
         </div>
       )}
-      {activeCircle && (selectedCircle || creationResult) && (
+      {isCircleOpen && activeCircle && (
         <div className="pusd-mainnet-saved">
-          <div className="section-heading">
-            <div><span className="section-kicker">YOUR PUSD CIRCLE</span><h3>{activeCircle.name}</h3></div>
-            <button type="button" className="secondary-button" disabled={lifecycleBusy} onClick={() => void readActiveOnChainState()}>
-              {lifecycleBusy ? "Checking…" : "Check circle status"}
-            </button>
+          <div className="section-heading circle-lifecycle-heading">
+            <div><span className="section-kicker">CIRCLE · PUSD MAINNET</span><h3>{activeCircle.name}</h3></div>
+            <div className="circle-lifecycle-toolbar">
+              <button type="button" className="secondary-button circle-lifecycle-refresh" disabled={lifecycleBusy} onClick={() => void readActiveOnChainState()}>
+                {lifecycleBusy ? "Checking…" : "Refresh status"}
+              </button>
+              <button type="button" className="secondary-button circle-lifecycle-new" onClick={closeCircleAndCreateNew}>Create a new circle</button>
+            </div>
           </div>
-          <p className="classic-empty">Circle details are loaded locally. Check the current on-chain state before taking an action.</p>
+          {!circleSnapshot && <p className="classic-empty">Checking circle status…</p>}
+          {circleSnapshot && <p className="classic-empty">Latest PUSD Mainnet circle status is verified from the blockchain.</p>}
           {circleSnapshot && (
             <div className="pusd-mainnet-breakdown">
               <b>Verified circle state</b>
@@ -771,9 +815,18 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
             <input value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} inputMode="decimal" />
           </label>
           <div className="pusd-mainnet-actions">
-            <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void prepareDepositPreview()}>Preview member deposit</button>
-            <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected || !circleSnapshot?.ready} onClick={() => void preparePayoutPreview()}>Preview payout</button>
-            <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected || !circleSnapshot || circleSnapshot.round !== 0 || circleSnapshot.completed} onClick={() => void prepareCancelPreview()}>Preview cancellation</button>
+            <div className="lifecycle-action-control">
+              <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void prepareDepositPreview()}>Preview member deposit</button>
+              {depositDisabledReason && <small className="lifecycle-action-reason">{depositDisabledReason}</small>}
+            </div>
+            <div className="lifecycle-action-control">
+              <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected || !circleSnapshot?.ready} onClick={() => void preparePayoutPreview()}>Preview payout</button>
+              {payoutDisabledReason && <small className="lifecycle-action-reason">{payoutDisabledReason}</small>}
+            </div>
+            <div className="lifecycle-action-control">
+              <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected || !circleSnapshot || circleSnapshot.round !== 0 || circleSnapshot.completed} onClick={() => void prepareCancelPreview()}>Preview cancellation</button>
+              {cancellationDisabledReason && <small className="lifecycle-action-reason">{cancellationDisabledReason}</small>}
+            </div>
           </div>
           {actionPreview && (
             <div className="pusd-mainnet-breakdown" role="status">
@@ -794,7 +847,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       {error && <p className="classic-error" role="alert">{error}</p>}
       {notice && <p className="classic-notice" role="status">{notice}</p>}
 
-      {activeCircle && (selectedCircle || creationResult) && (
+      {isCircleOpen && activeCircle && (
         <div className="pusd-mainnet-invite">
           <button type="button" className="secondary-button" onClick={() => {
             const link = window.location.origin + window.location.pathname + INVITE_ROUTE + encodeCircleInvite(activeCircle);
