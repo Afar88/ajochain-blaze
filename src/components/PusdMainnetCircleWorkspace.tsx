@@ -187,6 +187,7 @@ function errorMessage(cause: unknown) {
 export default function PusdMainnetCircleWorkspace({ network, walletConnected, selectedAddressPendingOnly = false, selectedCircle = null, onBusyChange }: Props) {
   const [name, setName] = useState(() => "PUSD Ajo circle – " + new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" }));
   const [contribution, setContribution] = useState("10.00");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [membersText, setMembersText] = useState("");
   const [maxFee, setMaxFee] = useState("20000");
   const [drafts, setDrafts] = useState<Draft[]>(readDrafts);
@@ -763,8 +764,11 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
               <div key={address}><span>Member {index + 1} escrow address</span><strong><code>{address}</code></strong></div>
             ))}
             <p>Estimated transaction size: {preparedPlan.transactionSizeBytes} bytes.</p>
-            <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected}
-              onClick={() => void verifyMainnetSignature("genesis")}>Check Selene approval · no payment</button>
+            <details className="advanced-actions" open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
+              <summary>Advanced</summary>
+              <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected}
+                onClick={() => void verifyMainnetSignature("genesis")}>Check Selene approval · no payment</button>
+            </details>
           </details>
           <small>Nothing has been created yet. The circle is saved only after the Mainnet broadcast returns a transaction ID.</small>
         </div>
