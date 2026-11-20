@@ -725,6 +725,7 @@ export default function App() {
       }
       setGatherBusy(true);
       setGatherResult(null);
+      setBchBalanceScan(null);
       setGatherMessage("Checking your wallet for BCH coins…");
       try {
         const [{ getClassicProvider }, { planWalletConsolidation }] = await Promise.all([
@@ -1157,12 +1158,11 @@ export default function App() {
                   <h2>{connected ? walletView.walletName ?? "Selene wallet" : "No wallet connected"}</h2>
                   <small>{connected ? shortAddress(walletAddress) : "Connect Selene to view your balances."}</small>
                 </div>
-                <span className="wallet-balance-network">{NETWORKS[network].label}</span>
               </div>
               <div className="wallet-balance-list">
                 <div className="wallet-balance-row">
                   <span className="asset-symbol">B</span>
-                  <div><b>Bitcoin Cash</b><small>Available BCH in your connected wallet</small></div>
+                  <div><b>Bitcoin Cash</b><small>BCH coins found in your connected wallet</small></div>
                   <strong>{!connected ? "Connect wallet" : currentBchBalanceScan ? formatBchSatoshis(currentBchBalanceScan.totalSatoshis) : "Not checked yet"}</strong>
                 </div>
                 <div className="wallet-balance-row">
