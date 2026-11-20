@@ -15,6 +15,25 @@ function columnsAt(width: number): 1 | 2 {
   return width < 768 ? 1 : 2;
 }
 
+function layoutSnapshotAt(width: number) {
+  const phone = width < 768;
+  const desktop = width >= 1200;
+  return {
+    viewport: width + "px",
+    columns: columnsAt(width),
+    contentWidth: desktop && /\.app-shell \.page-body, \.app-shell \.content \{ max-width:1280px; \}/.test(css)
+      ? "max-width: 1280px"
+      : "fluid",
+    horizontalGutter: phone && /\.app-shell \.page-body, \.app-shell \.content \{ padding-inline:16px; \}/.test(css)
+      ? "16px"
+      : "fluid",
+    minimumFontSize: phone ? 14 : 13,
+    navigation: /\.menu-trigger[\\s\\S]*?aria-controls="ajochain-dropdown"/.test(css + readFileSync(resolve(here, "App.tsx"), "utf8"))
+      ? "hamburger menu"
+      : "missing",
+  };
+}
+
 describe("Navy/red theme and responsive stylesheet", () => {
   it("reads the real stylesheet from disk", () => {
     expect(css.length).toBeGreaterThan(5_000);
@@ -41,6 +60,32 @@ describe("Navy/red theme and responsive stylesheet", () => {
 
   it("keeps Member 1 instructions on the theme surface", () => {
     expect(css).toMatch(/\.creator-member-preview\s*\{[^}]*background:\s*var\(--surface\)/s);
+  });
+
+  it("snapshots the phone layout at 390px", () => {
+    expect(layoutSnapshotAt(390)).toMatchInlineSnapshot(`
+      {
+        "columns": 1,
+        "contentWidth": "fluid",
+        "horizontalGutter": "16px",
+        "minimumFontSize": 14,
+        "navigation": "hamburger menu",
+        "viewport": "390px",
+      }
+    `);
+  });
+
+  it("snapshots the wide desktop layout at 1440px", () => {
+    expect(layoutSnapshotAt(1440)).toMatchInlineSnapshot(`
+      {
+        "columns": 2,
+        "contentWidth": "max-width: 1280px",
+        "horizontalGutter": "fluid",
+        "minimumFontSize": 13,
+        "navigation": "hamburger menu",
+        "viewport": "1440px",
+      }
+    `);
   });
 
   it("matches mobile, tablet and desktop layout breakpoints", () => {
