@@ -1842,7 +1842,7 @@ export default function App() {
                 <button type="button" className="text-action" onClick={() => navigate("activity")}>All activity <ArrowRight size={14} /></button>
               </div>
               <Suspense fallback={<p className="classic-empty">Loading chain-backed activity…</p>}>
-                <ActivityRecords />
+                <ActivityRecords network={network} compact key={"activity-overview-" + network} />
               </Suspense>
             </section>
 
@@ -2145,7 +2145,7 @@ export default function App() {
 
         {page === "activity" && (
           <Suspense fallback={<section className="page-section"><p className="classic-empty">Loading chain-backed activity…</p></section>}>
-            <ActivityRecords />
+            <ActivityRecords network={network} key={"activity-" + network} />
           </Suspense>
         )}
       </div>

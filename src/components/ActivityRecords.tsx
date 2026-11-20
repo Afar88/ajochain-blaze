@@ -261,8 +261,8 @@ function txStatusLabel(record: CircleTransactionRecord) {
   return "Not verified";
 }
 
-export default function ActivityRecords() {
-  const [circles, setCircles] = useState<CircleRef[]>(loadCircleRefs);
+export default function ActivityRecords({ network, compact = false }: { network: "chipnet" | "mainnet"; compact?: boolean }) {
+  const [circles, setCircles] = useState<CircleRef[]>(() => loadCircleRefs().filter((ref) => ref.network === network));
   const [results, setResults] = useState<CircleResult[]>([]);
   const [busy, setBusy] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<number | null>(null);
@@ -271,7 +271,7 @@ export default function ActivityRecords() {
   const refresh = useCallback(async () => {
     setBusy(true);
     setRefreshError("");
-    const current = loadCircleRefs();
+    const current = loadCircleRefs().filter((ref) => ref.network === network);
     setCircles(current);
     setResults(current.map((ref) => ({ ref, status: "loading" })));
     try {
@@ -283,7 +283,7 @@ export default function ActivityRecords() {
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [network]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -296,11 +296,11 @@ export default function ActivityRecords() {
 
   return (
     <section className="page-section activity-records-page">
-      <div className="page-intro">
+      {!compact && <div className="page-intro">
         <span className="section-kicker">CHAIN-BACKED HISTORY</span>
         <h1>Activity and records</h1>
         <p>Transaction history comes from the circle and escrow scripts. Current member credits come from on-chain receipts, not local payment notes.</p>
-      </div>
+      </div>}
 
       <div className="activity-summary-grid">
         <article className="overview-status-card">

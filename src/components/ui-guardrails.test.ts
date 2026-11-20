@@ -54,3 +54,12 @@ describe("front-end warning and advanced-action guardrails", () => {
     expect(controlSource).not.toContain("<details");
   });
 });
+
+describe("activity records follow the selected network", () => {
+  it("passes the selected network to every ActivityRecords and filters refs by it", () => {
+    const activitySource = readFileSync(resolve(here, "ActivityRecords.tsx"), "utf8");
+    expect(appSource).not.toContain("<ActivityRecords />");
+    expect((appSource.match(/<ActivityRecords network=\{network\}/g) ?? [])).toHaveLength(2);
+    expect((activitySource.match(/loadCircleRefs\(\)\.filter\(\(ref\) => ref\.network === network\)/g) ?? [])).toHaveLength(2);
+  });
+});
