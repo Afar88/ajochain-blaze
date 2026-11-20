@@ -145,7 +145,7 @@ export function walletAddressSnapshotsMatch(
 ): boolean {
   return expected.length === current.length && expected.every((entry, index) => {
     const candidate = current[index];
-    return Boolean(candidate) &&
+    return candidate !== undefined &&
       entry.branch === candidate.branch &&
       entry.index === candidate.index &&
       entry.address.toLowerCase() === candidate.address.toLowerCase();
