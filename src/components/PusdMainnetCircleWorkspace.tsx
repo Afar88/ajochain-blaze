@@ -428,11 +428,11 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     }
   };
 
-  const persistChainProgress = (
+  function persistChainProgress(
     circle: PusdMainnetCircleParams,
     encoded: string,
     snapshot: PusdMainnetCircleSnapshot,
-  ) => {
+  ) {
     updateSavedCircleProgress(window.localStorage, {
       id: "pusd:" + circle.stateCategory.toLowerCase(),
       encoded,
@@ -443,7 +443,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       contribution: circle.contribution.toString(),
       memberCount: circle.members.length,
     }, snapshot.round, snapshot.completed);
-  };
+  }
 
   const readActiveOnChainState = async () => {
     if (!activeCircle) return;
