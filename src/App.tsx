@@ -1850,7 +1850,7 @@ export default function App() {
               <article className="overview-status-card">
                 <div className="status-card-icon"><ShieldCheck size={18} /></div>
                 <div><span className="status-label">NETWORK</span><b>{NETWORKS[network].label}</b>
-                  <small>{network === "chipnet" ? "Testing environment · no real funds" : "Real money · you approve every payment in your wallet"}</small></div>
+                  <small>{network === "chipnet" ? "Chipnet test network" : "Mainnet · wallet approval required"}</small></div>
                 <button type="button" className="status-action" onClick={() => setMenuOpen(true)}>Change <ChevronDown size={13} /></button>
               </article>
             </section>
