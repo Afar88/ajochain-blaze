@@ -210,7 +210,7 @@ type WalletView = {
 
 const CIRCLE_NETWORK_NOTICE_KEY = "ajochain-blaze:circle-network-risk-seen:v1";
 
-function CircleNetworkRiskNotice({ network }: { network: NetworkId }) {
+export function CircleNetworkRiskNotice({ network }: { network: NetworkId }) {
   const storageKey = CIRCLE_NETWORK_NOTICE_KEY + ":" + network;
   const [expanded, setExpanded] = useState(() => {
     try { return window.localStorage.getItem(storageKey) !== "seen"; }
