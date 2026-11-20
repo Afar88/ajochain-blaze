@@ -16,6 +16,49 @@ export type WalletPathBranch = 'receive' | 'change';
 export type WalletInputPath = { branch: WalletPathBranch; index: number };
 export type WalletAddressEntry = WalletInputPath & { address: string };
 
+export type ReceiveAddressActivity = {
+  index: number;
+  address: string;
+  hasHistory: boolean;
+  confirmedSatoshis: bigint;
+  unconfirmedSatoshis: bigint;
+};
+
+/** Highest used receive index plus one, bounded so UI scans stay deliberate. */
+export function getNextUnusedReceiveAddressIndex(activity: readonly ReceiveAddressActivity[]): number {
+  let highestUsed = -1;
+  for (const item of activity) {
+    if (!Number.isSafeInteger(item.index) || item.index < 0 || item.index > 10000) {
+      throw new Error("Receive-address activity contains an invalid derivation index.");
+    }
+    if (item.hasHistory || item.confirmedSatoshis > 0n || item.unconfirmedSatoshis > 0n) {
+      highestUsed = Math.max(highestUsed, item.index);
+    }
+  }
+  return highestUsed + 1;
+}
+
+/** Prefer the receive address with the largest confirmed BCH balance; ties go to the newer index. */
+export function selectDefaultReceiveAddressIndex(activity: readonly ReceiveAddressActivity[], nextUnusedIndex: number): number {
+  if (!Number.isSafeInteger(nextUnusedIndex) || nextUnusedIndex < 0 || nextUnusedIndex > 10000) {
+    throw new Error("Next unused receive-address index is outside the supported range.");
+  }
+  const funded = activity
+    .filter((item) => Number.isSafeInteger(item.index) && item.index >= 0 &&
+      typeof item.confirmedSatoshis === "bigint" && item.confirmedSatoshis > 0n)
+    .sort((left, right) => left.confirmedSatoshis === right.confirmedSatoshis
+      ? right.index - left.index
+      : left.confirmedSatoshis > right.confirmedSatoshis ? -1 : 1);
+  return funded[0]?.index ?? nextUnusedIndex;
+}
+
+/** Only an exact address in the connected wallet's derived receive set is selectable. */
+export function findDerivedReceiveAddressEntry(address: string, derivedAddresses: readonly WalletAddressEntry[]): WalletAddressEntry | null {
+  const normalized = typeof address === "string" ? address.trim().toLowerCase() : "";
+  if (!normalized) return null;
+  return derivedAddresses.find((entry) => entry.branch === "receive" && entry.address.toLowerCase() === normalized) ?? null;
+}
+
 export function isCurrentReceiveAddressConfirmed(current: string | null, confirmed: string | null): boolean {
   return Boolean(current && confirmed && current.toLowerCase() === confirmed.toLowerCase());
 }
@@ -154,6 +197,27 @@ export function walletAddressSnapshotsMatch(
 
 const PATHS_STORAGE_KEY = 'ajochain:wizardconnect-paths:v1';
 const RECEIVE_INDEX_STORAGE_KEY = 'ajochain:wizardconnect-receive-index:v1';
+const RECEIVE_FINGERPRINT_STORAGE_KEY = 'ajochain:wizardconnect-receive-fingerprint:v1';
+
+function receiveAddressFingerprint(mgr: DappConnectionManager): string | null {
+  if (mgr.protocol !== "hdwalletv1") return null;
+  const addresses = Array.from({ length: DEFAULT_RECEIVE_ADDRESS_SEARCH_LIMIT }, (_, index) =>
+    deriveWizardConnectReceiveAddress("hdwalletv1", (childIndex, childAddressIndex) =>
+      mgr.getPubkey(childIndex, childAddressIndex), "mainnet", index),
+  ).filter((address): address is string => Boolean(address));
+  return addresses.length ? addresses.join("|").toLowerCase() : null;
+}
+
+function loadReceiveFingerprint(): string | null {
+  try { return localStorage.getItem(RECEIVE_FINGERPRINT_STORAGE_KEY); } catch { return null; }
+}
+
+function saveReceiveFingerprint(value: string | null) {
+  try {
+    if (value) localStorage.setItem(RECEIVE_FINGERPRINT_STORAGE_KEY, value);
+    else localStorage.removeItem(RECEIVE_FINGERPRINT_STORAGE_KEY);
+  } catch { /* best effort */ }
+}
 
 
 function restorePublicPaths(mgr: DappConnectionManager) {
@@ -504,6 +568,9 @@ class WizardWallet {
   private confirmedReceiveAddresses: Partial<Record<Net, string>> = {};
   /** Authenticated WizardConnect wallet Nostr public key for the active session. */
   private sessionWalletIdentity: string | null = null;
+  private sessionAddressFingerprint: string | null = null;
+  /** Increments after each authenticated wallet_ready handshake. */
+  addressSetRevision = 0;
 
   onChange(fn: Listener) { this.listeners.push(fn); return () => { this.listeners = this.listeners.filter((listener) => listener !== fn); }; }
 
@@ -571,16 +638,20 @@ class WizardWallet {
       this.clearConnectionWatchdog();
       this.walletName = mgr.walletName;
       const nextIdentity = normalizeWizardConnectWalletIdentity(msg?.public_key);
-      if (!shouldPreserveReceiveAddressConfirmation(this.sessionWalletIdentity, nextIdentity)) {
+      const nextAddressFingerprint = receiveAddressFingerprint(mgr);
+      const storedAddressFingerprint = loadReceiveFingerprint();
+      const identityMatches = shouldPreserveReceiveAddressConfirmation(this.sessionWalletIdentity, nextIdentity);
+      const addressSetMatches = !storedAddressFingerprint || !nextAddressFingerprint || storedAddressFingerprint === nextAddressFingerprint;
+      if (!identityMatches || !addressSetMatches) {
         this.confirmedReceiveAddresses = {};
-        if (this.sessionWalletIdentity && nextIdentity && this.sessionWalletIdentity !== nextIdentity) {
-          // A different authenticated wallet connected: discard its predecessor's
-          // receive index as well as its confirmation.
-          this.receiveIndex = 0;
-          try { localStorage.setItem(RECEIVE_INDEX_STORAGE_KEY, "0"); } catch { /* best effort */ }
-        }
+        // A different wallet identity or xpub-derived receive set invalidates the saved selection.
+        this.receiveIndex = 0;
+        try { localStorage.setItem(RECEIVE_INDEX_STORAGE_KEY, "0"); } catch { /* best effort */ }
       }
       this.sessionWalletIdentity = nextIdentity;
+      this.sessionAddressFingerprint = nextAddressFingerprint;
+      saveReceiveFingerprint(nextAddressFingerprint);
+      this.addressSetRevision++;
       savePublicPaths(mgr);
       this.error = null;
       this.state = 'connected';
@@ -604,9 +675,12 @@ class WizardWallet {
       this.uri = null;
       this.qrUri = null;
       this.walletName = null;
-      this.receiveIndex = loadReceiveIndex();
+      this.receiveIndex = 0;
       this.confirmedReceiveAddresses = {};
       this.sessionWalletIdentity = null;
+      this.sessionAddressFingerprint = null;
+      saveReceiveFingerprint(null);
+      try { localStorage.setItem(RECEIVE_INDEX_STORAGE_KEY, "0"); } catch { /* best effort */ }
       this.state = 'disconnected';
       this.error = detailText || (protocolMismatch
         ? "Selene and AjoChain could not agree on a WizardConnect protocol. Start a fresh pairing."
@@ -676,6 +750,8 @@ class WizardWallet {
     this.receiveIndex = 0;
     this.confirmedReceiveAddresses = {};
     this.sessionWalletIdentity = null;
+    this.sessionAddressFingerprint = null;
+    saveReceiveFingerprint(null);
     try {
       localStorage.removeItem(PATHS_STORAGE_KEY);
       localStorage.removeItem(RECEIVE_INDEX_STORAGE_KEY);
@@ -768,6 +844,8 @@ class WizardWallet {
       this.receiveIndex = 0;
       this.confirmedReceiveAddresses = {};
       this.sessionWalletIdentity = null;
+      this.sessionAddressFingerprint = null;
+      saveReceiveFingerprint(null);
       try {
         localStorage.removeItem(PATHS_STORAGE_KEY);
         localStorage.removeItem(RECEIVE_INDEX_STORAGE_KEY);
@@ -789,6 +867,49 @@ class WizardWallet {
     );
   }
 
+  /** List receive-only addresses derived locally from this connected wallet's xpub. */
+  listReceiveAddresses(network: Net, lastIndex = DEFAULT_RECEIVE_ADDRESS_SEARCH_LIMIT): WalletAddressEntry[] {
+    if (!Number.isSafeInteger(lastIndex) || lastIndex < 0 || lastIndex > 10000) {
+      throw new Error("Receive-address list limit must be between 0 and 10,000.");
+    }
+    if (this.state !== "connected" || !this.mgr || this.mgr.protocol !== "hdwalletv1") {
+      throw new Error("Connect Selene through WizardConnect before listing receive addresses.");
+    }
+    const mgr = this.mgr;
+    const entries: WalletAddressEntry[] = [];
+    for (let index = 0; index <= lastIndex; index++) {
+      const address = deriveWizardConnectReceiveAddress(
+        mgr.protocol,
+        (childIndex, addressIndex) => mgr.getPubkey(childIndex, addressIndex),
+        network,
+        index,
+      );
+      if (address) entries.push({ branch: "receive", index, address });
+    }
+    return entries;
+  }
+
+  /** Select only a receive index derived by the active connected xpub. */
+  selectReceiveAddressIndex(index: number, network: Net): string {
+    if (!Number.isSafeInteger(index) || index < 0 || index > DEFAULT_RECEIVE_ADDRESS_SEARCH_LIMIT) {
+      throw new Error("Choose one of the listed receive addresses (index 0–50).");
+    }
+    const candidates = this.listReceiveAddresses(network, DEFAULT_RECEIVE_ADDRESS_SEARCH_LIMIT);
+    const selected = candidates.find((entry) => entry.index === index);
+    if (!selected || !findDerivedReceiveAddressEntry(selected.address, candidates)) {
+      throw new Error("That receive address is not derived from this connected Selene wallet.");
+    }
+    this.receiveIndex = selected.index;
+    this.confirmedReceiveAddresses[network] = selected.address;
+    if (network === "mainnet") {
+      this.sessionAddressFingerprint = this.mgr ? receiveAddressFingerprint(this.mgr) : null;
+      saveReceiveFingerprint(this.sessionAddressFingerprint);
+    }
+    try { localStorage.setItem(RECEIVE_INDEX_STORAGE_KEY, String(index)); } catch { /* best effort */ }
+    this.emit();
+    return selected.address;
+  }
+
   /** Match a Selene receive address against the live WizardConnect receive xpub. */
   matchReceiveAddress(address: string, network: Net, maxIndex = DEFAULT_RECEIVE_ADDRESS_SEARCH_LIMIT): number | null {
     if (this.state !== "connected" || !this.mgr || this.mgr.protocol !== "hdwalletv1") {
@@ -804,6 +925,10 @@ class WizardWallet {
     );
     if (i === null) return null;
     this.receiveIndex = i;
+    if (network === "mainnet") {
+      this.sessionAddressFingerprint = receiveAddressFingerprint(mgr);
+      saveReceiveFingerprint(this.sessionAddressFingerprint);
+    }
     try { localStorage.setItem(RECEIVE_INDEX_STORAGE_KEY, String(i)); } catch { /* best effort */ }
     this.emit();
     return i;

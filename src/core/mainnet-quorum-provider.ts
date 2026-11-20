@@ -448,6 +448,63 @@ export class MainnetQuorumNetworkProvider implements NetworkProvider {
     }));
   }
 
+  /** Read Mainnet receive-address history and BCH balances from every provider. */
+  async getAddressActivityForAddresses(
+    addresses: readonly string[],
+  ): Promise<Array<{
+    address: string;
+    hasHistory: boolean;
+    hasPendingHistory: boolean;
+    confirmedSatoshis: bigint;
+    unconfirmedSatoshis: bigint;
+  }>> {
+    if (!Array.isArray(addresses) || addresses.length === 0 || addresses.length > 50 ||
+        addresses.some((address) => typeof address !== "string" || !address.trim()) ||
+        new Set(addresses.map((address) => address.trim().toLowerCase())).size !== addresses.length) {
+      throw new Error("Mainnet address activity requires 1–50 unique derived receive addresses.");
+    }
+    const scriptHashes = addresses.map((address) => scriptHashForLockingBytecode(mainnetAddressLockingBytecode(address)));
+    await this.verifyTip();
+    const providerSnapshots = await Promise.all(this.providers.map(async (provider) =>
+      mapConcurrent(scriptHashes, 8, async (scriptHash) => {
+        const [historyValue, balanceValue] = await Promise.all([
+          provider.performRequest("blockchain.scripthash.get_history", scriptHash),
+          provider.performRequest("blockchain.scripthash.get_balance", scriptHash),
+        ]);
+        const history = normalizeScriptHistory(historyValue);
+        if (!balanceValue || typeof balanceValue !== "object") throw new Error("Electrum returned a malformed receive-address balance.");
+        const balance = balanceValue as Record<string, unknown>;
+        if (typeof balance.confirmed !== "number" || !Number.isSafeInteger(balance.confirmed) || balance.confirmed < 0 ||
+            typeof balance.unconfirmed !== "number" || !Number.isSafeInteger(balance.unconfirmed)) {
+          throw new Error("Electrum returned an invalid confirmed or unconfirmed receive-address balance.");
+        }
+        return {
+          history,
+          confirmedSatoshis: BigInt(balance.confirmed),
+          unconfirmedSatoshis: BigInt(balance.unconfirmed),
+        };
+      }),
+    ));
+    for (let index = 0; index < addresses.length; index++) {
+      const baseline = JSON.stringify(providerSnapshots[0][index], (_key, value) => typeof value === "bigint" ? value.toString() : value);
+      if (providerSnapshots.slice(1).some((snapshot) =>
+        JSON.stringify(snapshot[index], (_key, value) => typeof value === "bigint" ? value.toString() : value) !== baseline
+      )) {
+        throw new Error("Independent Mainnet Electrum providers disagree on a receive address's balance or history.");
+      }
+    }
+    return addresses.map((address, index) => {
+      const result = providerSnapshots[0][index];
+      return {
+        address,
+        hasHistory: result.history.length > 0,
+        hasPendingHistory: result.history.some((entry) => entry.height <= 0),
+        confirmedSatoshis: result.confirmedSatoshis,
+        unconfirmedSatoshis: result.unconfirmedSatoshis,
+      };
+    });
+  }
+
   async getUtxos(address: string): Promise<SpendableUtxo[]> {
     await this.verifyTip();
     const snapshots = await Promise.all(this.providers.map((provider) => provider.getUtxos(address)));
