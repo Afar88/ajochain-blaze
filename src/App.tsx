@@ -51,6 +51,7 @@ type MenuCircle = {
   memberCount: number;
   status: SavedCircleStatus;
   completedAt: number | null;
+  checkedAt: number | null;
   round: number | null;
 };
 
@@ -189,6 +190,7 @@ function readSavedCircleMenuRecords(): MenuCircle[] {
       ...circle,
       status: saved?.status ?? "unknown",
       completedAt: saved?.completedAt ?? null,
+      checkedAt: saved?.checkedAt ?? null,
       round: saved?.round ?? null,
     };
   });
@@ -1578,7 +1580,7 @@ export default function App() {
                 ? (circle.status === "cancelled" ? "Cancelled" : "Completed") +
                   (circle.completedAt ? " · " + new Date(circle.completedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "")
                 : circle.status === "unknown"
-                  ? "Status unavailable · latest chain read failed"
+                  ? circle.checkedAt === null ? "Checking on-chain status…" : "Status unavailable · latest chain read failed"
                   : circle.round === null
                     ? "Checking round progress · " + circle.memberCount + " members"
                     : "Round " + Math.min(circle.round + 1, circle.memberCount) + " of " + circle.memberCount}</small>
@@ -1586,13 +1588,13 @@ export default function App() {
             <span className={
               circle.status === "completed" ? "my-circle-status completed"
                 : circle.status === "cancelled" ? "my-circle-status cancelled"
-                  : circle.status === "unknown" ? "my-circle-status unavailable" : "my-circle-status"
+                  : circle.status === "unknown" ? circle.checkedAt === null ? "my-circle-status checking" : "my-circle-status unavailable" : "my-circle-status"
             }>{circle.status === "completed" ? "Completed"
               : circle.status === "cancelled" ? "Cancelled"
-                : circle.status === "unknown" ? "Status unavailable" : "Active"}</span>
+                : circle.status === "unknown" ? circle.checkedAt === null ? "Checking…" : "Status unavailable" : "Active"}</span>
             <ArrowRight size={17} />
           </button>
-          {circle.status === "unknown" && (
+          {circle.status === "unknown" && circle.checkedAt !== null && (
             <button type="button" className="secondary-button circle-status-retry"
               onClick={() => retryCircleStatus(circle)}>Retry status check</button>
           )}
