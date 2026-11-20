@@ -763,8 +763,11 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
               <div key={address}><span>Member {index + 1} escrow address</span><strong><code>{address}</code></strong></div>
             ))}
             <p>Estimated transaction size: {preparedPlan.transactionSizeBytes} bytes.</p>
+            <details className="advanced-actions">
+              <summary>Advanced</summary>
             <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected}
               onClick={() => void verifyMainnetSignature("genesis")}>Check Selene approval · no payment</button>
+            </details>
           </details>
           <small>Nothing has been created yet. The circle is saved only after the Mainnet broadcast returns a transaction ID.</small>
         </div>
@@ -838,7 +841,10 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
                 <p>Estimated transaction size: {actionPreview.size} bytes. Wallet items to approve: {actionPreview.walletInputCount}.</p>
                 <p>Payments are checked before they are sent. Check circle status again before each new action.</p>
               </details>
-              {actionSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action")}>Check Selene approval · no payment</button>}
+              {actionSigningPlan && <details className="advanced-actions">
+                <summary>Advanced</summary>
+                <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action")}>Check Selene approval · no payment</button>
+              </details>
               {actionSigningPlan && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action", true)}>Sign and send on Mainnet</button>}
             </div>
           )}       </div>
