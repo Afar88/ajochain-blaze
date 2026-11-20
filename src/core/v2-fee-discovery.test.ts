@@ -257,7 +257,7 @@ describe("on-chain circle discovery", () => {
     };
     const creatorScriptHash = scriptHash(creatorAddress);
     const memberScriptHash = scriptHash(memberAddress);
-    const endpoint = {
+    const createEndpoint = () => ({
       performRequest: async (method: string, requestedScriptHash: string) => {
         if (method !== "blockchain.scripthash.get_history") throw new Error("Unexpected Mainnet discovery RPC: " + method);
         return requestedScriptHash === creatorScriptHash || requestedScriptHash === memberScriptHash
@@ -265,10 +265,10 @@ describe("on-chain circle discovery", () => {
           : [];
       },
       getRawTransaction: async () => raw,
-    } as unknown as import("cashscript").ElectrumNetworkProvider;
+    } as unknown as import("cashscript").ElectrumNetworkProvider);
 
     for (const walletAddress of [creatorAddress, memberAddress]) {
-      const provider = new MainnetQuorumNetworkProvider([endpoint, { ...endpoint }]);
+      const provider = new MainnetQuorumNetworkProvider([createEndpoint(), createEndpoint()]);
       (provider as unknown as { verifyTip: () => Promise<{ height: number; hash: string }> }).verifyTip = async () => ({
         height: 978_200, hash: "dd".repeat(32),
       });
