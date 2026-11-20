@@ -79,7 +79,7 @@ type PusdView = {
 };
 
 const formatBchSatoshis = (satoshis: bigint) => {
-  const whole = (satoshis / 100_000_000n).toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",");
+  const whole = (satoshis / 100_000_000n).toString();
   const fraction = (satoshis % 100_000_000n).toString().padStart(8, "0");
   return whole + "." + fraction + " BCH";
 };
@@ -1056,7 +1056,7 @@ export default function App() {
               </div>
               <div className="pusd-transfer-box">
                 <div><span className="section-kicker">TRANSFER PLANNER</span><h3>Prepare a PUSD transfer</h3>
-                  <p>Builds a transaction preview from authenticated PUSD coins and the latest network fee estimate. It does not sign or broadcast.</p></div>
+                  <p>Shows a transfer preview from the PUSD coins in your wallet and the latest network fee estimate. Nothing is sent.</p></div>
                 <label>Recipient Bitcoin Cash address
                   <input value={pusdRecipient} onChange={(event) => { setPusdRecipient(event.target.value); setPusdTransferPlan(null); setPusdSignatureMessage(""); setPusdPlanError(""); }} placeholder="bitcoincash:…" autoComplete="off" />
                 </label>
@@ -1085,7 +1085,7 @@ export default function App() {
                 )}
                 <button type="button" className="secondary-button" disabled={!pusdTransferPlan || pusdSignatureBusy || !connected || network !== "mainnet"}
                   onClick={() => void verifyPusdTransferSignature()}>
-                  {pusdSignatureBusy ? "Verifying Selene signature…" : "Verify Selene signature · no broadcast"}
+                  {pusdSignatureBusy ? "Checking Selene approval…" : "Check Selene approval · no payment"}
                 </button>
                 {pusdSignatureMessage && <p className="classic-notice" role="status">{pusdSignatureMessage}</p>}
                 <button type="button" className="primary-button" disabled={!PUSD_MAINNET_SPENDING_ENABLED || !pusdTransferPlan}
@@ -1095,7 +1095,7 @@ export default function App() {
                 <small className="field-hint">PUSD sending stays locked until raw transaction inspection, independent wallet testing, fee/carrier validation, and security review are completed. This preview is not a payment.</small>
               </div>
               <details className="technical-details"><summary>Technical details</summary><div className="asset-detail-row"><span>Token identifier</span><code>{PUSD_ASSET.categoryId}</code></div><div className="asset-detail-row"><span>Display precision</span><b>2 decimals</b></div></details>
-              <div className="asset-detail-row"><span>PUSD circle rules</span><b className="locked-state">Mainnet V3 build · signing locked</b></div>
+              <div className="asset-detail-row"><span>PUSD circle rules</span><b className="locked-state">Mainnet setup · payments locked</b></div>
             </article>
           </section>
         )}
@@ -1146,7 +1146,7 @@ export default function App() {
                     <div className="gather-card-heading">
                       <span className="section-kicker">WALLET CLEAN-UP</span>
                       <h3 id="gather-title">Gather BCH coins</h3>
-                      <p>Bring your available BCH into one coin in your own wallet. CashTokens are left untouched.</p>
+                      <p>Bring your available BCH into one coin in your own wallet. PUSD and other tokens are left untouched.</p>
                     </div>
                     {!gatherPlan && (
                       <button className="secondary-button gather-scan-button"

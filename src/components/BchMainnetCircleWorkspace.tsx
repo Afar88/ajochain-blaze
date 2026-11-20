@@ -504,9 +504,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
       if (target === "genesis") setGenesisSigningPlan(null);
       else setActionSigningPlan(null);
       setNotice(
-        "Independent BCH Mainnet verification passed (" + inputCount + " inputs, " + outputCount +
-        " outputs, txid " + (verification.txid || "verified") +
-        "). Selene approval passed the independent check. Nothing was sent and no circle state changed.",
+        "Your Selene approval passed an independent check. Nothing was sent and no circle details changed.",
       );
     } catch (cause) {
       setError(errorMessage(cause));
@@ -712,7 +710,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
         <div className="pusd-mainnet-actions">
           <button className="secondary-button" type="button" onClick={saveDraft} disabled={network !== "mainnet" || !walletConnected || !initiatorAddressConfirmed}>Save local draft</button>
         <button className="primary-button" type="submit" disabled={busy || network !== "mainnet" || !walletConnected || !initiatorAddressConfirmed || Boolean(memberOrder.error)}>
-          {busy ? "Preparing Mainnet preview…" : "Prepare on-chain creation preview"} <ArrowRight size={15} />
+          {busy ? "Preparing circle setup…" : "Preview circle setup"} <ArrowRight size={15} />
         </button>
         </div>
         <small className="field-hint">Member order is fixed at creation: your connected Mainnet address is Member 1, followed by the addresses above. Each address is a specific receive key from a wallet seed, so use the address currently shown by Selene before creating the circle.</small>
@@ -740,7 +738,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
           <div className="section-heading">
             <div><span className="section-kicker">CIRCLE LIFECYCLE · MAINNET READ-ONLY</span><h3>{activeCircle.name}</h3></div>
             <button type="button" className="secondary-button" disabled={lifecycleBusy} onClick={() => void readActiveOnChainState()}>
-              {lifecycleBusy ? "Reading…" : "Read on-chain status"}
+              {lifecycleBusy ? "Checking…" : "Check circle status"}
             </button>
           </div>
           <p className="classic-empty">Local circle identity saved for tracking. A saved setup preview does not mean the circle has been created on the blockchain.</p>

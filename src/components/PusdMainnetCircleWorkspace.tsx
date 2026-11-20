@@ -389,11 +389,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
       if (target === "genesis") setGenesisSigningPlan(null);
       else setActionSigningPlan(null);
       setNotice(
-        "Selene signed the PUSD Mainnet " + signingPlan.operation +
-        " transaction. Local exact-input/output, 0x61 sighash and BCH 2026 VM checks passed; the independent server also authenticated " +
-        serverVerified.confirmedInputs + " confirmed inputs across its Electrum quorum and passed the BCH 2026 VM (" +
-        serverVerified.inputCount + " inputs, " + serverVerified.outputCount + " outputs, " +
-        serverVerified.feeSatoshis + " sat fee). Signed bytes were discarded. Nothing was broadcast and no circle state changed.",
+        "Selene approval passed the independent check. Nothing was sent and no circle details changed.",
       );
     } catch (cause) {
       setError(errorMessage(cause));
@@ -575,7 +571,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
         </label>
         <label>Member Mainnet BCH addresses · one per line
           <textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder={"bitcoincash:…\nbitcoincash:…"} required />
-          <small>Enter 2–5 unique, token-aware Bitcoin Cash Mainnet addresses in payout order.</small>
+          <small>Add 2–5 unique Bitcoin Cash Mainnet addresses that can receive PUSD, in payout order. Your connected Selene address is always first.</small>
         </label>
         <label>Maximum BCH miner fee per action (satoshis)
           <input value={maxFee} onChange={(event) => setMaxFee(event.target.value)} inputMode="numeric" required />
@@ -627,7 +623,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
       {activeCircle && (
         <div className="pusd-mainnet-saved">
           <div className="section-heading">
-            <div><span className="section-kicker">CIRCLE LIFECYCLE · MAINNET READ-ONLY</span><h3>{activeCircle.name}</h3></div>
+            <div><span className="section-kicker">YOUR PUSD CIRCLE</span><h3>{activeCircle.name}</h3></div>
             <button type="button" className="secondary-button" disabled={lifecycleBusy} onClick={() => void readActiveOnChainState()}>
               {lifecycleBusy ? "Checking…" : "Check circle status"}
             </button>
@@ -685,7 +681,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
       )}
 
       <div className="pusd-mainnet-deployed">
-        <div className="section-heading"><div><span className="section-kicker">DEPLOYED CIRCLES</span><h3>PUSD circles on Mainnet</h3></div></div>
+        <div className="section-heading"><div><span className="section-kicker">SAVED CIRCLES</span><h3>PUSD circles on Mainnet</h3></div></div>
         <div className="pusd-mainnet-invite-import">
           <input value={inviteInput} onChange={(event) => setInviteInput(event.target.value)} placeholder="Paste a PUSD Mainnet circle invite" autoComplete="off" />
           <button type="button" className="secondary-button" onClick={() => {
@@ -698,7 +694,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
               setGenesisSigningPlan(null);
               setActionSigningPlan(null);
               setInviteInput("");
-              setNotice("PUSD Mainnet circle invite loaded. Re-read the on-chain state before acting.");
+              setNotice("PUSD Mainnet circle invite loaded. Check the circle on the blockchain before acting.");
             } catch (cause) {
               setError(errorMessage(cause));
             }
