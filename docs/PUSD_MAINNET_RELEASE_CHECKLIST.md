@@ -26,12 +26,12 @@ The issuer-maintained [ParyonUSD withdrawal contract source](https://github.com/
 
 ## Durable broadcast idempotency
 
-- [ ] Keep PUSD submission idempotency and ambiguous-broadcast reconciliation separate from circle discovery. The durable submission ledger is only a transaction-submission safeguard; it is not a registry or source of truth for circles. No Redis service is required for chain discovery or read-only verification.
+- [ ] Keep durable submission idempotency and ambiguous-broadcast reconciliation separate from circle discovery. The Upstash ledger is used by PUSD Mainnet transfer submission and BCH Mainnet wallet-gather submission; it is not a circle registry or source of truth. No Redis service is required for chain discovery, BCH V3 circle broadcast, or read-only verification.
 - [ ] Verify the exact signed-transaction ID/digest can be reserved only once across concurrent serverless instances and that `submitting`, `accepted`, `already-known`, and `unknown` states persist across cold starts.
 - [ ] Verify that a missing/unavailable ledger or an ambiguous prior submission blocks a second relay; reconcile the exact transaction through the read-only status endpoints before manual recovery.
 - [ ] Define retention, archival and incident-recovery procedures for durable submission records before enabling any PUSD broadcast.
 
-The API contains a durable PUSD submission-ledger adapter and a read-only `GET /api/pusd/submission?txid=<64-hex-txid>` endpoint for transaction-submission reconciliation only. This is not used for circle discovery; the Mainnet broadcast kill-switch remains hard-coded false.
+The API contains a durable Upstash submission-ledger adapter and a read-only `GET /api/pusd/submission?txid=<64-hex-txid>` endpoint for transaction-submission reconciliation only. Configure `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` as private server-side variables when operating PUSD transfer or BCH wallet-gather submission paths. Missing credentials or ledger failures block those submissions before relay. This ledger is not used for circle discovery or BCH V3 circle broadcast. The PUSD Mainnet broadcast kill-switch remains hard-coded false.
 
 ## Transaction construction and verification
 
