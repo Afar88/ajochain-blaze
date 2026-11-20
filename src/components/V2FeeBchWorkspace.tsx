@@ -220,7 +220,7 @@ export default function V2FeeBchWorkspace({
     setError("");
     setNotice("");
     if (network !== "chipnet") {
-      setError("Switch to Chipnet. This experimental circle uses test coins only.");
+      setError("Switch the selected network to Chipnet to create this circle.");
       return;
     }
     if (!walletConnected || wallet.state !== "connected") {
@@ -389,7 +389,7 @@ export default function V2FeeBchWorkspace({
         "Miner fee is separate and capped at " + draft.maxFee.toString() + " sats.\\n\\n" +
         "No one must pre-fund the entire cycle. Each recipient carries one next contribution forward from their payout to cover the following round.\\n\\n" +
         "Public on-chain discovery notice: this transaction permanently links every member BCH address to this circle in public Chipnet history. Each member receives a 546-sat marker; circle settings are public, but the circle name is not. Only proceed if every listed address owner agrees to this public association.\\n" +
-        "Experimental Chipnet software only; no real funds.",
+        "Selected network: Chipnet.",
       )) return;
       const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Create AjoChain V2 fee circle: " + draft.name);
       const provider = await getClassicProvider("chipnet");
@@ -530,11 +530,6 @@ export default function V2FeeBchWorkspace({
         </div>
         <span className="classic-network">Chipnet · test coins</span>
       </div>
-      <div className="safety-note-inline">
-        <ShieldCheck size={17} />
-        <span>Experimental and not audited. Chipnet test coins only. When a member collects (except on the final turn), one next contribution is held aside for their following round. They make later contributions as usual. This circle cannot send payments on Mainnet.</span>
-      </div>
-
       {view === "create" && (<>
       <div className="circle-workspace-grid">
         <div className="circle-panel circle-create-panel">
