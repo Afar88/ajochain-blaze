@@ -63,7 +63,7 @@ PORT=3001 node server/mainnet-api.mjs
 
 Keep this terminal running, then use the app at http://localhost:5173. The API validates BCH Mainnet chain identity and provider agreement before serving Mainnet read/verification requests. A provider quorum is not proof of independent ownership, local SPV/chainwork validation, or a security audit.
 
-The adapter uses best-effort in-memory request throttling. Circle discovery does not depend on this adapter, hosted Redis, or an application database. Do not add service credentials to Vite/browser environment variables.
+The adapter keeps a best-effort, process-local request throttle. It is not a deployment-wide limit across Vercel serverless instances and must not be treated as the production abuse-control boundary. Before exposing API routes to public traffic, configure and test Vercel Firewall rate-limit rules for `/api/*`, keyed by source IP, with stricter limits for expensive verification and submission routes. Do not trust client-supplied forwarding headers for identity. This edge protection does not make Redis a discovery dependency.
 
 If you do not have two suitable Electrum providers, skip this optional API step. The UI and on-chain discovery can still run; only optional API-backed Mainnet functions will be unavailable locally.
 
@@ -108,6 +108,19 @@ ELECTRUM_PROVIDER_OPERATORS=operator-one,operator-two
 The operator identifiers must be unique and positionally aligned with the endpoint list. They are declarations, not proof of provider independence. Verify provider ownership and fault-domain separation separately.
 
 The Electrum variables must remain server-side. They are for chain-provider access only; providers are not an application database or circle registry. Never put provider credentials in a VITE_ variable.
+
+### Optional durable broadcast ledger (not for circle discovery)
+
+A separate Upstash Redis REST ledger is used for durable transaction-ID and input-outpoint reservations in the **PUSD Mainnet transfer-broadcast path** and **BCH Mainnet wallet-gather broadcast path**. It is not used for browser-side circle discovery, read-only Mainnet verification, PUSD circle preflight, or BCH V3 circle discovery/broadcast.
+
+When operating a path that uses this ledger, configure these values as private server-side variables only:
+
+~~~env
+UPSTASH_REDIS_REST_URL=https://your-dedicated-upstash-database.upstash.io
+UPSTASH_REDIS_REST_TOKEN=your-private-write-token
+~~~
+
+There is no in-memory fallback: missing credentials or an unavailable ledger blocks the affected submission before relay. PUSD Mainnet spending remains hard-disabled by its compile-time guards; adding these variables does not enable it. The credentials are not required merely to run the UI, discover circles, or perform read-only verification. Do not reuse legacy AjoChain or other project databases.
 
 The repository includes a Vercel catch-all API adapter at api/[...path].mjs. The API health endpoint is /api/health. It reports read-only status and explicitly reports that provider-operator independence and Mainnet release approval have not been verified.
 
