@@ -74,8 +74,12 @@ function readSavedCircleMenuRecords(): MenuCircle[] {
   ) => {
     if (seen.has(id)) return;
     seen.add(id);
+    let formattedContribution = "";
     let amount = "";
-    try { amount = formatAssetAmount(asset, BigInt(contribution)) + " " + asset; } catch { /* use saved date */ }
+    try {
+      formattedContribution = formatAssetAmount(asset, BigInt(contribution));
+      amount = formattedContribution + " " + asset;
+    } catch { /* use saved date */ }
     const networkLabel = network === "mainnet" ? "Mainnet" : "Chipnet";
     const savedLabel = Number.isSafeInteger(savedAt)
       ? "Saved " + new Date(savedAt as number).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
@@ -86,7 +90,7 @@ function readSavedCircleMenuRecords(): MenuCircle[] {
     records.push({
       id, kind, encoded, name: name.trim() || "Ajo circle", detail,
       label: (name.trim() || "Ajo circle") + " · " + detail, network,
-      asset, contribution, contributionLabel: amount || "Contribution unavailable", memberCount,
+      asset, contribution, contributionLabel: formattedContribution || "Contribution unavailable", memberCount,
       status: "active", completedAt: null, round: null,
     });
   };
