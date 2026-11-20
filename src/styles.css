@@ -2038,3 +2038,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .wallet-balance-actions { display: grid; grid-template-columns: 1fr; }
   .wallet-balance-actions .secondary-button { width: 100%; }
 }
+
+
+.create-circle-back {
+  margin: 0 0 14px;
+  min-height: 42px;
+}
