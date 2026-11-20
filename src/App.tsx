@@ -23,26 +23,126 @@ const BchMainnetCircleWorkspace = lazy(() => import("./components/BchMainnetCirc
 const ActivityRecords = lazy(() => import("./components/ActivityRecords"));
 
 type Page = "overview" | "create-circle" | "circle-detail" | "assets" | "activity";
-type MenuCircle = { encoded: string; name: string; label: string };
+type MenuCircleKind = "v2-fee" | "classic" | "bch-mainnet" | "pusd-mainnet";
+type MenuCircle = {
+  id: string;
+  encoded: string;
+  name: string;
+  label: string;
+  detail: string;
+  network: NetworkId;
+  kind: MenuCircleKind;
+};
 
 const BCH_MAINNET_CIRCLES_STORAGE_KEY = "ajochain-blaze:bch-mainnet-circles-deployed:v1";
+const PUSD_MAINNET_CIRCLES_STORAGE_KEY = "ajochain-blaze:pusd-mainnet-circles-deployed:v1";
+const CLASSIC_CIRCLES_STORAGE_KEY = "ajochain-blaze:classic-circles:v1";
 const V2_MENU_STORAGE_KEY = "ajochain-blaze:v2-fee-circles:v1";
-function readSavedV2MenuCircles(): MenuCircle[] {
+
+function decodeMenuCirclePayload(encoded: string): Record<string, unknown> | null {
+  try {
+    const normalized = encoded.replace(/-/g, "+").replace(/_/g, "/");
+    const binary = atob(normalized + "=".repeat((4 - normalized.length % 4) % 4));
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function readSavedCircleMenuRecords(): MenuCircle[] {
+  const records: MenuCircle[] = [];
+  const seen = new Set<string>();
+  const add = (
+    id: string, kind: MenuCircleKind, encoded: string, name: string, network: NetworkId,
+    asset: "BCH" | "PUSD", contribution: string, memberCount: number, savedAt?: number,
+  ) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    let amount = "";
+    try { amount = formatAssetAmount(asset, BigInt(contribution)) + " " + asset; } catch { /* use saved date */ }
+    const networkLabel = network === "mainnet" ? "Mainnet" : "Chipnet";
+    const savedLabel = Number.isSafeInteger(savedAt)
+      ? "Saved " + new Date(savedAt as number).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+      : "Saved circle";
+    const detail = amount && memberCount > 0
+      ? networkLabel + " · " + amount + " · " + memberCount + " members"
+      : networkLabel + " · " + savedLabel;
+    records.push({
+      id, kind, encoded, name: name.trim() || "Ajo circle", detail,
+      label: (name.trim() || "Ajo circle") + " · " + detail, network,
+    });
+  };
+
   try {
     const stored: unknown = JSON.parse(window.localStorage.getItem(V2_MENU_STORAGE_KEY) || "[]");
-    const unique = dedupeSavedV2FeeCircleMenuRecords(stored);
-    const records = unique.flatMap((entry) => {
+    for (const entry of dedupeSavedV2FeeCircleRecords(stored)) {
       const identity = getV2FeeCircleRecordIdentity(entry.encoded);
-      return identity ? [{ ...entry, name: identity.name }] : [];
-    });
-    return records.map((record) => ({
-      encoded: record.encoded,
-      name: record.name,
-      label: record.name,
-    }));
-  } catch {
-    return [];
-  }
+      const payload = decodeMenuCirclePayload(entry.encoded);
+      if (!identity || !payload || (identity.network !== "mainnet" && identity.network !== "chipnet")) continue;
+      const members = Array.isArray(payload.members) ? payload.members : [];
+      add("v2:" + identity.key, identity.network === "mainnet" ? "bch-mainnet" : "v2-fee",
+        entry.encoded, identity.name, identity.network, "BCH",
+        typeof payload.contribution === "string" ? payload.contribution : "", members.length, entry.savedAt);
+    }
+  } catch { /* Ignore malformed or unavailable storage. */ }
+
+  try {
+    const stored: unknown = JSON.parse(window.localStorage.getItem(BCH_MAINNET_CIRCLES_STORAGE_KEY) || "[]");
+    if (Array.isArray(stored)) for (const encoded of stored) {
+      if (typeof encoded !== "string") continue;
+      const identity = getV2FeeCircleRecordIdentity(encoded);
+      const payload = decodeMenuCirclePayload(encoded);
+      if (!identity || identity.network !== "mainnet" || !payload) continue;
+      const members = Array.isArray(payload.members) ? payload.members : [];
+      add("v2:" + identity.key, "bch-mainnet", encoded, identity.name, "mainnet", "BCH",
+        typeof payload.contribution === "string" ? payload.contribution : "", members.length);
+    }
+  } catch { /* Ignore malformed or unavailable storage. */ }
+
+  try {
+    const stored: unknown = JSON.parse(window.localStorage.getItem(PUSD_MAINNET_CIRCLES_STORAGE_KEY) || "[]");
+    if (Array.isArray(stored)) for (const encoded of stored) {
+      if (typeof encoded !== "string") continue;
+      try {
+        const payload: unknown = JSON.parse(encoded);
+        if (!payload || typeof payload !== "object" || Array.isArray(payload)) continue;
+        const circle = payload as Record<string, unknown>;
+        if (typeof circle.name !== "string" || typeof circle.stateCategory !== "string" ||
+            typeof circle.contribution !== "string" || !/^\d+$/.test(circle.contribution) ||
+            !Array.isArray(circle.members) || !circle.members.every((member) => typeof member === "string")) continue;
+        add("pusd:" + circle.stateCategory.toLowerCase(), "pusd-mainnet", encoded, circle.name, "mainnet", "PUSD",
+          circle.contribution, circle.members.length);
+      } catch { /* Ignore a damaged PUSD record. */ }
+    }
+  } catch { /* Ignore malformed or unavailable storage. */ }
+
+  try {
+    const stored: unknown = JSON.parse(window.localStorage.getItem(CLASSIC_CIRCLES_STORAGE_KEY) || "[]");
+    if (Array.isArray(stored)) for (const item of stored) {
+      if (!item || typeof item !== "object") continue;
+      const record = item as Record<string, unknown>;
+      if (typeof record.encoded !== "string") continue;
+      const payload = decodeMenuCirclePayload(record.encoded);
+      if (!payload || payload.version !== 1 || typeof payload.name !== "string" ||
+          (payload.network !== "mainnet" && payload.network !== "chipnet") ||
+          typeof payload.contribution !== "string" || !/^\d+$/.test(payload.contribution) ||
+          typeof payload.stateCategory !== "string" || !Array.isArray(payload.members)) continue;
+      add("classic:" + payload.network + ":" + payload.stateCategory.toLowerCase(), "classic",
+        record.encoded, payload.name, payload.network, "BCH", payload.contribution, payload.members.length,
+        typeof record.savedAt === "number" ? record.savedAt : undefined);
+    }
+  } catch { /* Ignore malformed or unavailable storage. */ }
+
+  const duplicateLabels = new Map<string, number>();
+  return records.map((record) => {
+    const count = (duplicateLabels.get(record.label) ?? 0) + 1;
+    duplicateLabels.set(record.label, count);
+    return count > 1 ? { ...record, label: record.label + " #" + count } : record;
+  });
 }
 type ThemePreference = "system" | "light" | "dark";
 type WalletClient = typeof import("./core/wizard-wallet").wallet;
@@ -66,6 +166,7 @@ type PreparedGather = {
 type GatherResult =
   | { status: "success"; txid: string; network: NetworkId }
   | { status: "error"; message: string };
+type BchBalanceScan = { address: string; network: NetworkId; totalSatoshis: bigint };
 
 type PusdView = {
   status: "idle" | "loading" | "ready" | "error";
@@ -90,8 +191,8 @@ const gatherExplorerUrl = (network: NetworkId, txid: string) =>
 const pageLabels: Record<Page, string> = {
   overview: "Overview",
   "create-circle": "Create a circle",
-  "circle-detail": "My circle",
-  assets: "Assets",
+  "circle-detail": "Circle details",
+  assets: "Wallet",
   activity: "Activity",
 };
 
@@ -101,7 +202,7 @@ export default function App() {
   const [circleWorkspace, setCircleWorkspace] = useState<CircleWorkspaceId>(() => getDefaultCircleWorkspace(getDefaultNetwork(import.meta.env.PROD)));
   const [classicInviteRevision, setClassicInviteRevision] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [menuCircles, setMenuCircles] = useState<MenuCircle[]>(readSavedV2MenuCircles);
+  const [menuCircles, setMenuCircles] = useState<MenuCircle[]>(readSavedCircleMenuRecords);
   const [selectedMenuCircle, setSelectedMenuCircle] = useState<string | null>(null);
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => {
     if (typeof window === "undefined") return "dark";
@@ -117,6 +218,7 @@ export default function App() {
   const [gatherMessage, setGatherMessage] = useState("");
   const [gatherPlan, setGatherPlan] = useState<PreparedGather | null>(null);
   const [gatherResult, setGatherResult] = useState<GatherResult | null>(null);
+  const [bchBalanceScan, setBchBalanceScan] = useState<BchBalanceScan | null>(null);
   const [discoveryMessage, setDiscoveryMessage] = useState("");
   const [discoveryRun, setDiscoveryRun] = useState(0);
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
@@ -165,14 +267,19 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [gatherMessage, discoveryMessage, addressMatchMessage, pusdSignatureMessage, pusdPlanError]);
 
+  const selectedCircleRecord = menuCircles.find((circle) => circle.id === selectedMenuCircle) ?? null;
   const menuLabel = page === "circle-detail"
-    ? menuCircles.find((circle) => circle.encoded === selectedMenuCircle)?.name ?? "My circle"
+    ? selectedCircleRecord?.name ?? "Circle details"
     : pageLabels[page];
 
   useEffect(() => {
-    const refreshSavedCircles = () => setMenuCircles(readSavedV2MenuCircles());
+    const refreshSavedCircles = () => setMenuCircles(readSavedCircleMenuRecords());
     window.addEventListener("storage", refreshSavedCircles);
-    return () => window.removeEventListener("storage", refreshSavedCircles);
+    window.addEventListener("ajochain:bch-mainnet-circles-changed", refreshSavedCircles);
+    return () => {
+      window.removeEventListener("storage", refreshSavedCircles);
+      window.removeEventListener("ajochain:bch-mainnet-circles-changed", refreshSavedCircles);
+    };
   }, []);
 
   useEffect(() => {
@@ -547,7 +654,7 @@ export default function App() {
               .map((params) => ({ encoded: encodeV2FeeCircleParams(params), savedAt: 0 }));
             if (additions.length > 0) {
               window.localStorage.setItem(V2_MENU_STORAGE_KEY, JSON.stringify([...existing, ...additions]));
-              setMenuCircles(readSavedV2MenuCircles());
+              setMenuCircles(readSavedCircleMenuRecords());
             }
             return additions.length;
           },
@@ -650,6 +757,7 @@ export default function App() {
           setGatherMessage("Coins found. Confirming the same Selene wallet before showing your review…");
           await walletClient.waitForConfirmedSession(gatherWalletIdentity, destinationAddress, walletAddresses, "mainnet", 25_000);
         }
+        setBchBalanceScan({ address: destinationAddress, network: gatherNetwork, totalSatoshis: plan.totalSatoshis });
         setGatherPlan({
           network: gatherNetwork,
           destinationAddress,
@@ -760,6 +868,11 @@ export default function App() {
   // with the address shown in Selene before confirming it in Wallet Details.
   const shortAddress = (value: string | null) =>
     value ? value.slice(0, 10) + "…" + value.slice(-6) : "Address syncing…";
+  const currentBchBalanceScan = bchBalanceScan && walletAddress &&
+    bchBalanceScan.network === network &&
+    bchBalanceScan.address.toLowerCase() === walletAddress.toLowerCase()
+    ? bchBalanceScan
+    : null;
 
   return (
     <main className="app-shell compact-app">
@@ -779,7 +892,10 @@ export default function App() {
             aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
             aria-expanded={menuOpen}
             aria-controls="ajochain-dropdown"
-            onClick={() => setMenuOpen((value) => !value)}
+            onClick={() => {
+              setMenuCircles(readSavedCircleMenuRecords());
+              setMenuOpen((value) => !value);
+            }}
           >
             {menuOpen ? <X size={19} /> : <MoreVertical size={21} />}
           </button>
@@ -804,23 +920,26 @@ export default function App() {
                     <div className="dropdown-label circle-menu-label">CIRCLE RECORDS</div>
                     {menuCircles.map((circle) => (
                       <button
-                        key={circle.encoded}
-                        className={page === "circle-detail" && selectedMenuCircle === circle.encoded ? "dropdown-item active" : "dropdown-item"}
+                        key={circle.id}
+                        className={"dropdown-item circle-record-item" + (page === "circle-detail" && selectedMenuCircle === circle.id ? " active" : "")}
                         onClick={() => {
-                          setSelectedMenuCircle(circle.encoded);
-                          setNetwork("chipnet");
-                          setCircleWorkspace("bch-fair-round");
+                          setSelectedMenuCircle(circle.id);
+                          setNetwork(circle.network);
+                          setCircleWorkspace(circle.kind === "v2-fee" ? "bch-fair-round"
+                            : circle.kind === "classic" ? "bch-classic"
+                              : circle.kind === "bch-mainnet" ? "bch-mainnet" : "pusd-mainnet");
                           navigate("circle-detail");
                         }}
                       >
-                        <Users size={16} /><span>{circle.label}</span>
-                        {page === "circle-detail" && selectedMenuCircle === circle.encoded && <Check size={15} />}
+                        <Users size={16} />
+                        <span className="circle-record-copy"><b>{circle.name}</b><small>{circle.detail}</small></span>
+                        {page === "circle-detail" && selectedMenuCircle === circle.id && <Check size={15} />}
                       </button>
                     ))}
                   </>
                 )}
                 <button className={page === "assets" ? "dropdown-item active" : "dropdown-item"} onClick={() => navigate("assets")}>
-                  <Coins size={17} /><span>Assets & balances</span>{page === "assets" && <Check size={15} />}
+                  <Wallet size={17} /><span>Wallet</span>{page === "assets" && <Check size={15} />}
                 </button>
                 <button className={page === "activity" ? "dropdown-item active" : "dropdown-item"} onClick={() => navigate("activity")}>
                   <Activity size={17} /><span>Activity & records</span>{page === "activity" && <Check size={15} />}
@@ -941,13 +1060,13 @@ export default function App() {
               <div className="circle-choice-grid">
                 {network === "mainnet" && <>
                 <button type="button" className={circleWorkspace === "bch-mainnet" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-mainnet"} onClick={() => { setCircleWorkspace("bch-mainnet"); document.getElementById("bch-mainnet-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>
-                  <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status">Mainnet · live</span></span>
+                  <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status">Mainnet</span></span>
                   <b>BCH savings circle</b>
                   <span>For groups saving in Bitcoin Cash. Tracks member contributions and reserves the next installment for each non-final payout.</span>
                   <small>Best when your group wants native BCH and individual member accounting.</small>
                 </button>
                 <button type="button" className={circleWorkspace === "pusd-mainnet" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "pusd-mainnet"} onClick={() => { setCircleWorkspace("pusd-mainnet"); document.getElementById("pusd-mainnet-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>
-                  <span className="circle-choice-top"><span className="circle-choice-symbol pusd">PUSD</span><span className="circle-choice-status">Mainnet · live</span></span>
+                  <span className="circle-choice-top"><span className="circle-choice-symbol pusd">PUSD</span><span className="circle-choice-status">Mainnet</span></span>
                   <b>PUSD savings circle</b>
                   <span>For groups that prefer ParyonUSD instead of BCH. Contributions and payouts are denominated in PUSD, with BCH needed separately for network fees.</span>
                   <small>Choose this if your group wants a stable-value token rather than BCH price exposure.</small>
@@ -989,7 +1108,7 @@ export default function App() {
                     network={network}
                     walletConnected={connected}
                     view="create"
-                    onCircleSaved={() => setMenuCircles(readSavedV2MenuCircles())}
+                    onCircleSaved={() => setMenuCircles(readSavedCircleMenuRecords())}
                   />
                 </div>
                 <div className="circle-workspace-panel" hidden={circleWorkspace !== "bch-classic"}><ClassicBchWorkspace key={classicInviteRevision} network={network} walletConnected={connected} /></div>
@@ -1002,61 +1121,85 @@ export default function App() {
           <section className="page-section">
             <div className="page-intro">
               <span className="section-kicker">YOUR SAVINGS CIRCLE</span>
-              <h1>{menuCircles.find((circle) => circle.encoded === selectedMenuCircle)?.name ?? "My circle"}</h1>
-              <p>This circle has its own place in the menu. Review member credits, contribution status, payout readiness and cancellation options here.</p>
+              <h1>{selectedCircleRecord?.name ?? "Circle details"}</h1>
+              <p>Review contributions, member progress and the next payout for this circle.</p>
             </div>
             <Suspense fallback={<div className="workspace-loading"><span className="loading-orb" />Loading your circle…</div>}>
-              <V2FeeBchWorkspace
-                key={selectedMenuCircle}
-                network={network}
-                walletConnected={connected}
-                view="circle"
-                selectedCircle={selectedMenuCircle}
-              />
+              {selectedCircleRecord?.kind === "v2-fee" && (
+                <V2FeeBchWorkspace key={selectedCircleRecord.id} network={network} walletConnected={connected} view="circle" selectedCircle={selectedCircleRecord.encoded} />
+              )}
+              {selectedCircleRecord?.kind === "classic" && (
+                <ClassicBchWorkspace key={selectedCircleRecord.id} network={network} walletConnected={connected} selectedCircle={selectedCircleRecord.encoded} />
+              )}
+              {selectedCircleRecord?.kind === "bch-mainnet" && (
+                <BchMainnetCircleWorkspace key={selectedCircleRecord.id} network={network} walletConnected={connected} onOpenWalletDetails={openWallet} selectedCircle={selectedCircleRecord.encoded} />
+              )}
+              {selectedCircleRecord?.kind === "pusd-mainnet" && (
+                <PusdMainnetCircleWorkspace key={selectedCircleRecord.id} network={network} walletConnected={connected} selectedCircle={selectedCircleRecord.encoded} />
+              )}
             </Suspense>
           </section>
         )}
 
         {page === "assets" && (
-          <section className="page-section">
+          <section className="page-section wallet-page">
             <div className="page-intro">
-              <span className="section-kicker">ASSETS & VERIFICATION</span>
-              <h1>Balances and asset paths</h1>
-              <p>Wallet connection and token verification are separate from permission to spend.</p>
+              <span className="section-kicker">YOUR WALLET</span>
+              <h1>Wallet</h1>
+              <p>Balances held in the wallet connected to Selene.</p>
             </div>
-            <article className="asset-detail-card">
-              <div className="asset-detail-heading">
-                <span className="asset-symbol">B</span>
-                <div><span className="section-kicker">BITCOIN CASH</span><h2>BCH</h2><p>Native BCH for circle reserves, miner fees and payouts.</p></div>
-                <span className="asset-state neutral">Mainnet live</span>
+            <article className="asset-detail-card wallet-balance-card">
+              <div className="wallet-balance-heading">
+                <div>
+                  <span className="section-kicker">CONNECTED WALLET</span>
+                  <h2>{connected ? walletView.walletName ?? "Selene wallet" : "No wallet connected"}</h2>
+                  <small>{connected ? shortAddress(walletAddress) : "Connect Selene to view your balances."}</small>
+                </div>
+                <span className="wallet-balance-network">{NETWORKS[network].label}</span>
               </div>
-              <div className="asset-detail-row"><span>Chipnet circle tests</span><b>Available</b></div>
-              <div className="asset-detail-row"><span>Mainnet V3 circles</span><b>Enabled</b></div>
-              <div className="asset-detail-row"><span>Mainnet circle broadcast</span><b>Enabled</b></div>
-            </article>
-            <article className="asset-detail-card">
-              <div className="asset-detail-heading">
-                <span className="asset-symbol pusd-symbol">P</span>
-                <div><span className="section-kicker">PARYONUSD · DOLLAR TOKEN</span><h2>PUSD</h2><p>Official ParyonUSD asset on Mainnet.</p></div>
-                <span className="asset-state neutral">Mainnet only</span>
+              <div className="wallet-balance-list">
+                <div className="wallet-balance-row">
+                  <span className="asset-symbol">B</span>
+                  <div><b>Bitcoin Cash</b><small>Available BCH in your connected wallet</small></div>
+                  <strong>{!connected ? "Connect wallet" : currentBchBalanceScan ? formatBchSatoshis(currentBchBalanceScan.totalSatoshis) : "Not checked yet"}</strong>
+                </div>
+                <div className="wallet-balance-row">
+                  <span className="asset-symbol pusd-symbol">P</span>
+                  <div><b>ParyonUSD</b><small>Dollar balance on Mainnet</small></div>
+                  <strong>{!connected ? "Connect wallet" : pusdView.status === "ready" ? formatAssetAmount("PUSD", pusdView.amount) + " PUSD" : pusdView.status === "loading" ? "Checking…" : "Not checked"}</strong>
+                </div>
               </div>
-              <div className="pusd-balance-panel">
-                <span className="status-label">YOUR PUSD BALANCE</span>
-                <strong>{pusdView.status === "ready" ? formatAssetAmount("PUSD", pusdView.amount) + " PUSD" : pusdView.status === "loading" ? "Checking…" : pusdView.status === "error" ? "Unavailable" : "Not checked"}</strong>
-                <small>{pusdView.detail}</small>
+              <div className="wallet-balance-actions">
+                <button type="button" className="secondary-button" onClick={openWallet}>
+                  {connected ? "Open wallet details" : "Connect wallet"}
+                </button>
                 <button type="button" className="secondary-button" onClick={() => {
                   if (!connected) { openWallet(); return; }
                   if (network !== "mainnet") { changeNetwork("mainnet"); return; }
                   setPusdRefresh((value) => value + 1);
                 }} disabled={pusdView.status === "loading"}>
-                  {pusdView.status === "loading" ? "Checking…" : !connected ? "Connect wallet" : network !== "mainnet" ? "Switch to Mainnet" : "Refresh balance"}
+                  {pusdView.status === "loading" ? "Checking PUSD…" : network !== "mainnet" ? "Switch to Mainnet for PUSD" : "Refresh PUSD"}
                 </button>
-                {pusdView.status === "ready" && <div className="field-hint">{pusdView.utxoCount} PUSD coins checked on the blockchain
-                  <details className="technical-details"><summary>Technical details</summary><p>{pusdView.providerConfidence} independent providers · block {pusdView.tipHeight.toLocaleString()} · {pusdView.utxoCount} authenticated CashToken UTXOs.</p></details></div>}
               </div>
+            </article>
+            <p className="wallet-balance-explainer">Money in your connected wallet. Money in a circle shows on that circle's page.</p>
+            <details className="technical-details wallet-technical-details">
+              <summary>Technical details</summary>
+              <div className="asset-detail-row"><span>Selected network</span><b>{NETWORKS[network].label}</b></div>
+              <div className="asset-detail-row"><span>Selene receive address</span><b>{connected && walletClient?.isReceiveAddressConfirmed(network) ? "Confirmed" : connected ? "Needs sync" : "Wallet not connected"}</b></div>
+              <div className="asset-detail-row"><span>BCH balance source</span><b>{currentBchBalanceScan ? "Existing wallet coin scan" : "No wallet scan in this session"}</b></div>
+              <div className="asset-detail-row"><span>PUSD balance check</span><b>{pusdView.status === "ready" ? "Checked" : pusdView.status === "loading" ? "Checking" : pusdView.status === "error" ? "Unavailable" : "Not checked"}</b></div>
+              {pusdView.status === "ready" && <p>{pusdView.providerConfidence} providers · block {pusdView.tipHeight.toLocaleString()} · {pusdView.utxoCount} PUSD coins.</p>}
+              {pusdView.status !== "ready" && <p>{pusdView.detail}</p>}
+              <div className="asset-detail-row"><span>PUSD transfer</span><b>{PUSD_MAINNET_SPENDING_ENABLED ? "Available after wallet checks" : "Locked pending release approval"}</b></div>
+              <div className="asset-detail-row"><span>PUSD asset identifier</span><code>{PUSD_ASSET.categoryId}</code></div>
+              <div className="asset-detail-row"><span>PUSD display precision</span><b>{PUSD_ASSET.decimals} decimals</b></div>
+            </details>
+            <details className="wallet-tools-disclosure">
+              <summary>PUSD transfer tools</summary>
               <div className="pusd-transfer-box">
-                <div><span className="section-kicker">TRANSFER PLANNER</span><h3>Prepare a PUSD transfer</h3>
-                  <p>Shows a transfer preview from the PUSD coins in your wallet and the latest network fee estimate. Nothing is sent.</p></div>
+                <div><span className="section-kicker">TRANSFER PREVIEW</span><h3>Prepare a PUSD transfer</h3>
+                  <p>Review a transfer using the PUSD coins in your wallet and the latest network fee estimate. Nothing is sent from this preview.</p></div>
                 <label>Recipient Bitcoin Cash address
                   <input value={pusdRecipient} onChange={(event) => { setPusdRecipient(event.target.value); setPusdTransferPlan(null); setPusdSignatureMessage(""); setPusdPlanError(""); }} placeholder="bitcoincash:…" autoComplete="off" />
                 </label>
@@ -1094,9 +1237,7 @@ export default function App() {
                 </button>
                 <small className="field-hint">PUSD sending stays locked until raw transaction inspection, independent wallet testing, fee/carrier validation, and security review are completed. This preview is not a payment.</small>
               </div>
-              <details className="technical-details"><summary>Technical details</summary><div className="asset-detail-row"><span>Token identifier</span><code>{PUSD_ASSET.categoryId}</code></div><div className="asset-detail-row"><span>Display precision</span><b>2 decimals</b></div></details>
-              <div className="asset-detail-row"><span>PUSD circle rules</span><b className="locked-state">Mainnet setup · payments locked</b></div>
-            </article>
+            </details>
           </section>
         )}
 
