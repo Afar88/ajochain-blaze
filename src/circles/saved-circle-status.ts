@@ -101,9 +101,9 @@ export function updateSavedCircleChainStatus(
     ...previous,
     ...circle,
     status,
-    completedAt: closed
-      ? Number.isSafeInteger(completedAt) ? completedAt : previous?.status === status ? previous.completedAt : null
-      : null,
+    // A fresh chain read replaces legacy dates: when block time is unavailable,
+    // do not preserve a browser-generated timestamp from older metadata.
+    completedAt: closed && Number.isSafeInteger(completedAt) ? completedAt : null,
     round: Number.isInteger(round) && round !== null && round >= 0 ? round : null,
     checkedAt: Number.isSafeInteger(checkedAt) ? checkedAt : Date.now(),
   };

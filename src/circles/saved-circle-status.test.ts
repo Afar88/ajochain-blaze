@@ -92,6 +92,14 @@ describe("saved circle network and lifecycle filters", () => {
     expect(filterSavedCirclesByStatus([cancelled], "completed")).toHaveLength(1);
   });
 
+  it("clears a stale local completion time when the chain cannot supply a block time", () => {
+    const storage = memoryStorage();
+    ensureSavedCircleMetadata(storage, [mainnet]);
+    updateSavedCircleChainStatus(storage, mainnet, "completed", 5, 1_800_000_000_000);
+    const updated = updateSavedCircleChainStatus(storage, mainnet, "completed", 5, null, 1_800_000_100_000);
+    expect(updated.completedAt).toBeNull();
+  });
+
   it("stores Unknown after a failed read rather than preserving a saved Completed guess", () => {
     const storage = memoryStorage();
     ensureSavedCircleMetadata(storage, [mainnet]);

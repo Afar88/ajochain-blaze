@@ -2868,3 +2868,14 @@ label small, .field-hint { color: var(--muted); font-size: 12px; }
 :root[data-theme="dark"] .network-notice .notice-copy span,
 :root[data-theme="dark"] .draft-warning,
 :root[data-theme="dark"] .draft-disclaimer { color: var(--warning); }
+
+
+/* Backward-compatible aliases: legacy selectors now resolve to the BLAZE theme. */
+:root {
+  --green: var(--primary);
+  --lime: var(--soft-tint);
+}
+:root[data-theme="dark"] {
+  --green: var(--primary);
+  --lime: var(--soft-tint);
+}

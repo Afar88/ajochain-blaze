@@ -47,7 +47,7 @@ describe("on-chain circle status classification", () => {
       if (item === "unavailable") throw new Error("provider offline");
       if (item === "completed") return { round: 5, completed: true, closedAs: "completed" as const };
       if (item === "cancelled") return { round: 5, completed: true, closedAs: "cancelled" as const };
-      return { round: 1, completed: false };
+      return { round: 1, completed: false, stateVerified: true };
     }, { concurrency: 2, requestTimeoutMs: 100, overallTimeoutMs: 500 });
     expect(maximumInFlight).toBeLessThanOrEqual(2);
     expect(results.map((entry) => entry.result.status)).toEqual([
