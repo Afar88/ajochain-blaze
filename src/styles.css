@@ -1449,3 +1449,513 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   min-width: 0;
   scroll-margin-top: 92px;
 }
+
+
+
+/* Saver-first experience: legible, calm and deliberately touch-friendly. */
+.page-body,
+.page-section,
+.circle-workspace-panel,
+.mainnet-dual-workspaces,
+.pusd-mainnet-workspace,
+.circle-workspace,
+.classic-workspace,
+.pusd-mainnet-form,
+.circle-panel,
+.classic-create-panel,
+.classic-account-panel {
+  min-width: 0;
+}
+.page-section {
+  display: grid;
+  gap: 16px;
+}
+.mainnet-dual-workspaces {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+.circle-choice-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.circle-choice-card {
+  min-width: 0;
+  min-height: 100%;
+  padding: 17px;
+  gap: 10px;
+}
+.circle-choice-card > span:not(.circle-choice-top),
+.circle-choice-card > small {
+  line-height: 1.65;
+}
+.page-intro h1 {
+  line-height: 1.08;
+}
+.page-intro p,
+.circle-choice-heading p {
+  max-width: 68ch;
+}
+.how-ajo-works {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 15px;
+  margin: 14px 0 17px;
+  padding: 20px;
+  border: 1px solid #e0e8dc;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 8px 26px rgba(23, 48, 35, .045);
+}
+.how-ajo-heading h2 {
+  margin: 0;
+  color: #20392a;
+  font: 800 20px/1.2 system-ui, sans-serif;
+  letter-spacing: -.5px;
+}
+.how-ajo-heading .section-kicker {
+  margin-bottom: 6px;
+}
+.how-ajo-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.how-ajo-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 13px 12px;
+  border: 1px solid #e7eee3;
+  border-radius: 12px;
+  background: #f8faf6;
+}
+.how-ajo-number {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  flex: 0 0 27px;
+  border-radius: 9px;
+  background: #e8f1de;
+  color: #57783f;
+  font-size: 10px;
+  font-weight: 850;
+}
+.how-ajo-steps li > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.how-ajo-steps b {
+  color: #294333;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.how-ajo-steps small {
+  color: #718076;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.technical-details {
+  min-width: 0;
+  border: 1px solid rgba(132, 158, 139, .22);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: inherit;
+  background: rgba(128, 156, 134, .055);
+}
+.technical-details summary {
+  width: fit-content;
+  color: #89a78c;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.technical-details p {
+  margin: 9px 0 0;
+  color: #9eafa3;
+  font-size: 10px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.technical-details > div {
+  margin-top: 9px;
+}
+.gather-card {
+  display: grid;
+  gap: 13px;
+  min-width: 0;
+  margin-top: 8px;
+  padding: 15px;
+  border: 1px solid #34483b;
+  border-radius: 15px;
+  background: #19271f;
+  color: #e6eee8;
+}
+.gather-card-heading h3 {
+  margin: 0 0 5px;
+  color: #edf4ee;
+  font: 800 17px/1.25 system-ui, sans-serif;
+}
+.gather-card-heading p {
+  margin: 0;
+  color: #aabbb0;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.gather-review {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  border: 1px solid #34483b;
+  border-radius: 11px;
+  background: #142119;
+  overflow: hidden;
+}
+.gather-review-row {
+  display: grid;
+  grid-template-columns: minmax(100px, .75fr) minmax(0, 1.25fr);
+  align-items: start;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid #2b3c31;
+}
+.gather-review-row:last-of-type {
+  border-bottom: 0;
+}
+.gather-review-row > span {
+  color: #a6b7ab;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.gather-review-row > strong,
+.gather-review-row > code {
+  min-width: 0;
+  color: #f0f5f1;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.gather-review-row.gather-destination {
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+.gather-review-row.gather-destination > code {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+}
+.gather-review .technical-details {
+  margin: 10px;
+}
+.gather-scan-button,
+.gather-cancel-button {
+  width: 100%;
+  min-height: 45px;
+  justify-content: center;
+}
+.gather-confirm-button {
+  width: 100%;
+  min-height: 54px;
+  margin-top: 2px;
+  border: 1px solid #b4df91;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #b9e394, #91c979);
+  color: #14251a;
+  box-shadow: 0 8px 24px rgba(123, 186, 103, .16);
+  font-size: 14px;
+  font-weight: 850;
+}
+.gather-confirm-button:hover {
+  background: linear-gradient(135deg, #c8eba6, #a0d786);
+}
+.gather-confirm-button:disabled {
+  color: #314537;
+}
+.gather-result {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #3e5944;
+  border-radius: 11px;
+  background: #1c3023;
+  color: #eaf4eb;
+}
+.gather-result b {
+  font-size: 12px;
+}
+.gather-result span {
+  color: #b4c7b8;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.gather-result a {
+  display: grid;
+  gap: 4px;
+  color: #b9e394;
+  font-size: 11px;
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.gather-result a code {
+  color: #d6e7d8;
+  font-size: 9px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.gather-error {
+  border-color: #765044;
+  background: #34231f;
+}
+.gather-error b {
+  color: #ffd2c3;
+}
+.gather-error span {
+  color: #e5c0b4;
+}
+.wallet-detail-body > .gather-card {
+  margin-top: 4px;
+}
+.wallet-detail-body .wallet-match-message {
+  overflow-wrap: anywhere;
+}
+.wallet-detail-body .field-hint {
+  color: #aebbb2;
+}
+
+/* Keep dark surfaces and text readable when the app follows the user's theme. */
+:root[data-theme="dark"] .how-ajo-works {
+  border-color: #344238;
+  background: #17211a;
+  box-shadow: 0 10px 28px rgba(0,0,0,.14);
+}
+:root[data-theme="dark"] .how-ajo-heading h2 { color: #edf4ee; }
+:root[data-theme="dark"] .how-ajo-steps li {
+  border-color: #344238;
+  background: #1b2920;
+}
+:root[data-theme="dark"] .how-ajo-steps b { color: #e2ede5; }
+:root[data-theme="dark"] .how-ajo-steps small { color: #aebdb2; }
+:root[data-theme="light"] .technical-details {
+  border-color: #dce6dc;
+  background: #f6f9f4;
+}
+:root[data-theme="light"] .technical-details summary { color: #54734b; }
+:root[data-theme="light"] .technical-details p { color: #69796e; }
+:root[data-theme="light"] .gather-card {
+  border-color: #dce6dc;
+  background: #f5f8f3;
+  color: #243c2d;
+}
+:root[data-theme="light"] .gather-card-heading h3 { color: #20392a; }
+:root[data-theme="light"] .gather-card-heading p { color: #69796e; }
+:root[data-theme="light"] .gather-review {
+  border-color: #dce6dc;
+  background: #fff;
+}
+:root[data-theme="light"] .gather-review-row { border-color: #e7eee5; }
+:root[data-theme="light"] .gather-review-row > span { color: #68786d; }
+:root[data-theme="light"] .gather-review-row > strong,
+:root[data-theme="light"] .gather-review-row > code { color: #20392a; }
+:root[data-theme="light"] .gather-result {
+  border-color: #cbdcc6;
+  background: #f0f7ec;
+  color: #20392a;
+}
+:root[data-theme="light"] .gather-result span { color: #596d5e; }
+:root[data-theme="light"] .gather-result a,
+:root[data-theme="light"] .gather-result a code { color: #315c36; }
+:root[data-theme="light"] .gather-error {
+  border-color: #e8c5b8;
+  background: #fff4ef;
+}
+:root[data-theme="light"] .gather-error b { color: #904a38; }
+:root[data-theme="light"] .gather-error span { color: #855d51; }
+:root[data-theme="light"] .wallet-detail-body .field-hint { color: #66786c; }
+
+@media (max-width: 760px) {
+  .app-header {
+    min-height: 60px;
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .page-body {
+    width: 100%;
+    padding: 17px 14px 18px;
+  }
+  .welcome-hero {
+    min-height: 0;
+    padding: 21px 17px;
+    border-radius: 18px;
+  }
+  .welcome-hero h1 {
+    max-width: 100%;
+    margin: 13px 0 9px;
+    font-size: clamp(30px, 8.2vw, 38px);
+    line-height: 1.06;
+    letter-spacing: -1.6px;
+  }
+  .welcome-hero p {
+    max-width: 100%;
+    font-size: 12px;
+    line-height: 1.65;
+  }
+  .hero-cta {
+    width: 100%;
+    min-height: 48px;
+    justify-content: center;
+    margin-top: 17px;
+  }
+  .how-ajo-works {
+    gap: 12px;
+    margin: 12px 0 14px;
+    padding: 15px;
+    border-radius: 15px;
+  }
+  .how-ajo-heading h2 { font-size: 18px; }
+  .how-ajo-steps { gap: 7px; }
+  .how-ajo-steps li {
+    display: grid;
+    align-content: start;
+    gap: 7px;
+    padding: 10px 8px;
+    border-radius: 10px;
+  }
+  .how-ajo-steps b { font-size: 10px; }
+  .how-ajo-steps small { font-size: 9px; }
+  .overview-status-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    margin: 12px 0;
+  }
+  .overview-status-card {
+    min-width: 0;
+    padding: 12px;
+    border-radius: 12px;
+  }
+  .asset-preview {
+    min-width: 0;
+    padding: 15px;
+    border-radius: 14px;
+  }
+  .asset-preview-rows > div {
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+  .page-section { gap: 13px; }
+  .page-intro h1 {
+    margin: 4px 0 7px;
+    font-size: clamp(27px, 7.5vw, 34px);
+    letter-spacing: -1.2px;
+  }
+  .page-intro p,
+  .circle-choice-heading p { font-size: 12px; line-height: 1.65; }
+  .circle-choice-guide {
+    padding: 14px;
+    border-radius: 14px;
+  }
+  .circle-choice-heading h2 { font-size: 17px; }
+  .circle-choice-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 9px;
+  }
+  .circle-choice-card {
+    padding: 14px;
+    border-radius: 12px;
+  }
+  .circle-workspace-panel,
+  .mainnet-dual-workspaces > div,
+  .pusd-mainnet-workspace,
+  .circle-workspace,
+  .classic-workspace,
+  .section-card { min-width: 0; }
+  .mainnet-dual-workspaces { gap: 12px; }
+  .section-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .pusd-mainnet-form,
+  .circle-create-panel form,
+  .classic-create-panel form {
+    gap: 12px;
+  }
+  .page-body input,
+  .page-body textarea,
+  .page-body select {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .page-body textarea { min-height: 104px; }
+  .page-body button.primary-button,
+  .page-body button.secondary-button {
+    min-height: 44px;
+  }
+  .page-body .primary-button {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .gather-card { padding: 13px; }
+  .gather-review-row {
+    grid-template-columns: minmax(90px, .8fr) minmax(0, 1.2fr);
+    gap: 8px;
+    padding: 11px;
+  }
+  .gather-review-row.gather-destination { grid-template-columns: 1fr; }
+  .gather-review-row > span { font-size: 10px; }
+  .gather-review-row > strong { font-size: 11px; }
+  .gather-review-row.gather-destination > code { font-size: 10px; }
+  .gather-confirm-button {
+    min-height: 54px !important;
+    font-size: 14px !important;
+  }
+  .wallet-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - 16px);
+    padding: 17px;
+    overflow-y: auto;
+  }
+  .wallet-address-card code { overflow-wrap: anywhere; }
+  .modal-backdrop { align-items: flex-end; padding: 8px; }
+  .pusd-mainnet-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pusd-mainnet-actions button { width: 100%; }
+  .circle-workspace-grid,
+  .classic-workspace-grid { grid-template-columns: minmax(0, 1fr); }
+  .fee-accounting-table { overflow-x: auto; }
+  .app-footer {
+    flex-wrap: wrap;
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+}
+@media (max-width: 390px) {
+  .page-body { padding-left: 12px; padding-right: 12px; }
+  .welcome-hero { padding: 18px 14px; }
+  .welcome-kicker { letter-spacing: 1px; }
+  .how-ajo-steps { gap: 5px; }
+  .how-ajo-steps li { padding: 9px 7px; }
+  .how-ajo-steps b { font-size: 9.5px; }
+  .how-ajo-steps small { font-size: 8.5px; }
+  .overview-status-card { gap: 8px; }
+  .overview-status-card > div:nth-child(2) { overflow-wrap: anywhere; }
+  .asset-preview-rows > div { grid-template-columns: 32px minmax(0, 1fr); }
+  .asset-preview-rows .asset-state { grid-column: 2; justify-self: start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .how-ajo-works, .gather-card, .gather-confirm-button { transition: none !important; }
+}

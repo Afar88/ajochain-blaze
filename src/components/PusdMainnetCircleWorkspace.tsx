@@ -214,7 +214,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
       setCircleSnapshot(null);
       setGenesisSigningPlan(null);
       setActionSigningPlan(null);
-      setNotice("PUSD Mainnet circle invite loaded. Re-read the on-chain state before acting.");
+      setNotice("PUSD Mainnet circle invite loaded. Check the circle on the blockchain before acting.");
     } catch {
       setError("This link is not a valid PUSD Mainnet V3 circle invite.");
     }
@@ -309,7 +309,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
       }, initiatorAddress);
       setGenesisSigningPlan({
         wc: plan.wc, walletInputs: plan.walletInputs,
-        prompt: "Server-verify PUSD Mainnet circle genesis for " + name.trim(),
+        prompt: "Check PUSD Mainnet circle setup for " + name.trim(),
         createdAt: Date.now(),
         operation: "genesis",
         circle: plan.params,
@@ -323,7 +323,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
         feeEstimate: plan.feeEstimate.toString(),
         transactionSizeBytes: plan.transactionSizeBytes,
       });
-      setNotice("Mainnet PUSD genesis transaction plan prepared. It is unsigned; nothing has been broadcast.");
+      setNotice("PUSD circle setup preview ready. Nothing has been signed or sent.");
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -385,15 +385,11 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
         }
         return;
       }
-      const serverVerified = await verifyPusdMainnetCircleSignedTransaction(circleRequest);
+      await verifyPusdMainnetCircleSignedTransaction(circleRequest);
       if (target === "genesis") setGenesisSigningPlan(null);
       else setActionSigningPlan(null);
       setNotice(
-        "Selene signed the PUSD Mainnet " + signingPlan.operation +
-        " transaction. Local exact-input/output, 0x61 sighash and BCH 2026 VM checks passed; the independent server also authenticated " +
-        serverVerified.confirmedInputs + " confirmed inputs across its Electrum quorum and passed the BCH 2026 VM (" +
-        serverVerified.inputCount + " inputs, " + serverVerified.outputCount + " outputs, " +
-        serverVerified.feeSatoshis + " sat fee). Signed bytes were discarded. Nothing was broadcast and no circle state changed.",
+        "Selene approval passed the independent check. Nothing was sent and no circle details changed.",
       );
     } catch (cause) {
       setError(errorMessage(cause));
@@ -413,7 +409,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
     try {
       const snapshot = await readPusdMainnetCircle(activeCircle);
       setCircleSnapshot(snapshot);
-      setNotice("Mainnet circle state verified from the current read quorum. This is a read-only status check.");
+      setNotice("Mainnet circle details checked on the blockchain. This is a read-only status check.");
     } catch (cause) {
       setCircleSnapshot(null);
       setError(errorMessage(cause));
@@ -549,15 +545,15 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
     <section className="pusd-mainnet-workspace section-card" aria-labelledby="pusd-mainnet-title">
       <div className="section-heading">
         <div>
-          <span className="section-kicker">PARYONUSD · REAL CASHTOKEN CATEGORY</span>
+          <span className="section-kicker">PARYONUSD · DOLLAR TOKEN</span>
           <h2 id="pusd-mainnet-title">Create a PUSD Mainnet circle</h2>
-          <p>Member-owned PUSD escrow, covenant-controlled payouts, 1% treasury fee and pre-payout cancellation.</p>
+          <p>PUSD stays in each member’s control, with clear payout rules, a 1% treasury fee and cancellation before payout.</p>
         </div>
         <span className="classic-network mainnet">Bitcoin Cash Mainnet</span>
       </div>
 
       <div className="pusd-mainnet-safety">
-        <div><ShieldCheck size={17} /><span><b>Mainnet asset selected</b><small>Canonical ParyonUSD category · no test token or Chipnet substitution</small></span></div>
+        <div><ShieldCheck size={17} /><span><b>Mainnet asset selected</b><small>Official ParyonUSD asset · Mainnet only</small></span></div>
         <span className="asset-state neutral">Transactions locked during build</span>
       </div>
 
@@ -571,25 +567,25 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
         </label>
         <label>Contribution per member (PUSD)
           <input value={contribution} onChange={(event) => setContribution(event.target.value)} inputMode="decimal" placeholder="10.00" required />
-          <small>Exact 2-decimal PUSD amount. Internal calculations use integer CashToken units.</small>
+          <small>Enter a PUSD amount using two decimal places.</small>
         </label>
-        <label>Member Mainnet token-aware addresses · one per line
+        <label>Member Mainnet BCH addresses · one per line
           <textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder={"bitcoincash:…\nbitcoincash:…"} required />
-          <small>Enter 2–5 unique, token-aware Bitcoin Cash Mainnet addresses in payout order.</small>
+          <small>Add 2–5 unique Bitcoin Cash Mainnet addresses that can receive PUSD, in payout order. Your connected Selene address is always first.</small>
         </label>
         <label>Maximum BCH miner fee per action (satoshis)
           <input value={maxFee} onChange={(event) => setMaxFee(event.target.value)} inputMode="numeric" required />
-          <small>Miner fees and token carrier satoshis are funded separately from PUSD contributions.</small>
+          <small>Network fees and the small BCH amount needed to deliver PUSD are separate from PUSD contributions.</small>
         </label>
 
         <div className="pusd-mainnet-treasury">
-          <span>Immutable 1% project-fee destination shared with BCH Mainnet</span>
+          <span>1% project fee goes to this published address</span>
           <code>{MAINNET_PROJECT_TREASURY_ADDRESS}</code>
         </div>
 
         {economics && (
           <div className="pusd-mainnet-breakdown">
-            <b>First-round covenant preview</b>
+            <b>First-round savings preview</b>
             <div><span>Gross PUSD pot</span><strong>{formatAssetAmount("PUSD", economics.grossPot)} PUSD</strong></div>
             <div><span>Project fee · 1%</span><strong>{formatAssetAmount("PUSD", economics.projectFee)} PUSD</strong></div>
             <div><span>Next contribution reserved to first recipient</span><strong>{formatAssetAmount("PUSD", economics.firstPayoutReserve)} PUSD</strong></div>
@@ -601,34 +597,38 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
         <div className="pusd-mainnet-actions">
           <button className="secondary-button" type="submit" disabled={network !== "mainnet"}>Save Mainnet circle draft</button>
           <button className="primary-button" type="button" onClick={() => void prepareCreationPlan()} disabled={network !== "mainnet" || !walletConnected || busy}>
-            {busy ? "Preparing Mainnet plan…" : "Prepare on-chain creation plan"} <ArrowRight size={15} />
+            {busy ? "Preparing preview…" : "Preview circle setup"} <ArrowRight size={15} />
           </button>
         </div>
       </form>
 
       {preparedPlan && (
         <div className="pusd-mainnet-breakdown" role="status">
-          <b>Unsigned Mainnet genesis plan ready</b>
-          <div><span>PUSD circle contract</span><strong><code>{preparedPlan.contractAddress}</code></strong></div>
-          {preparedPlan.escrowAddresses.map((address, index) => (
-            <div key={address}><span>Member {index + 1} escrow</span><strong><code>{address}</code></strong></div>
-          ))}
-          <div><span>Estimated BCH miner fee</span><strong>{preparedPlan.feeEstimate} sats</strong></div>
-          <div><span>Estimated transaction size</span><strong>{preparedPlan.transactionSizeBytes} bytes</strong></div>
-          <small>No contract has been deployed. This preview is not a payment or deployment.</small>
-          {genesisSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis")}>Verify Selene signature · no broadcast</button>}
+          <b>Circle setup preview ready</b>
+          <p className="field-hint">Review the estimated network fee. Nothing has been signed or sent yet.</p>
+          <div><span>Estimated BCH network fee</span><strong>{preparedPlan.feeEstimate} sats</strong></div>
+          <details className="technical-details">
+            <summary>Technical details</summary>
+            <div><span>PUSD circle contract address</span><strong><code>{preparedPlan.contractAddress}</code></strong></div>
+            {preparedPlan.escrowAddresses.map((address, index) => (
+              <div key={address}><span>Member {index + 1} escrow address</span><strong><code>{address}</code></strong></div>
+            ))}
+            <p>Estimated transaction size: {preparedPlan.transactionSizeBytes} bytes.</p>
+          </details>
+          <small>Nothing has been created or paid yet.</small>
+          {genesisSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis")}>Check Selene approval · no payment</button>}
           {genesisSigningPlan && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis", true)}>Sign and send on Mainnet</button>}
         </div>
       )}
       {activeCircle && (
         <div className="pusd-mainnet-saved">
           <div className="section-heading">
-            <div><span className="section-kicker">CIRCLE LIFECYCLE · MAINNET READ-ONLY</span><h3>{activeCircle.name}</h3></div>
+            <div><span className="section-kicker">YOUR PUSD CIRCLE</span><h3>{activeCircle.name}</h3></div>
             <button type="button" className="secondary-button" disabled={lifecycleBusy} onClick={() => void readActiveOnChainState()}>
-              {lifecycleBusy ? "Reading…" : "Read on-chain status"}
+              {lifecycleBusy ? "Checking…" : "Check circle status"}
             </button>
           </div>
-          <p className="classic-empty">Local circle identity saved for tracking. A saved genesis preview is not proof that the on-chain circle has been created.</p>
+          <p className="classic-empty">Local circle identity saved for tracking. A saved setup preview does not mean the circle has been created on the blockchain.</p>
           {circleSnapshot && (
             <div className="pusd-mainnet-breakdown">
               <b>Verified circle state</b>
@@ -652,15 +652,16 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
             <div className="pusd-mainnet-breakdown" role="status">
               <b>{actionPreview.title}</b>
               <p>{actionPreview.summary}</p>
-              <div><span>Estimated BCH miner fee</span><strong>{actionPreview.feeEstimate} sats</strong></div>
-              <div><span>Estimated transaction size</span><strong>{actionPreview.size} bytes</strong></div>
-              <div><span>Wallet-owned inputs requiring signatures</span><strong>{actionPreview.walletInputCount}</strong></div>
-              <small>Verified transactions are relayed to BCH Mainnet. Re-read state before each new action.</small>
-              {actionSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action")}>Verify Selene signature · no broadcast</button>}
+              <div><span>Estimated BCH network fee</span><strong>{actionPreview.feeEstimate} sats</strong></div>
+              <details className="technical-details">
+                <summary>Technical details</summary>
+                <p>Estimated transaction size: {actionPreview.size} bytes. Wallet items to approve: {actionPreview.walletInputCount}.</p>
+                <p>Payments are checked before they are sent. Check circle status again before each new action.</p>
+              </details>
+              {actionSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action")}>Check Selene approval · no payment</button>}
               {actionSigningPlan && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action", true)}>Sign and send on Mainnet</button>}
             </div>
-          )}
-        </div>
+          )}       </div>
       )}
 
       {error && <p className="classic-error" role="alert">{error}</p>}
@@ -680,7 +681,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
       )}
 
       <div className="pusd-mainnet-deployed">
-        <div className="section-heading"><div><span className="section-kicker">DEPLOYED CIRCLES</span><h3>PUSD circles on Mainnet</h3></div></div>
+        <div className="section-heading"><div><span className="section-kicker">SAVED CIRCLES</span><h3>PUSD circles on Mainnet</h3></div></div>
         <div className="pusd-mainnet-invite-import">
           <input value={inviteInput} onChange={(event) => setInviteInput(event.target.value)} placeholder="Paste a PUSD Mainnet circle invite" autoComplete="off" />
           <button type="button" className="secondary-button" onClick={() => {
@@ -693,7 +694,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
               setGenesisSigningPlan(null);
               setActionSigningPlan(null);
               setInviteInput("");
-              setNotice("PUSD Mainnet circle invite loaded. Re-read the on-chain state before acting.");
+              setNotice("PUSD Mainnet circle invite loaded. Check the circle on the blockchain before acting.");
             } catch (cause) {
               setError(errorMessage(cause));
             }
@@ -708,7 +709,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
                 setCircleSnapshot(null);
                 setGenesisSigningPlan(null);
                 setActionSigningPlan(null);
-                setNotice("Opened " + circle.name + ". Re-read the on-chain state before acting.");
+                setNotice("Opened " + circle.name + ". Check the circle on the blockchain before acting.");
               }}>
                 <b>{circle.name}</b>
                 <small>{circle.members.length} members · {formatAssetAmount("PUSD", circle.contribution)} PUSD each · {circle.stateCategory.slice(0, 10)}…</small>
@@ -720,7 +721,11 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
 
       <div className="pusd-mainnet-build-status">
         <LockKeyhole size={16} />
-        <span><b>PUSD Mainnet circles are live</b><small>Genesis, deposit, payout and cancellation transactions are signed by Selene, re-verified by the server against quorum-authenticated prevouts, exact circle/escrow artifacts, 0x61 wallet sighashes and the BCH 2026 VM, then relayed once through the durable input ledger. Plain PUSD wallet transfers remain locked.</small></span>
+        <span><b>PUSD Mainnet circles are live</b><small>Members approve each payment in Selene. The app checks the circle details before sending. Plain PUSD wallet transfers remain locked.</small>
+          <details className="technical-details">
+            <summary>Technical details</summary>
+            <p>Circle actions are checked against provider-confirmed previous outputs, the exact circle and escrow artifacts, wallet signature hashes and BCH 2026 VM rules. The durable input ledger prevents a transaction from being relayed twice.</p>
+          </details></span>
       </div>
 
       <div className="pusd-mainnet-saved">
@@ -739,7 +744,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
       </div>
 
       <div className="pusd-mainnet-asset-meta">
-        <span>CashToken category</span><code>{PUSD_ASSET.categoryId}</code>
+        <span>Asset identifier</span><code>{PUSD_ASSET.categoryId}</code>
         <span>Asset precision</span><b>{PUSD_ASSET.decimals} decimals</b>
       </div>
     </section>
