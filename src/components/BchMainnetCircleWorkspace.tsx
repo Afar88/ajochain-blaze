@@ -124,7 +124,7 @@ function errorMessage(cause: unknown) {
 }
 
 export default function BchMainnetCircleWorkspace({ network, walletConnected, onOpenWalletDetails, selectedCircle = null }: Props) {
-  const [name, setName] = useState("My BCH Ajo Circle");
+  const [name, setName] = useState(() => "BCH Ajo circle – " + new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" }));
   const [contribution, setContribution] = useState("0.002");
   const [membersText, setMembersText] = useState("");
   const [maxFee, setMaxFee] = useState("10000");
