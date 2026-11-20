@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { decodeCashAddress } from "@bitauth/libauth";
 import {
   wizardRelayStatusMessage,
+  shouldPreserveReceiveAddressConfirmation,
   isCurrentReceiveAddressConfirmed,
   buildWizardSignRequest,
   assertP2pkhWalletInputCoverage,
@@ -179,6 +180,25 @@ describe("WizardConnect covenant-input sighash inspection", () => {
   });
 });
 
+
+describe("WizardConnect receive-address confirmation across relay handshakes", () => {
+  const walletIdentity = "ab".repeat(32);
+
+  it("preserves confirmation for the same authenticated wallet across reconnect handshakes", () => {
+    expect(shouldPreserveReceiveAddressConfirmation(walletIdentity, walletIdentity)).toBe(true);
+    expect(shouldPreserveReceiveAddressConfirmation(walletIdentity.toUpperCase(), walletIdentity)).toBe(true);
+  });
+
+  it("does not preserve confirmation when a different wallet reconnects", () => {
+    expect(shouldPreserveReceiveAddressConfirmation(walletIdentity, "cd".repeat(32))).toBe(false);
+  });
+
+  it("fails closed when either handshake omits a valid wallet identity", () => {
+    expect(shouldPreserveReceiveAddressConfirmation(walletIdentity, null)).toBe(false);
+    expect(shouldPreserveReceiveAddressConfirmation(null, walletIdentity)).toBe(false);
+    expect(shouldPreserveReceiveAddressConfirmation(walletIdentity, "not-a-public-key")).toBe(false);
+  });
+});
 
 describe("WizardConnect relay recovery messaging", () => {
   it("shows temporary subscription closures as recoverable reconnects", () => {
