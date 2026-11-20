@@ -2412,8 +2412,10 @@ export function validateBchMainnetGatherLayout(transaction, walletScripts, desti
     throw new Error("Mainnet BCH gather destination must be one of the wallet's derived P2PKH addresses.");
   }
   const seen = new Set();
+  // libauth decodes outpointTransactionHash in display (RPC) byte order, so it
+  // is already the txid Electrum expects. Reversing it produced a nonexistent txid.
   for (const [index, input] of transaction.inputs.entries()) {
-    const txid = reverseHex(binToHex(input.outpointTransactionHash)).toLowerCase();
+    const txid = binToHex(input.outpointTransactionHash).toLowerCase();
     if (!/^[0-9a-f]{64}$/.test(txid) ||
         !Number.isSafeInteger(input.outpointIndex) || input.outpointIndex < 0) {
       throw new Error("Mainnet BCH gather input " + index + " has an invalid outpoint.");
@@ -2495,7 +2497,7 @@ export async function verifyBchMainnetGatherTransaction(sessions, tip, body) {
   let inputSatoshis = 0n;
 
   for (const [index, input] of transaction.inputs.entries()) {
-    const previousTxid = reverseHex(binToHex(input.outpointTransactionHash)).toLowerCase();
+    const previousTxid = binToHex(input.outpointTransactionHash).toLowerCase();
     let previous = previousByTxid.get(previousTxid);
     if (!previous) {
       previous = await fetchQuorumPreviousTransaction(sessions, previousTxid);
