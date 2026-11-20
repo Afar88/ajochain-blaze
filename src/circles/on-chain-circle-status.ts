@@ -54,17 +54,24 @@ export async function checkCircleStatusesWithLimits<T>(
       }
 
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      let requestTimedOut = false;
       try {
         const snapshot = await Promise.race([
           readStatus(item),
           new Promise<never>((_, reject) => {
-            timeoutId = setTimeout(() => reject(new Error("Circle status check timed out.")),
-              Math.max(1, Math.min(requestTimeoutMs, remainingMs)));
+            timeoutId = setTimeout(() => {
+              requestTimedOut = true;
+              reject(new Error("Circle status check timed out."));
+            }, Math.max(1, Math.min(requestTimeoutMs, remainingMs)));
           }),
         ]);
         results[index] = { item, result: classifyCircleStatus(snapshot) };
       } catch {
         results[index] = { item, result: unknownCircleStatus() };
+        // A timed-out provider request may still be pending underneath the
+        // timeout race. Stop this worker rather than starting another request
+        // and exceeding the true in-flight concurrency bound.
+        if (requestTimedOut) return;
       } finally {
         if (timeoutId !== undefined) clearTimeout(timeoutId);
       }
