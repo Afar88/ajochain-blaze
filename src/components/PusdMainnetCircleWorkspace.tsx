@@ -19,7 +19,7 @@ import { broadcastPusdMainnetCircleSignedTransaction, verifyPusdMainnetCircleSig
 import { wallet } from "../core/wizard-wallet";
 import type { NetworkId } from "../core/network-config";
 
-type Props = { network: NetworkId; walletConnected: boolean };
+type Props = { network: NetworkId; walletConnected: boolean; selectedCircle?: string | null };
 type Draft = {
   name: string;
   contribution: string;
@@ -172,7 +172,7 @@ function errorMessage(cause: unknown) {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-export default function PusdMainnetCircleWorkspace({ network, walletConnected }: Props) {
+export default function PusdMainnetCircleWorkspace({ network, walletConnected, selectedCircle = null }: Props) {
   const [name, setName] = useState("My PUSD Ajo Circle");
   const [contribution, setContribution] = useState("10.00");
   const [membersText, setMembersText] = useState("");
@@ -203,6 +203,21 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
   const [actionSigningPlan, setActionSigningPlan] = useState<MainnetSigningPlan | null>(null);
   const [deployedCircles, setDeployedCircles] = useState<PusdMainnetCircleParams[]>(readDeployedCircles);
   const [inviteInput, setInviteInput] = useState("");
+
+  useEffect(() => {
+    if (!selectedCircle) return;
+    const circle = deserializeCircle(selectedCircle);
+    if (!circle) {
+      setError("This saved PUSD circle could not be opened.");
+      return;
+    }
+    setActiveCircle(circle);
+    persistActiveCircle(circle);
+    setCircleSnapshot(null);
+    setGenesisSigningPlan(null);
+    setActionSigningPlan(null);
+    setNotice("Opened " + circle.name + ". Check the circle details before taking action.");
+  }, [selectedCircle]);
   useEffect(() => {
     const hash = window.location.hash;
     if (!hash.startsWith(INVITE_ROUTE)) return;
