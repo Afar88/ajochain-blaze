@@ -26,13 +26,12 @@ The issuer-maintained [ParyonUSD withdrawal contract source](https://github.com/
 
 ## Durable broadcast idempotency
 
-- [ ] Provision a dedicated private Upstash Redis database (or an independently reviewed equivalent) for BLAZE; do not reuse the legacy AjoChain/Neon store.
-- [ ] Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` only in the BLAZE Vercel server environment. This private database backs durable submission records and the atomic cross-instance API rate limiter. Never expose the write token to the browser.
+- [ ] Keep durable submission idempotency and ambiguous-broadcast reconciliation separate from circle discovery. The Upstash ledger is used by PUSD V3 circle broadcast, ordinary PUSD Mainnet transfer submission (separately hard-disabled), and BCH Mainnet wallet-gather submission; it is not a circle registry or source of truth. No Redis service is required for chain discovery, BCH V3 circle broadcast, or read-only verification.
 - [ ] Verify the exact signed-transaction ID/digest can be reserved only once across concurrent serverless instances and that `submitting`, `accepted`, `already-known`, and `unknown` states persist across cold starts.
 - [ ] Verify that a missing/unavailable ledger or an ambiguous prior submission blocks a second relay; reconcile the exact transaction through the read-only status endpoints before manual recovery.
 - [ ] Define retention, archival and incident-recovery procedures for durable submission records before enabling any PUSD broadcast.
 
-The server now contains a fail-closed Upstash Redis REST adapter and a read-only `GET /api/pusd/submission?txid=<64-hex-txid>` endpoint. The adapter is not active until dedicated private credentials are provisioned. The Mainnet broadcast kill-switch remains hard-coded false.
+The API contains a durable Upstash submission-ledger adapter and a read-only `GET /api/pusd/submission?txid=<64-hex-txid>` endpoint for transaction-submission reconciliation. Configure `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` as private server-side variables for PUSD V3 circle broadcast, ordinary PUSD transfer submission (hard-disabled), and BCH wallet-gather submission. Missing credentials or ledger failures block those submissions before relay. This ledger is not used for circle discovery or BCH V3 circle broadcast. The `MAINNET_BROADCAST_ENABLED` guard remains hard-coded false for ordinary PUSD wallet transfers; the separate `PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED` gate is enabled for PUSD V3 circle transactions.
 
 ## Transaction construction and verification
 
@@ -63,25 +62,25 @@ A read-only `GET /api/transaction/status?txid=<64-hex-txid>` endpoint has been a
 
 ## PUSD Mainnet V3 circle and escrow release gates
 
-The separate PUSD circle covenant is a different execution path from ordinary PUSD wallet transfers. Its Mainnet workspace currently supports unsigned genesis, deposit, payout and pre-first-payout cancellation previews, plus read-only state/receipt/escrow reconciliation. Those previews do not authorize real funds.
+The separate PUSD circle covenant is a different execution path from ordinary PUSD wallet transfers. Its Mainnet workspace supports genesis, deposit, payout and pre-first-payout cancellation. PR #83 added a separate Mainnet circle-broadcast route with its own code gate; the gate is enabled and each signed transaction is verified and reserved in the durable input ledger before one relay. This is an implemented code path, not independent security approval or release clearance for real-value use.
 
-The server now provides `POST /api/pusd/circle/verify` for read-only verification of Selene-signed circle lifecycle transactions (PR #78). The workspace reports success only after local verification and server-side quorum-prevout/artifact/VM verification. Signed bytes are discarded after the response; this route cannot reserve, relay or broadcast them. The verifier still requires independent review and adversarial/live-wallet testing before a Mainnet release.
+The server provides `POST /api/pusd/circle/verify` for read-only verification (PR #78) and `POST /api/pusd/circle/broadcast` for the separate send path (PR #83). The broadcast route verifies the exact Selene-signed transaction against quorum-authenticated prevouts, the compiled artifacts and the BCH 2026 VM, reserves the signed transaction and all input outpoints in the durable Upstash ledger, then relays once. Ambiguous outcomes are recorded and are not automatically retried. A successful relay is not confirmation. Both routes and the underlying artifacts still require independent review and adversarial/live-wallet testing.
 
 - [ ] Independently review `AjoCirclePUSDV3Mainnet.cash` and `AjoPUSDMemberEscrowV3.cash`, including exact compiled artifact hashes and every constructor argument.
 - [ ] Independently verify the token category, token-aware member scripts, receipt NFT commitments, escrow contract bindings and CashToken carrier values.
 - [ ] Inspect the exact genesis transaction and prove the state category, minting NFT, one receipt per member, and one empty PUSD escrow sidecar per member are created at the intended outputs.
 - [ ] Adversarially test deposit, excess-token change, payout, reserve carry-forward, final-recipient no-reserve, cancellation, member order, missing/duplicate UTXOs, dust, integer bounds and inconsistent state commitments.
 - [ ] Independently verify the exact PUSD fee output to the shared BCH/PUSD Mainnet treasury, and verify BCH carrier and miner fee amounts separately.
-- [x] Implement a read-only server-side PUSD V3 circle signed-byte verifier for genesis, deposit, payout and cancellation. It reconstructs the exact circle/escrow artifacts, authenticates raw prevouts against the Electrum quorum, validates the full lifecycle layouts, checks wallet 0x61 sighashes and runs the BCH 2026 VM. Added in PR #78; it never relays or broadcasts. **Implementation is not independent security approval.**
+- [x] Implement the PUSD V3 circle signed-byte verifier and separate ledger-backed broadcast route for genesis, deposit, payout and cancellation. The server reconstructs exact artifacts, authenticates raw prevouts against the Electrum quorum, validates lifecycle layouts, checks 0x61 sighashes and runs the BCH 2026 VM before reserving inputs and relaying once. Added in PRs #78 and #83. **Implementation is not independent security approval.**
 - [ ] Recheck all state, receipt, escrow, token and fee UTXOs immediately before any future wallet authorization.
 - [ ] Complete real Selene/WizardConnect lifecycle tests with independent member wallets, including app switching, reconnect, timeout, cancellation and confirmation.
 - [ ] Add idempotent broadcast, unknown-result resolution, mempool-conflict handling, confirmation and reorg recovery.
 - [ ] Obtain external review and written approval for the exact deployed circle/escrow artifacts and wallet transaction path.
 
-Do not deploy the circle contracts or send PUSD/BCH to prototype scripts while any item above remains open.
+The PUSD V3 circle broadcast route is enabled in code, but do not treat that as audit or release approval. Do not use it with real-value funds while any required artifact, wallet, economic, security, confirmation or recovery item above remains open.
 
 ## Hard stop
 
-The server broadcast endpoint is compiled with `MAINNET_BROADCAST_ENABLED = false`. The API's PUSD relay path now submits once to a single provider and resolves ambiguous responses by looking up the exact transaction ID across the configured providers; it never blindly retries through a second relay. An `already-known` or relay-accepted result is not a confirmation, and confirmation/reorg tracking remains outstanding. The client additionally rejects direct calls to its PUSD broadcast function while `PUSD_MAINNET_SPENDING_ENABLED = false`. Setting `ENABLE_MAINNET_BROADCAST=true` in the deployment environment does not enable spending. Do not change either compile-time lock until every required item above is evidenced and approved.
+The ordinary PUSD wallet-transfer endpoint remains hard-disabled by `MAINNET_BROADCAST_ENABLED = false`, and the client transfer action remains locked by `PUSD_MAINNET_SPENDING_ENABLED = false`. This is separate from `PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED = true`, which enables the PUSD V3 circle lifecycle route through exact verification and the durable ledger. The circle route records ambiguous relay outcomes and never blindly retries; `already-known` or relay-accepted is not confirmation. Confirmation and reorganisation tracking remain separate release requirements. Setting `ENABLE_MAINNET_BROADCAST=true` does not override the ordinary-transfer code lock.
 
-PUSD circles and escrow are separate work. Their prototype covenants must not be treated as supported PUSD circle functionality.
+PUSD V3 circle broadcast is implemented as a distinct gated path, but remains subject to the independent review and release evidence above. Do not describe the ordinary PUSD transfer gate as disabling this separate circle path.

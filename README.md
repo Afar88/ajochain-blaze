@@ -33,19 +33,19 @@ BLAZE supports separate BCH and ParyonUSD (PUSD) workspaces. They use different 
 
 ![AjoChain BLAZE architecture](docs/assets/ajochain-architecture.svg)
 
-The browser application connects to the member's wallet and reads chain data through BCH network providers. The PUSD circle verification API adds a server-side check of the exact signed transaction, its authenticated previous outputs and covenant execution. The API is read-only: it does not relay or broadcast the verified bytes.
+The browser application connects to the member's wallet and reads chain data through BCH network providers. Circle discovery and circle state come from the blockchain, not a central application backend or database. Optional API routes provide chain-provider reads and additional PUSD signed-transaction preflight; they do not register, store or discover circles.
 
 ### On-chain discovery
 
-For the newer guarded BCH V3 Chipnet circles, discovery is performed from the connected wallet's own derived receive/change address history. BLAZE downloads candidate raw transactions, checks their transaction IDs, validates the genesis/category relationship, verifies the ordered receipt and member markers, and rebuilds the exact covenant scripts before accepting a match.
+For discoverable BCH V3 circles on **Chipnet and Mainnet**, discovery is performed from the connected wallet's own derived receive/change address history. BLAZE reads Electrum transaction history, downloads candidate raw transactions, verifies each transaction ID, validates the genesis/category relationship, checks the ordered state and receipt NFTs plus member markers, and rebuilds the exact covenant scripts before accepting a match. A circle is returned only when the connected wallet is one of its members.
 
-There is no central registry required to discover these new Chipnet circles. Shared server discovery and registration remain disabled. Older circles can still be restored using their existing invite links.
+There is no central registry, database, server registration or backfill required for discovery on either network. Older circle versions can still be restored using their existing invite links, but invite data is not treated as proof of membership or payment.
 
 The configured Electrum providers are a read quorum, not a substitute for a locally validated SPV/chainwork client. Different endpoint names do not prove independent operators or infrastructure. See [the circle-discovery security gate](docs/BLAZE_CIRCLE_DISCOVERY_BACKEND.md).
 
 ## Circle lifecycle and member accounting
 
-The following graphic describes the PUSD V3 prototype flow. It is a contract/workflow explanation, not a statement that PUSD Mainnet spending is enabled.
+The following graphic describes the PUSD V3 circle lifecycle. Its separate Mainnet circle-broadcast path is enabled in code, but code enablement is not independent security approval or a recommendation to send real value before the release gates are met.
 
 ![PUSD V3 circle lifecycle](docs/assets/pusd-v3-circle-lifecycle.svg)
 
@@ -69,19 +69,19 @@ Read [BCH, PUSD and member accounting](docs/BCH_PUSD_MEMBER_ACCOUNTING.md) for t
 
 | Area | Current state | What that means |
 |---|---|---|
-| BCH V3 automatic-reserve circles | **Chipnet prototype** | The guarded V3 path is the active new-circle flow on Chipnet. Its on-chain discovery and member receipt rules are test-network functionality. |
+| BCH V3 automatic-reserve circles | **Chipnet + Mainnet V3 paths** | Discovery is on-chain on both networks. The dedicated V3 Mainnet signing/broadcast path is separate from the Classic BCH guard; real-wallet and lifecycle validation remains important. |
 | Classic / V1 / V2 circles | **Versioned compatibility** | Existing circles retain their original covenant and accounting rules; they are not silently migrated to V3. |
-| BCH Mainnet circles | **Read-only / preview** | The Mainnet workspace validates drafts and prepares an unsigned genesis preview. Mainnet circle signing and broadcast are not approved. |
-| PUSD Mainnet V3 circles | **Engineering / read-only verification** | The workspace and lifecycle planners cover genesis, deposit, payout and pre-first-payout cancellation. PR [#78](https://github.com/Afar88/ajochain-blaze/pull/78) adds server-side signed-byte verification; it does not add a broadcast path or enable spending. |
-| Shared circle registry | **Disabled** | BLAZE does not rely on a server registry for new Chipnet V3 discovery. Existing invite restoration remains available. |
+| BCH Mainnet circles | **V3 send path enabled in code** | The dedicated V3 UI and broadcast gates are enabled separately from the Classic BCH operations gate. This is not a blanket audit or release approval for every contract/version. |
+| PUSD Mainnet V3 circles | **Separate circle-broadcast path enabled in code** | PRs [#78](https://github.com/Afar88/ajochain-blaze/pull/78) and [#83](https://github.com/Afar88/ajochain-blaze/pull/83) add server-side transaction verification and a durable-ledger-backed, single-relay circle broadcast route for genesis, deposits, payouts and cancellation. This is separate from ordinary PUSD wallet transfers, which remain hard-disabled. Independent contract/security review and operational evidence are still required. |
+| Shared circle registry | **Not used** | Neither Chipnet nor Mainnet circle discovery depends on a centralized registry. Circle identity and lifecycle are reconstructed from BCH transactions and UTXOs. |
 
 ### PUSD verification status
 
 The PUSD server verifier in [PR #78](https://github.com/Afar88/ajochain-blaze/pull/78) reconstructs the circle and member escrow scripts from the checked-in compiled artifacts, authenticates raw previous transactions against the configured Electrum quorum, validates lifecycle-specific inputs and outputs, checks wallet 0x61 sighashes, and executes the signed transaction using the BCH 2026 VM.
 
-It covers genesis, member deposit, payout (including final close) and pre-first-payout cancellation. The endpoint is **POST /api/pusd/circle/verify**. It returns verification information only; signed transaction bytes are discarded after the response and are not reserved, relayed or broadcast.
+It covers genesis, member deposit, payout (including final close) and pre-first-payout cancellation. **POST /api/pusd/circle/verify** remains read-only and discards signed bytes. PR [#83](https://github.com/Afar88/ajochain-blaze/pull/83) adds the separate **POST /api/pusd/circle/broadcast** route: it re-verifies the exact signed transaction, reserves the inputs in the durable Upstash ledger and relays once. An accepted/already-known relay response is not a BCH confirmation; status and reorganisation checks remain separate.
 
-**Verification is not spending approval.** The PUSD Mainnet spending guard remains hard-coded to false, and the Mainnet broadcast guard remains closed. No real PUSD or BCH should be sent to prototype circle scripts.
+**Do not confuse the PUSD gates.** The dedicated PUSD V3 circle route has its own code-enabled broadcast gate and durable idempotency ledger. Ordinary PUSD wallet transfers remain hard-disabled by `PUSD_MAINNET_SPENDING_ENABLED = false` and `MAINNET_BROADCAST_ENABLED = false`. The circle route still requires independent review and release evidence before real-value use.
 
 ## Get running
 
@@ -142,12 +142,12 @@ The active BLAZE application is deployed through the dedicated Vercel project **
 - Application: https://ajochain-blaze.vercel.app
 - Repository: https://github.com/Afar88/ajochain-blaze
 
-Keep this project isolated from the legacy AjoChain projects and their database resources. The deployment guide documents the BLAZE-only Electrum provider manifest and private Upstash settings. Never put server credentials in browser variables or reuse the legacy database.
+Keep this project isolated from legacy AjoChain deployments. The optional API adapter uses a BLAZE-specific Electrum provider manifest. No Neon, Postgres, Redis or legacy database is required for on-chain circle discovery. Never put provider credentials in browser variables.
 
 ## Documentation map
 
 - [Ready-to-run setup and deployment](docs/QUICKSTART.md)
-- [Circle discovery backend and security gate](docs/BLAZE_CIRCLE_DISCOVERY_BACKEND.md)
+- [On-chain circle discovery architecture](docs/BLAZE_CIRCLE_DISCOVERY_BACKEND.md)
 - [BCH, PUSD and member accounting](docs/BCH_PUSD_MEMBER_ACCOUNTING.md)
 - [PUSD Mainnet release checklist](docs/PUSD_MAINNET_RELEASE_CHECKLIST.md)
 - [Mainnet release checklist](docs/MAINNET_RELEASE_CHECKLIST.md)

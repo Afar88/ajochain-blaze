@@ -686,13 +686,11 @@ export default function App() {
     setSeleneAddress("");
   };
 
-  const shortAddress = (value: string | null) => {
-    if (network === "mainnet" && walletClient?.state === "connected" &&
-        !walletClient.isReceiveAddressConfirmed("mainnet")) {
-      return "Sync Selene address";
-    }
-    return value ? value.slice(0, 10) + "…" + value.slice(-6) : "Address syncing…";
-  };
+  // Keep the derived address visible even before Selene's current Receive
+  // screen has been explicitly matched. Users need to compare this candidate
+  // with the address shown in Selene before confirming it in Wallet Details.
+  const shortAddress = (value: string | null) =>
+    value ? value.slice(0, 10) + "…" + value.slice(-6) : "Address syncing…";
 
   return (
     <main className="app-shell compact-app">
@@ -894,7 +892,11 @@ export default function App() {
             <Suspense fallback={<div className="workspace-loading"><span className="loading-orb" />Loading Mainnet asset workspaces…</div>}>
               {network === "mainnet" && <>
                 <div className="mainnet-dual-workspaces">
-                  <div id="bch-mainnet-workspace" className="circle-workspace-panel"><BchMainnetCircleWorkspace network={network} walletConnected={connected} /></div>
+                  <div id="bch-mainnet-workspace" className="circle-workspace-panel"><BchMainnetCircleWorkspace
+                    network={network}
+                    walletConnected={connected}
+                    onOpenWalletDetails={openWallet}
+                  /></div>
                   <div id="pusd-mainnet-workspace" className="circle-workspace-panel"><PusdMainnetCircleWorkspace network={network} walletConnected={connected} /></div>
                 </div>
                 {/* Legacy invite links remain accessible as a read-only compatibility workspace. */}
