@@ -229,6 +229,96 @@ describe("on-chain circle discovery", () => {
   });
 
 
+  it("keeps discovery results identical while bounding history and transaction concurrency", async () => {
+    const walletAddresses = Array.from({ length: 8 }, (_, index) =>
+      pkhToAddress(pkh(index + 1), "chipnet"),
+    );
+    const circles = [1, 2, 3].map((number) => {
+      const circleParams = {
+        ...params,
+        stateCategory: number.toString(16).padStart(64, "0"),
+      };
+      const raw = binToHex(encodeTransaction(genesisTx(circleParams, contractBytecode(circleParams))));
+      const txid = binToHex(hashTransactionUiOrder(hexToBin(raw))).toLowerCase();
+      return {
+        raw,
+        txid,
+        expected: {
+          ...circleParams,
+          name: "Found circle " + circleParams.stateCategory.slice(0, 8),
+          treasury: discovered.treasury,
+        },
+      };
+    });
+    const targetScriptHash = binToHex(sha256.hash(
+      (cashAddressToLockingBytecode(params.members[0]) as { bytecode: Uint8Array }).bytecode,
+    ).reverse());
+    const histories: Record<string, unknown> = {
+      [targetScriptHash]: circles.map(({ txid }, index) => ({ tx_hash: txid, height: 100 + index })),
+    };
+    const rawByTxid = new Map(circles.map(({ txid, raw }) => [txid, raw]));
+    let activeHistory = 0;
+    let maxHistory = 0;
+    let activeTransactions = 0;
+    let maxTransactions = 0;
+    const provider = {
+      performRequest: async (method: string, arg: string | number) => {
+        if (method === "blockchain.block.header") return CHIPNET_GENESIS_HEADER;
+        if (method !== "blockchain.scripthash.get_history") throw new Error("Unexpected RPC " + method);
+        activeHistory += 1;
+        maxHistory = Math.max(maxHistory, activeHistory);
+        await new Promise((resolve) => setTimeout(resolve, 3));
+        activeHistory -= 1;
+        return histories[arg as string] ?? [];
+      },
+      getRawTransaction: async (txid: string) => {
+        activeTransactions += 1;
+        maxTransactions = Math.max(maxTransactions, activeTransactions);
+        await new Promise((resolve) => setTimeout(resolve, 3));
+        activeTransactions -= 1;
+        return rawByTxid.get(txid) ?? "";
+      },
+    } as unknown as NetworkProvider;
+    const result = await discoverV2FeeCircles(provider, walletAddresses, 300, "chipnet", {
+      priorityAddresses: [walletAddresses[5], walletAddresses[1]],
+      concurrency: 6,
+    });
+    expect(result).toEqual(circles.slice().reverse().map(({ expected }) => expected));
+    expect(maxHistory).toBeGreaterThan(1);
+    expect(maxHistory).toBeLessThanOrEqual(6);
+    expect(maxTransactions).toBeGreaterThan(1);
+    expect(maxTransactions).toBeLessThanOrEqual(6);
+  });
+
+  it("skips a timed-out address while continuing to discover circles on other addresses", async () => {
+    const tx = genesisTx();
+    const raw = binToHex(encodeTransaction(tx));
+    const txid = binToHex(hashTransactionUiOrder(hexToBin(raw))).toLowerCase();
+    const slowAddress = pkhToAddress(pkh(8), "chipnet");
+    const fastAddress = params.members[2];
+    const scriptHash = (address: string) =>
+      binToHex(sha256.hash((cashAddressToLockingBytecode(address) as { bytecode: Uint8Array }).bytecode).reverse());
+    let timeoutNotified = false;
+    const provider = {
+      performRequest: async (method: string, arg: string | number) => {
+        if (method === "blockchain.block.header") return CHIPNET_GENESIS_HEADER;
+        if (method !== "blockchain.scripthash.get_history") throw new Error("Unexpected RPC " + method);
+        if (arg === scriptHash(slowAddress)) return new Promise<never>(() => undefined);
+        if (arg === scriptHash(fastAddress)) return [{ tx_hash: txid, height: 1 }];
+        return [];
+      },
+      getRawTransaction: async () => raw,
+    } as unknown as NetworkProvider;
+    const result = await discoverV2FeeCircles(provider, [slowAddress, fastAddress], 300, "chipnet", {
+      concurrency: 2,
+      requestTimeoutMs: 20,
+      overallTimeoutMs: 150,
+      onTimeout: () => { timeoutNotified = true; },
+    });
+    expect(result).toEqual([discovered]);
+    expect(timeoutNotified).toBe(true);
+  });
+
   it("discovers the same Mainnet genesis circle from its real creator and member addresses through the verified quorum", async () => {
     const creatorAddress = "bitcoincash:qr0n65a7etj6falr32y2q288qtm0q2sj0qvn5zlrsn";
     const memberAddress = "bitcoincash:qp7zcd6jr5rmrjdayfecy2ypywsu8tqnfqxcred43h";
