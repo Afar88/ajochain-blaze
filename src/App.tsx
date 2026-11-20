@@ -13,7 +13,7 @@ import type { NetworkProvider } from "cashscript";
 import type { WalletConsolidationPlan } from "./core/wallet-consolidation";
 import { PUSD_MAINNET_SPENDING_ENABLED } from "./core/pusd-mainnet-guard";
 import {
-  dedupeSavedV2FeeCircleMenuRecords,
+  dedupeSavedV2FeeCircleRecords,
   getV2FeeCircleRecordIdentity,
 } from "./core/v2-fee-circle-records";
 const ClassicBchWorkspace = lazy(() => import("./components/ClassicBchWorkspace"));
@@ -141,7 +141,9 @@ function readSavedCircleMenuRecords(): MenuCircle[] {
   return records.map((record) => {
     const count = (duplicateLabels.get(record.label) ?? 0) + 1;
     duplicateLabels.set(record.label, count);
-    return count > 1 ? { ...record, label: record.label + " #" + count } : record;
+    return count > 1
+      ? { ...record, detail: record.detail + " · #" + count, label: record.label + " #" + count }
+      : record;
   });
 }
 type ThemePreference = "system" | "light" | "dark";
@@ -1166,7 +1168,7 @@ export default function App() {
                 <div className="wallet-balance-row">
                   <span className="asset-symbol pusd-symbol">P</span>
                   <div><b>ParyonUSD</b><small>Dollar balance on Mainnet</small></div>
-                  <strong>{!connected ? "Connect wallet" : pusdView.status === "ready" ? formatAssetAmount("PUSD", pusdView.amount) + " PUSD" : pusdView.status === "loading" ? "Checking…" : "Not checked"}</strong>
+                  <strong>{!connected ? "Connect wallet" : network !== "mainnet" ? "Switch to Mainnet" : pusdView.status === "ready" ? formatAssetAmount("PUSD", pusdView.amount) + " PUSD" : pusdView.status === "loading" ? "Checking…" : "Not checked"}</strong>
                 </div>
               </div>
               <div className="wallet-balance-actions">
