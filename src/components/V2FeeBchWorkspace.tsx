@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Copy, RefreshCw, ShieldCheck } from "lucide-react";
+import { Copy, RefreshCw } from "lucide-react";
 import { parseAssetAmount } from "../core/assets";
 import { CashTokensGenesisUtxoMissingError, classicAddressToPkh, getClassicProvider, planClassicGenesisSetup } from "../core/classic-bch";
 import { formatBch, type NetworkId } from "../core/network";
