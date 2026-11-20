@@ -2187,6 +2187,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .receive-address-choice-list { display: grid; gap: 7px; }
 .receive-address-choice { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-width: 0; padding: 11px 12px; border: 1px solid var(--line, #dce5dc); border-radius: 10px; background: var(--paper, #fff); color: var(--ink, #24392d); text-align: left; }
 .receive-address-choice.selected { border-color: #75a75f; background: #f0f7e9; box-shadow: inset 0 0 0 1px #75a75f; }
+.receive-address-selected-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 12px; border: 1px solid var(--line, #dce5dc); border-radius: 10px; background: var(--paper, #fff); }
+.receive-address-selected-copy { display: grid; gap: 5px; min-width: 0; }
+.receive-address-selected-copy > span, .receive-address-selected-copy > small { color: var(--muted, #718076); font-size: 10px; line-height: 1.45; }
+.receive-address-selected-copy > code { min-width: 0; color: var(--ink, #24392d); font-size: 10px; overflow-wrap: anywhere; }
+.receive-address-selected-copy > strong { color: var(--ink, #24392d); font-size: 13px; }
+.receive-address-change { flex: 0 0 auto; padding: 7px 9px; border: 1px solid var(--line, #dce5dc); border-radius: 8px; background: transparent; color: var(--ink, #24392d); font: 700 10px system-ui; cursor: pointer; }
+.receive-address-change:hover { border-color: #75a75f; color: #75a75f; }
 .receive-address-choice-copy b { font-size: 11px; overflow-wrap: anywhere; }
 .receive-address-choice-tags { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: 0 0 auto; }
 .receive-address-choice-tags small { font-size: 9px; font-weight: 800; white-space: nowrap; }
@@ -2198,9 +2205,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 :root[data-theme="dark"] .receive-address-picker-heading small, :root[data-theme="dark"] .receive-address-choice-copy small { color: #a3b3a7; }
 :root[data-theme="dark"] .receive-address-choice { border-color: #35483a; background: #1c2b21; color: #e7efe7; }
 :root[data-theme="dark"] .receive-address-choice.selected { border-color: #86b56d; background: #273d2b; }
+:root[data-theme="dark"] .receive-address-selected-card { border-color: #35483a; background: #1c2b21; }
+:root[data-theme="dark"] .receive-address-selected-copy > code, :root[data-theme="dark"] .receive-address-selected-copy > strong { color: #e7efe7; }
+:root[data-theme="dark"] .receive-address-change { border-color: #526b57; color: #dce9dd; }
 :root[data-theme="dark"] .receive-address-pending-warning { border-color: #805e36; background: #392b1c; color: #ffd49c; }
 :root[data-theme="dark"] .receive-address-payout-note { color: #e5eee6; }
-@media (max-width: 420px) { .receive-address-picker { padding: 11px; } .receive-address-choice { align-items: flex-start; padding: 10px; } .receive-address-choice-tags { align-items: flex-end; } }
+@media (max-width: 420px) { .receive-address-picker { padding: 11px; } .receive-address-choice { align-items: flex-start; padding: 10px; } .receive-address-choice-tags { align-items: flex-end; } .receive-address-selected-card { align-items: flex-start; flex-direction: column; } .receive-address-change { align-self: flex-start; } }
 
 
 /* Mainnet circle lifecycle: keep status controls and action explanations visible on mobile. */
