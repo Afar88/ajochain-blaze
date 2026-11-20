@@ -816,9 +816,9 @@ export default function App() {
         {page === "overview" && (
           <>
             <section className="welcome-hero">
-              <div className="welcome-kicker"><span /> SAVINGS, WITH SHARED RESPONSIBILITY</div>
-              <h1>Build together.<br /><em>Stay accountable.</em></h1>
-              <p>Run a rotating savings circle with transparent member credit, clear payout rules and a fee shown before anyone joins.</p>
+              <div className="welcome-kicker"><span /> AJO · ESUSU · ON BITCOIN CASH</div>
+              <h1>Your Ajo savings circle,<br /><em>on Bitcoin Cash.</em></h1>
+              <p>Save with people you trust. Everyone puts in the same amount, one member collects each round, and the rules are kept by the blockchain, not a middleman.</p>
               <button className="primary-button hero-cta" type="button" onClick={() => navigate("create-circle")}>
                 Create a circle <ArrowRight size={16} />
               </button>
@@ -834,16 +834,16 @@ export default function App() {
               <article className="overview-status-card">
                 <div className="status-card-icon"><ShieldCheck size={18} /></div>
                 <div><span className="status-label">NETWORK</span><b>{NETWORKS[network].label}</b>
-                  <small>{network === "chipnet" ? "Testing environment · no real funds" : "Mainnet · read-only release controls"}</small></div>
+                  <small>{network === "chipnet" ? "Testing environment · no real funds" : "Real money · you approve every payment in your wallet"}</small></div>
                 <button type="button" className="status-action" onClick={() => setMenuOpen(true)}>Change <ChevronDown size={13} /></button>
               </article>
             </section>
 
             <section className="asset-preview">
-              <div><span className="section-kicker">SUPPORTED ASSETS</span><h2>BCH and PUSD</h2><p>Separate asset paths, with token verification and fees kept visible.</p></div>
+              <div><span className="section-kicker">SUPPORTED ASSETS</span><h2>BCH and PUSD</h2><p>Pick what your circle saves in. Fees are always shown up front.</p></div>
               <div className="asset-preview-rows">
-                <div><span className="asset-symbol">B</span><span><b>Bitcoin Cash</b><small>Chipnet testing · Mainnet V3 genesis preview only</small></span><span className="asset-state">Available</span></div>
-                <div><span className="asset-symbol pusd-symbol">P</span><span><b>ParyonUSD</b><small>Mainnet identity pinned · verified balance requires the quorum API</small></span><span className="asset-state neutral">Read only</span></div>
+                <div><span className="asset-symbol">B</span><span><b>Bitcoin Cash</b><small>Save in Bitcoin Cash · practise free on the test network first</small></span><span className="asset-state">Available</span></div>
+                <div><span className="asset-symbol pusd-symbol">P</span><span><b>ParyonUSD</b><small>Save in dollars with ParyonUSD · balances checked on-chain</small></span><span className="asset-state neutral">Read only</span></div>
               </div>
               <button type="button" className="text-action" onClick={() => navigate("assets")}>View asset details <ArrowRight size={14} /></button>
             </section>
