@@ -621,7 +621,7 @@ export default function App() {
         : "\n\nCashTokens and pending circle setup coins are not moved.";
       if (gatherNetwork === "mainnet" && gatherWalletIdentity) {
         setGatherMessage("Coin scan complete. Checking that the same Selene wallet and confirmed receive address are back online…");
-        await walletClient.waitForConfirmedSession(gatherWalletIdentity, destinationAddress, "mainnet", 25_000);
+        await walletClient.waitForConfirmedSession(gatherWalletIdentity, destinationAddress, walletAddresses, "mainnet", 25_000);
       }
       if (!window.confirm(
         "Gather " + plan.inputCount + " " + networkLabel + " BCH coin(s) into one coin at " + plan.destination + "?\n\n" +
@@ -630,7 +630,7 @@ export default function App() {
       )) { setGatherMessage(""); return; }
       if (gatherNetwork === "mainnet" && gatherWalletIdentity) {
         setGatherMessage("Preparing a single signing request for Selene…");
-        await walletClient.waitForConfirmedSession(gatherWalletIdentity, destinationAddress, "mainnet", 20_000);
+        await walletClient.waitForConfirmedSession(gatherWalletIdentity, destinationAddress, walletAddresses, "mainnet", 20_000);
       }
       // WizardConnect retains pending signing requests and re-delivers them
       // after wallet_ready; keep one request/sequence and never retry it here.
@@ -644,7 +644,7 @@ export default function App() {
       if (gatherNetwork === "mainnet") {
         if (!gatherWalletIdentity) throw new Error("The original Selene wallet identity is unavailable. The signed transaction was not broadcast.");
         setGatherMessage("Signature received. Rechecking the same Selene wallet before submitting the BCH gather…");
-        await walletClient.waitForConfirmedSession(gatherWalletIdentity, destinationAddress, "mainnet", 20_000);
+        await walletClient.waitForConfirmedSession(gatherWalletIdentity, destinationAddress, walletAddresses, "mainnet", 20_000);
         const response = await fetch("/api/bch/gather", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
