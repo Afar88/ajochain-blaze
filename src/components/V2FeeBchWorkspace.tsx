@@ -80,10 +80,11 @@ type Props = {
   view?: "create" | "circle";
   selectedCircle?: string | null;
   onCircleSaved?: () => void;
+  onBusyChange?: (busy: boolean) => void;
 };
 
 export default function V2FeeBchWorkspace({
-  network, walletConnected, view = "create", selectedCircle = null, onCircleSaved,
+  network, walletConnected, view = "create", selectedCircle = null, onCircleSaved, onBusyChange,
 }: Props) {
   const [, setSaved] = useState<SavedCircle[]>(readSaved);
   const [selected, setSelected] = useState<string | null>(() => selectedCircle ?? readSaved()[0]?.encoded ?? null);
@@ -98,6 +99,11 @@ export default function V2FeeBchWorkspace({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
 
   const active = useMemo(() => {
     if (!selected) return null;
