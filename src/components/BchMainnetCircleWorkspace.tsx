@@ -23,6 +23,7 @@ type Props = {
   network: NetworkId;
   walletConnected: boolean;
   onOpenWalletDetails: () => void;
+  selectedCircle?: string | null;
 };
 
 type Draft = { name: string; contribution: string; members: string[]; initiator?: string; maxFee: string; savedAt: number };
@@ -122,8 +123,8 @@ function errorMessage(cause: unknown) {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-export default function BchMainnetCircleWorkspace({ network, walletConnected, onOpenWalletDetails }: Props) {
-  const [name, setName] = useState("My BCH Ajo Circle");
+export default function BchMainnetCircleWorkspace({ network, walletConnected, onOpenWalletDetails, selectedCircle = null }: Props) {
+  const [name, setName] = useState(() => "BCH Ajo circle – " + new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" }));
   const [contribution, setContribution] = useState("0.002");
   const [membersText, setMembersText] = useState("");
   const [maxFee, setMaxFee] = useState("10000");
@@ -521,6 +522,21 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
     setPreview(null);
     setError("");
   };
+
+  useEffect(() => {
+    if (!selectedCircle) return;
+    try {
+      const circle = decodeV2FeeCircle(selectedCircle);
+      if (circle.network !== "mainnet" || circle.covenant !== "fee-v3-auto-reserve-mainnet") {
+        throw new Error("This saved circle is not a BCH Mainnet circle.");
+      }
+      selectCircle(circle);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  // The selected-circle key changes when a different menu record is opened.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCircle]);
 
   const importInvite = (text: string) => {
     setError("");

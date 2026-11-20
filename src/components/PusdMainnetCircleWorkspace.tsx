@@ -19,7 +19,7 @@ import { broadcastPusdMainnetCircleSignedTransaction, verifyPusdMainnetCircleSig
 import { wallet } from "../core/wizard-wallet";
 import type { NetworkId } from "../core/network-config";
 
-type Props = { network: NetworkId; walletConnected: boolean };
+type Props = { network: NetworkId; walletConnected: boolean; selectedCircle?: string | null };
 type Draft = {
   name: string;
   contribution: string;
@@ -172,8 +172,8 @@ function errorMessage(cause: unknown) {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-export default function PusdMainnetCircleWorkspace({ network, walletConnected }: Props) {
-  const [name, setName] = useState("My PUSD Ajo Circle");
+export default function PusdMainnetCircleWorkspace({ network, walletConnected, selectedCircle = null }: Props) {
+  const [name, setName] = useState(() => "PUSD Ajo circle – " + new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" }));
   const [contribution, setContribution] = useState("10.00");
   const [membersText, setMembersText] = useState("");
   const [maxFee, setMaxFee] = useState("20000");
@@ -203,6 +203,21 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
   const [actionSigningPlan, setActionSigningPlan] = useState<MainnetSigningPlan | null>(null);
   const [deployedCircles, setDeployedCircles] = useState<PusdMainnetCircleParams[]>(readDeployedCircles);
   const [inviteInput, setInviteInput] = useState("");
+
+  useEffect(() => {
+    if (!selectedCircle) return;
+    const circle = deserializeCircle(selectedCircle);
+    if (!circle) {
+      setError("This saved PUSD circle could not be opened.");
+      return;
+    }
+    setActiveCircle(circle);
+    persistActiveCircle(circle);
+    setCircleSnapshot(null);
+    setGenesisSigningPlan(null);
+    setActionSigningPlan(null);
+    setNotice("Opened " + circle.name + ". Check the circle details before taking action.");
+  }, [selectedCircle]);
   useEffect(() => {
     const hash = window.location.hash;
     if (!hash.startsWith(INVITE_ROUTE)) return;
@@ -721,7 +736,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
 
       <div className="pusd-mainnet-build-status">
         <LockKeyhole size={16} />
-        <span><b>PUSD Mainnet circles are live</b><small>Members approve each payment in Selene. The app checks the circle details before sending. Plain PUSD wallet transfers remain locked.</small>
+        <span><b>PUSD Mainnet circle rules</b><small>Members approve each payment in Selene. The app checks the circle details before sending. Plain PUSD wallet transfers remain locked.</small>
           <details className="technical-details">
             <summary>Technical details</summary>
             <p>Circle actions are checked against provider-confirmed previous outputs, the exact circle and escrow artifacts, wallet signature hashes and BCH 2026 VM rules. The durable input ledger prevents a transaction from being relayed twice.</p>

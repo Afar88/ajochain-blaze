@@ -87,7 +87,7 @@ export default function V2FeeBchWorkspace({
 }: Props) {
   const [, setSaved] = useState<SavedCircle[]>(readSaved);
   const [selected, setSelected] = useState<string | null>(() => selectedCircle ?? readSaved()[0]?.encoded ?? null);
-  const [name, setName] = useState("My Ajo Circle");
+  const [name, setName] = useState(() => "Ajo circle – " + new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" }));
   const [amount, setAmount] = useState("0.002");
   const [maxFee, setMaxFee] = useState("10000");
   const [treasury, setTreasury] = useState(DEFAULT_TREASURY);
