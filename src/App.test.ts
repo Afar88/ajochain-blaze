@@ -1,9 +1,13 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   getCancelledDiscoveryStatus,
   getDiscoveryEffectDependencies,
   getDiscoveryNetworkStatus,
   getWalletBchBalanceSummary,
+  CircleNetworkRiskNotice,
+  shouldExpandCircleNetworkRiskNotice,
 } from "./App";
 
 describe("App wallet discovery lifecycle", () => {
@@ -116,5 +120,25 @@ describe("App wallet BCH balance summary", () => {
     });
     expect(summary.balanceLabel).toBe("Not checked yet");
     expect(summary.sourceLabel).toBe("No wallet scan in this session");
+  });
+});
+
+
+describe("Circle network risk notice rendering", () => {
+  it("renders one Mainnet notice with the exact risk copy", () => {
+    const html = renderToStaticMarkup(createElement(CircleNetworkRiskNotice, { network: "mainnet" }));
+    expect((html.match(/circle-network-risk-notice/g) ?? []).length).toBe(1);
+    expect(html).toContain("Real BCH. The circle contract hasn&#x27;t had an independent audit yet. Start with small amounts.");
+  });
+
+  it("renders one Chipnet notice with the exact test-network copy", () => {
+    const html = renderToStaticMarkup(createElement(CircleNetworkRiskNotice, { network: "chipnet" }));
+    expect((html.match(/circle-network-risk-notice/g) ?? []).length).toBe(1);
+    expect(html).toContain("Test network. No real money.");
+  });
+
+  it("expands on first view and starts collapsed after the notice has been seen", () => {
+    expect(shouldExpandCircleNetworkRiskNotice(false)).toBe(true);
+    expect(shouldExpandCircleNetworkRiskNotice(true)).toBe(false);
   });
 });
