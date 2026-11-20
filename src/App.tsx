@@ -16,13 +16,18 @@ import {
   dedupeSavedV2FeeCircleRecords,
   getV2FeeCircleRecordIdentity,
 } from "./core/v2-fee-circle-records";
+import {
+  ensureSavedCircleMetadata,
+  filterSavedCirclesByNetwork,
+  filterSavedCirclesByStatus,
+} from "./circles/saved-circle-status";
 const ClassicBchWorkspace = lazy(() => import("./components/ClassicBchWorkspace"));
 const V2FeeBchWorkspace = lazy(() => import("./components/V2FeeBchWorkspace"));
 const PusdMainnetCircleWorkspace = lazy(() => import("./components/PusdMainnetCircleWorkspace"));
 const BchMainnetCircleWorkspace = lazy(() => import("./components/BchMainnetCircleWorkspace"));
 const ActivityRecords = lazy(() => import("./components/ActivityRecords"));
 
-type Page = "overview" | "create-circle" | "circle-detail" | "assets" | "activity";
+type Page = "overview" | "create-circle" | "my-circles" | "circle-detail" | "assets" | "activity";
 type MenuCircleKind = "v2-fee" | "classic" | "bch-mainnet" | "pusd-mainnet";
 type MenuCircle = {
   id: string;
@@ -32,6 +37,13 @@ type MenuCircle = {
   detail: string;
   network: NetworkId;
   kind: MenuCircleKind;
+  asset: "BCH" | "PUSD";
+  contribution: string;
+  contributionLabel: string;
+  memberCount: number;
+  status: "active" | "completed";
+  completedAt: number | null;
+  round: number | null;
 };
 
 const BCH_MAINNET_CIRCLES_STORAGE_KEY = "ajochain-blaze:bch-mainnet-circles-deployed:v1";
@@ -62,8 +74,12 @@ function readSavedCircleMenuRecords(): MenuCircle[] {
   ) => {
     if (seen.has(id)) return;
     seen.add(id);
+    let formattedContribution = "";
     let amount = "";
-    try { amount = formatAssetAmount(asset, BigInt(contribution)) + " " + asset; } catch { /* use saved date */ }
+    try {
+      formattedContribution = formatAssetAmount(asset, BigInt(contribution));
+      amount = formattedContribution + " " + asset;
+    } catch { /* use saved date */ }
     const networkLabel = network === "mainnet" ? "Mainnet" : "Chipnet";
     const savedLabel = Number.isSafeInteger(savedAt)
       ? "Saved " + new Date(savedAt as number).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
@@ -74,6 +90,8 @@ function readSavedCircleMenuRecords(): MenuCircle[] {
     records.push({
       id, kind, encoded, name: name.trim() || "Ajo circle", detail,
       label: (name.trim() || "Ajo circle") + " · " + detail, network,
+      asset, contribution, contributionLabel: formattedContribution || "Contribution unavailable", memberCount,
+      status: "active", completedAt: null, round: null,
     });
   };
 
@@ -111,7 +129,8 @@ function readSavedCircleMenuRecords(): MenuCircle[] {
         const payload: unknown = JSON.parse(encoded);
         if (!payload || typeof payload !== "object" || Array.isArray(payload)) continue;
         const circle = payload as Record<string, unknown>;
-        if (typeof circle.name !== "string" || typeof circle.stateCategory !== "string" ||
+        if (circle.network !== "mainnet" ||
+            typeof circle.name !== "string" || typeof circle.stateCategory !== "string" ||
             typeof circle.contribution !== "string" || !/^\d+$/.test(circle.contribution) ||
             !Array.isArray(circle.members) || !circle.members.every((member) => typeof member === "string")) continue;
         add("pusd:" + circle.stateCategory.toLowerCase(), "pusd-mainnet", encoded, circle.name, "mainnet", "PUSD",
@@ -138,12 +157,32 @@ function readSavedCircleMenuRecords(): MenuCircle[] {
   } catch { /* Ignore malformed or unavailable storage. */ }
 
   const duplicateLabels = new Map<string, number>();
-  return records.map((record) => {
+  const uniqueRecords = records.map((record) => {
     const count = (duplicateLabels.get(record.label) ?? 0) + 1;
     duplicateLabels.set(record.label, count);
     return count > 1
       ? { ...record, detail: record.detail + " · #" + count, label: record.label + " #" + count }
       : record;
+  });
+  const metadata = ensureSavedCircleMetadata(window.localStorage, uniqueRecords.map((circle) => ({
+    id: circle.id,
+    encoded: circle.encoded,
+    network: circle.network,
+    kind: circle.kind,
+    name: circle.name,
+    asset: circle.asset,
+    contribution: circle.contribution,
+    memberCount: circle.memberCount,
+  })));
+  const byId = new Map(metadata.map((circle) => [circle.id, circle]));
+  return uniqueRecords.map((circle) => {
+    const saved = byId.get(circle.id);
+    return {
+      ...circle,
+      status: saved?.status ?? "active",
+      completedAt: saved?.completedAt ?? null,
+      round: saved?.round ?? null,
+    };
   });
 }
 type ThemePreference = "system" | "light" | "dark";
@@ -195,6 +234,7 @@ const CREATE_CIRCLE_FORM_HISTORY_KEY = "__ajoCreateCircleFormEntry";
 const pageLabels: Record<Page, string> = {
   overview: "Overview",
   "create-circle": "Create a circle",
+  "my-circles": "My circles",
   "circle-detail": "Circle details",
   assets: "Wallet",
   activity: "Activity",
@@ -211,6 +251,7 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuCircles, setMenuCircles] = useState<MenuCircle[]>(readSavedCircleMenuRecords);
   const [selectedMenuCircle, setSelectedMenuCircle] = useState<string | null>(null);
+  const [circleStatusTab, setCircleStatusTab] = useState<"active" | "completed">("active");
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => {
     if (typeof window === "undefined") return "dark";
     try {
@@ -274,16 +315,22 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [gatherMessage, discoveryMessage, addressMatchMessage, pusdSignatureMessage, pusdPlanError]);
 
-  const selectedCircleRecord = menuCircles.find((circle) => circle.id === selectedMenuCircle) ?? null;
+  const selectedCircleRecord = menuCircles.find((circle) =>
+    circle.id === selectedMenuCircle && circle.network === network,
+  ) ?? null;
+  const visibleNetworkCircles = filterSavedCirclesByNetwork(menuCircles, network);
+  const visibleStatusCircles = filterSavedCirclesByStatus(visibleNetworkCircles, circleStatusTab);
   const menuLabel = pageLabels[page];
 
   useEffect(() => {
     const refreshSavedCircles = () => setMenuCircles(readSavedCircleMenuRecords());
     window.addEventListener("storage", refreshSavedCircles);
     window.addEventListener("ajochain:bch-mainnet-circles-changed", refreshSavedCircles);
+    window.addEventListener("ajochain:saved-circles-changed", refreshSavedCircles);
     return () => {
       window.removeEventListener("storage", refreshSavedCircles);
       window.removeEventListener("ajochain:bch-mainnet-circles-changed", refreshSavedCircles);
+      window.removeEventListener("ajochain:saved-circles-changed", refreshSavedCircles);
     };
   }, []);
 
@@ -307,6 +354,10 @@ export default function App() {
     if (next === "create-circle") {
       setCreateCircleView("choose");
       setCreateCircleWorkspaceBusy(false);
+    }
+    if (next === "my-circles") {
+      setCircleStatusTab("active");
+      setMenuCircles(readSavedCircleMenuRecords());
     }
     setPage(next);
     setMenuOpen(false);
@@ -943,6 +994,8 @@ export default function App() {
   const changeNetwork = (next: NetworkId) => {
     setNetwork(next);
     setCircleWorkspace((current) => resolveCircleWorkspaceForNetwork(current, next));
+    if (page === "circle-detail") setPage("my-circles");
+    setSelectedMenuCircle(null);
     setMenuOpen(false);
     setAddressMatchMessage("");
     setSeleneAddress("");
@@ -1000,29 +1053,9 @@ export default function App() {
                 <button className={page === "create-circle" ? "dropdown-item active" : "dropdown-item"} onClick={() => navigate("create-circle")}>
                   <Users size={17} /><span>Create a circle</span>{page === "create-circle" && <Check size={15} />}
                 </button>
-                {menuCircles.length > 0 && (
-                  <>
-                    <div className="dropdown-label circle-menu-label">CIRCLE RECORDS</div>
-                    {menuCircles.map((circle) => (
-                      <button
-                        key={circle.id}
-                        className={"dropdown-item circle-record-item" + (page === "circle-detail" && selectedMenuCircle === circle.id ? " active" : "")}
-                        onClick={() => {
-                          setSelectedMenuCircle(circle.id);
-                          setNetwork(circle.network);
-                          setCircleWorkspace(circle.kind === "v2-fee" ? "bch-fair-round"
-                            : circle.kind === "classic" ? "bch-classic"
-                              : circle.kind === "bch-mainnet" ? "bch-mainnet" : "pusd-mainnet");
-                          navigate("circle-detail");
-                        }}
-                      >
-                        <Users size={16} />
-                        <span className="circle-record-copy"><b>{circle.name}</b><small>{circle.detail}</small></span>
-                        {page === "circle-detail" && selectedMenuCircle === circle.id && <Check size={15} />}
-                      </button>
-                    ))}
-                  </>
-                )}
+                <button className={page === "my-circles" || page === "circle-detail" ? "dropdown-item active" : "dropdown-item"} onClick={() => navigate("my-circles")}>
+                  <Users size={17} /><span>My circles</span>{(page === "my-circles" || page === "circle-detail") && <Check size={15} />}
+                </button>
                 <button className={page === "assets" ? "dropdown-item active" : "dropdown-item"} onClick={() => navigate("assets")}>
                   <Wallet size={17} /><span>Wallet</span>{page === "assets" && <Check size={15} />}
                 </button>
@@ -1206,8 +1239,72 @@ export default function App() {
           </section>
         )}
 
-        {page === "circle-detail" && selectedMenuCircle && (
+        {page === "my-circles" && (
+          <section className="page-section my-circles-page">
+            <div className="page-intro">
+              <span className="section-kicker">YOUR SAVINGS CIRCLES</span>
+              <h1>{network === "mainnet" ? "Mainnet circles" : "Chipnet test circles"}</h1>
+              <p>Circles are shown only for the network selected in the navigation menu.</p>
+            </div>
+            <div className="my-circles-tabs" role="tablist" aria-label="Circle status">
+              <button type="button" role="tab" aria-selected={circleStatusTab === "active"}
+                className={circleStatusTab === "active" ? "selected" : ""}
+                onClick={() => setCircleStatusTab("active")}>Active</button>
+              <button type="button" role="tab" aria-selected={circleStatusTab === "completed"}
+                className={circleStatusTab === "completed" ? "selected" : ""}
+                onClick={() => setCircleStatusTab("completed")}>Completed</button>
+            </div>
+            {visibleStatusCircles.length === 0 ? (
+              <div className="my-circles-empty">
+                {circleStatusTab === "active" ? (
+                  <>
+                    <h2>No active circles on {network === "mainnet" ? "Mainnet" : "Chipnet"} yet</h2>
+                    <p>New circles appear here as soon as they are saved on this network.</p>
+                    <button type="button" className="primary-button" onClick={() => navigate("create-circle")}>Create a circle</button>
+                  </>
+                ) : (
+                  <>
+                    <h2>No completed circles yet</h2>
+                    <p>Circles move here after the blockchain confirms that every payout is complete.</p>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="my-circles-list">
+                {visibleStatusCircles.map((circle) => (
+                  <button type="button" key={circle.id} className="my-circle-row" onClick={() => {
+                    setSelectedMenuCircle(circle.id);
+                    setCircleWorkspace(circle.kind === "v2-fee" ? "bch-fair-round"
+                      : circle.kind === "classic" ? "bch-classic"
+                        : circle.kind === "bch-mainnet" ? "bch-mainnet" : "pusd-mainnet");
+                    setPage("circle-detail");
+                    setMenuOpen(false);
+                  }}>
+                    <span className="my-circle-copy">
+                      <b>{circle.name}</b>
+                      <span>{circle.asset} · {circle.contributionLabel} · {circle.memberCount} members</span>
+                      <small>{circle.status === "completed"
+                        ? "Completed" + (circle.completedAt ? " · " + new Date(circle.completedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "")
+                        : circle.round === null
+                          ? "Round progress pending · " + circle.memberCount + " members"
+                          : "Round " + Math.min(circle.round + 1, circle.memberCount) + " of " + circle.memberCount}</small>
+                    </span>
+                    <span className={circle.status === "completed" ? "my-circle-status completed" : "my-circle-status"}>{circle.status === "completed" ? "Completed" : "Active"}</span>
+                    <ArrowRight size={17} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {page === "circle-detail" && selectedCircleRecord && (
           <section className="page-section">
+            <button type="button" className="secondary-button my-circles-back" onClick={() => {
+              setMenuCircles(readSavedCircleMenuRecords());
+              setSelectedMenuCircle(null);
+              setPage("my-circles");
+            }}>← Back to My circles</button>
             <div className="page-intro">
               <span className="section-kicker">YOUR SAVINGS CIRCLE</span>
               <h1>{selectedCircleRecord?.name ?? "Circle details"}</h1>

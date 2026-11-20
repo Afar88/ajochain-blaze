@@ -5,6 +5,7 @@ import { buildClassicInviteRoute, loadSavedClassicCircles, restoreClassicCircleF
 import { parseAssetAmount } from "../core/assets";
 import { formatBch, type NetworkId } from "../core/network";
 import { wallet } from "../core/wizard-wallet";
+import { updateSavedCircleProgress } from "../circles/saved-circle-status";
 
 type Props = {
   network: NetworkId;
@@ -19,7 +20,9 @@ function message(error: unknown) {
 
 export default function ClassicBchWorkspace({ network, walletConnected, selectedCircle = null, onBusyChange }: Props) {
   const [saved, setSaved] = useState<SavedClassicCircle[]>(() => loadSavedClassicCircles(window.localStorage));
-  const [selected, setSelected] = useState<string | null>(() => selectedCircle ?? loadSavedClassicCircles(window.localStorage)[0]?.encoded ?? null);
+  const [selected, setSelected] = useState<string | null>(() => selectedCircle ?? loadSavedClassicCircles(window.localStorage).find((entry) => {
+    try { return decodeClassicCircle(entry.encoded).network === network; } catch { return false; }
+  })?.encoded ?? null);
   const [name, setName] = useState(() => "Ajo circle – " + new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" }));
   const [amount, setAmount] = useState("0.001");
   const [maxFee, setMaxFee] = useState("10000");
@@ -38,13 +41,42 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
 
   const activeCircle = useMemo(() => {
     if (!selected) return null;
-    try { return decodeClassicCircle(selected); } catch { return null; }
-  }, [selected]);
+    try {
+      const circle = decodeClassicCircle(selected);
+      return circle.network === network ? circle : null;
+    } catch { return null; }
+  }, [selected, network]);
+
+  const networkSavedCount = useMemo(() => saved.filter((entry) => {
+    try { return decodeClassicCircle(entry.encoded).network === network; } catch { return false; }
+  }).length, [saved, network]);
+
+  useEffect(() => {
+    if (selectedCircle) return;
+    const next = loadSavedClassicCircles(window.localStorage).find((entry) => {
+      try { return decodeClassicCircle(entry.encoded).network === network; } catch { return false; }
+    });
+    setSelected(next?.encoded ?? null);
+  }, [network, selectedCircle]);
 
   const persist = (params: ClassicCircleParams) => {
     const next = saveClassicCircle(window.localStorage, params);
     setSaved(next);
     setSelected(next[0]?.encoded ?? null);
+  };
+
+  const saveChainProgress = (params: ClassicCircleParams, circleStatus: ClassicCircleStatus, encoded: string | null) => {
+    if (!encoded) return;
+    updateSavedCircleProgress(window.localStorage, {
+      id: "classic:" + params.network + ":" + params.stateCategory.toLowerCase(),
+      encoded,
+      network: params.network,
+      kind: "classic",
+      name: params.name,
+      asset: "BCH",
+      contribution: params.contribution.toString(),
+      memberCount: params.members.length,
+    }, circleStatus.round, circleStatus.completed);
   };
 
   const refresh = async (params = activeCircle) => {
@@ -54,6 +86,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
     try {
       const snapshot = await readClassicCircle(params);
       setStatus(snapshot.status);
+      saveChainProgress(params, snapshot.status, selected);
       setContractAddress(snapshot.contract.address);
       setNotice("Chain data refreshed from " + params.network + ". For Mainnet, the app checks the circle details with independent blockchain providers.");
     } catch (cause) {
@@ -72,12 +105,16 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
     let current = true;
     setStatus(null);
     void readClassicCircle(activeCircle).then((snapshot) => {
-      if (current) { setStatus(snapshot.status); setContractAddress(snapshot.contract.address); }
+      if (current) {
+        setStatus(snapshot.status);
+        saveChainProgress(activeCircle, snapshot.status, selected);
+        setContractAddress(snapshot.contract.address);
+      }
     }).catch((cause: unknown) => {
       if (current) setError(message(cause));
     });
     return () => { current = false; };
-  }, [selected, activeCircle?.stateCategory]);
+  }, [selected, activeCircle?.stateCategory, network]);
 
   const connect = () => {
     setError("");
@@ -346,6 +383,9 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
     setError("");
     try {
       const restored = restoreClassicCircleFromInvite(restoreInput);
+      if (restored.network !== network) {
+        throw new Error("This invite is for " + (restored.network === "mainnet" ? "Mainnet" : "Chipnet") + ". Use the network switcher before restoring it here.");
+      }
       const next = saveClassicCircle(window.localStorage, restored);
       setSaved(next);
       setSelected(next[0]?.encoded ?? null);
@@ -382,7 +422,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
       </div>
 
       <div className="classic-account-summary">
-        <div><b>{saved.length}</b><span>Circles saved on this browser</span></div>
+        <div><b>{networkSavedCount}</b><span>Circles on this network</span></div>
         <div><b>{walletConnected ? "Connected" : "Not connected"}</b><span>WizardConnect wallet</span></div>
         <p>Local account index only. It does not create a cloud login or synchronize data across devices; keep invite links as a recovery method.</p>
       </div>
@@ -411,36 +451,14 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
         </div>
 
         <div className="classic-account-panel">
-          <h3>My circles</h3>
-          {saved.length ? (
-            <div className="classic-saved-list">
-              {saved.map((entry) => {
-                let params: ClassicCircleParams | null = null;
-                try { params = decodeClassicCircle(entry.encoded); } catch { /* filtered by loader */ }
-                if (!params) return null;
-                return (
-                  <button
-                    type="button"
-                    key={entry.encoded}
-                    className={selected === entry.encoded ? "classic-saved-item selected" : "classic-saved-item"}
-                    onClick={() => { setSelected(entry.encoded); setError(""); }}
-                  >
-                    <b>{params.name}</b>
-                    <span>{params.network} · {params.members.length} members · {formatBch(params.contribution)} each</span>
-                    <small>Saved {new Date(entry.savedAt).toLocaleDateString()}</small>
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="classic-empty">No circles saved yet. Create one or restore an invite link.</p>
-          )}
+          <h3>Restore an existing circle</h3>
           <form className="classic-restore-form" onSubmit={restore}>
-            <label>Restore a circle invite link
+            <label>Circle invite link
               <input value={restoreInput} onChange={(event) => setRestoreInput(event.target.value)} placeholder="Paste the full invite URL" />
             </label>
             <button type="submit" className="secondary-button">Restore circle</button>
           </form>
+          <p className="classic-empty">Your saved circles are listed in My circles, grouped by the selected network.</p>
         </div>
       </div>
 

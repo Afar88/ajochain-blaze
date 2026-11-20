@@ -16,6 +16,8 @@ import {
   type V2FeeCircleParams,
 } from "../core/v2-fee-bch";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "../core/project-treasury";
+import { getV2FeeCircleRecordIdentity } from "../core/v2-fee-circle-records";
+import { updateSavedCircleProgress } from "../circles/saved-circle-status";
 import { wallet } from "../core/wizard-wallet";
 import type { NetworkId } from "../core/network-config";
 
@@ -131,7 +133,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
   const [maxFee, setMaxFee] = useState("10000");
   const [drafts, setDrafts] = useState<Draft[]>(readDrafts);
   const [activeCircle, setActiveCircle] = useState<V2FeeCircleParams | null>(readActiveCircle);
-  const [deployedCircles, setDeployedCircles] = useState<V2FeeCircleParams[]>(readDeployedCircles);
+  const [, setDeployedCircles] = useState<V2FeeCircleParams[]>(readDeployedCircles);
   const [inviteInput, setInviteInput] = useState("");
   useEffect(() => {
     const refresh = () => setDeployedCircles(readDeployedCircles());
@@ -290,6 +292,21 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
     setNotice("Local draft loaded. Confirm the member addresses and prepare a fresh Mainnet preview.");
   };
 
+  const persistChainProgress = (circle: V2FeeCircleParams, encoded: string, snapshot: Awaited<ReturnType<typeof readV2FeeCircle>>) => {
+    const identity = getV2FeeCircleRecordIdentity(encoded);
+    if (!identity) return;
+    updateSavedCircleProgress(window.localStorage, {
+      id: "v2:" + identity.key,
+      encoded,
+      network: "mainnet",
+      kind: "bch-mainnet",
+      name: circle.name,
+      asset: "BCH",
+      contribution: circle.contribution.toString(),
+      memberCount: circle.members.length,
+    }, snapshot.round, snapshot.completed);
+  };
+
   const readActiveOnChainState = async () => {
     if (!activeCircle) return;
     setLifecycleBusy(true);
@@ -300,6 +317,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
     try {
       const snapshot = await readV2FeeCircle(activeCircle);
       setCircleSnapshot(snapshot);
+      persistChainProgress(activeCircle, encodeV2FeeCircleParams(activeCircle), snapshot);
       setNotice("BCH Mainnet circle details checked on the blockchain. This is a read-only status check.");
     } catch (cause) {
       setCircleSnapshot(null);
@@ -531,15 +549,24 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
 
   useEffect(() => {
     if (!selectedCircle) return;
+    let current = true;
     try {
       const circle = decodeV2FeeCircle(selectedCircle);
       if (circle.network !== "mainnet" || circle.covenant !== "fee-v3-auto-reserve-mainnet") {
         throw new Error("This saved circle is not a BCH Mainnet circle.");
       }
       selectCircle(circle);
+      void readV2FeeCircle(circle).then((snapshot) => {
+        if (!current) return;
+        setCircleSnapshot(snapshot);
+        persistChainProgress(circle, selectedCircle, snapshot);
+      }).catch((cause: unknown) => {
+        if (current) setError(errorMessage(cause));
+      });
     } catch (cause) {
       setError(errorMessage(cause));
     }
+    return () => { current = false; };
   // The selected-circle key changes when a different menu record is opened.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCircle]);
@@ -801,22 +828,12 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
       {notice && <p className="classic-notice" role="status">{notice}</p>}
 
       <div className="pusd-mainnet-saved">
-        <div className="section-heading"><div><span className="section-kicker">ON-CHAIN</span><h3>Your BCH Mainnet circles</h3></div><small>{deployedCircles.length} saved</small></div>
+        <div className="section-heading"><div><span className="section-kicker">INVITE</span><h3>Add an existing BCH Mainnet circle</h3></div></div>
         <form className="classic-form" onSubmit={joinWithInvite}>
-          <label>Join a circle with an invite link<input value={inviteInput} onChange={(event) => setInviteInput(event.target.value)} placeholder="Paste circle invite link" /></label>
+          <label>Circle invite link<input value={inviteInput} onChange={(event) => setInviteInput(event.target.value)} placeholder="Paste circle invite link" /></label>
           <button type="submit" className="secondary-button" disabled={!inviteInput.trim()}>Add circle</button>
         </form>
-        {deployedCircles.length === 0 ? <p className="classic-empty">No sent or joined BCH Mainnet circles on this browser.</p> : (
-          <div className="classic-saved-list">
-            {deployedCircles.map((circle) => (
-              <button type="button" className="classic-saved-item" key={circle.stateCategory} onClick={() => selectCircle(circle)}>
-                <b>{circle.name}</b>
-                <span>{formatAssetAmount("BCH", circle.contribution)} BCH · {circle.members.length} members</span>
-                <small>{circle.stateCategory.slice(0, 12)}…{activeCircle?.stateCategory === circle.stateCategory ? " · open" : ""}</small>
-              </button>
-            ))}
-          </div>
-        )}
+        <p className="classic-empty">Saved circles appear in My circles, grouped by the selected network.</p>
       </div>
 
       <div className="pusd-mainnet-saved">

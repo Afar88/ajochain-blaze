@@ -18,6 +18,7 @@ import {
 import { broadcastPusdMainnetCircleSignedTransaction, verifyPusdMainnetCircleSignedTransaction } from "../core/pusd-api";
 import { wallet } from "../core/wizard-wallet";
 import type { NetworkId } from "../core/network-config";
+import { updateSavedCircleProgress } from "../circles/saved-circle-status";
 
 type Props = { network: NetworkId; walletConnected: boolean; selectedCircle?: string | null; onBusyChange?: (busy: boolean) => void };
 type Draft = {
@@ -142,6 +143,23 @@ function persistActiveCircle(circle: PusdMainnetCircleParams) {
   window.localStorage.setItem(ACTIVE_CIRCLE_KEY, JSON.stringify(stored));
 }
 
+function persistPusdChainProgress(
+  circle: PusdMainnetCircleParams,
+  encoded: string,
+  snapshot: PusdMainnetCircleSnapshot,
+) {
+  updateSavedCircleProgress(window.localStorage, {
+    id: "pusd:" + circle.stateCategory.toLowerCase(),
+    encoded,
+    network: "mainnet",
+    kind: "pusd-mainnet",
+    name: circle.name,
+    asset: "PUSD",
+    contribution: circle.contribution.toString(),
+    memberCount: circle.members.length,
+  }, snapshot.round, snapshot.completed);
+}
+
 
 function readDrafts(): Draft[] {
   try {
@@ -201,7 +219,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
   } | null>(null);
   const [genesisSigningPlan, setGenesisSigningPlan] = useState<MainnetSigningPlan | null>(null);
   const [actionSigningPlan, setActionSigningPlan] = useState<MainnetSigningPlan | null>(null);
-  const [deployedCircles, setDeployedCircles] = useState<PusdMainnetCircleParams[]>(readDeployedCircles);
+  const [, setDeployedCircles] = useState<PusdMainnetCircleParams[]>(readDeployedCircles);
   const [inviteInput, setInviteInput] = useState("");
 
   useEffect(() => {
@@ -211,6 +229,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
 
   useEffect(() => {
     if (!selectedCircle) return;
+    let current = true;
     const circle = deserializeCircle(selectedCircle);
     if (!circle) {
       setError("This saved PUSD circle could not be opened.");
@@ -221,7 +240,15 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     setCircleSnapshot(null);
     setGenesisSigningPlan(null);
     setActionSigningPlan(null);
-    setNotice("Opened " + circle.name + ". Check the circle details before taking action.");
+    setNotice("Opened " + circle.name + ". Reading its current chain state.");
+    void readPusdMainnetCircle(circle).then((snapshot) => {
+      if (!current) return;
+      setCircleSnapshot(snapshot);
+      persistPusdChainProgress(circle, selectedCircle, snapshot);
+    }).catch((cause: unknown) => {
+      if (current) setError(errorMessage(cause));
+    });
+    return () => { current = false; };
   }, [selectedCircle]);
   useEffect(() => {
     const hash = window.location.hash;
@@ -429,6 +456,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     try {
       const snapshot = await readPusdMainnetCircle(activeCircle);
       setCircleSnapshot(snapshot);
+      persistPusdChainProgress(activeCircle, serializeCircle(activeCircle), snapshot);
       setNotice("Mainnet circle details checked on the blockchain. This is a read-only status check.");
     } catch (cause) {
       setCircleSnapshot(null);
@@ -701,7 +729,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       )}
 
       <div className="pusd-mainnet-deployed">
-        <div className="section-heading"><div><span className="section-kicker">SAVED CIRCLES</span><h3>PUSD circles on Mainnet</h3></div></div>
+        <div className="section-heading"><div><span className="section-kicker">INVITE</span><h3>Add an existing PUSD Mainnet circle</h3></div></div>
         <div className="pusd-mainnet-invite-import">
           <input value={inviteInput} onChange={(event) => setInviteInput(event.target.value)} placeholder="Paste a PUSD Mainnet circle invite" autoComplete="off" />
           <button type="button" className="secondary-button" onClick={() => {
@@ -714,29 +742,13 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
               setGenesisSigningPlan(null);
               setActionSigningPlan(null);
               setInviteInput("");
-              setNotice("PUSD Mainnet circle invite loaded. Check the circle on the blockchain before acting.");
+              setNotice("PUSD Mainnet circle invite loaded. Check its chain state before taking action.");
             } catch (cause) {
               setError(errorMessage(cause));
             }
           }}>Import invite</button>
         </div>
-        {deployedCircles.length === 0 ? <p className="classic-empty">No deployed PUSD circles saved on this browser.</p> : (
-          <div className="classic-saved-list">
-            {deployedCircles.map((circle) => (
-              <button type="button" className="classic-saved-item" key={circle.stateCategory} onClick={() => {
-                setActiveCircle(circle);
-                persistActiveCircle(circle);
-                setCircleSnapshot(null);
-                setGenesisSigningPlan(null);
-                setActionSigningPlan(null);
-                setNotice("Opened " + circle.name + ". Check the circle on the blockchain before acting.");
-              }}>
-                <b>{circle.name}</b>
-                <small>{circle.members.length} members · {formatAssetAmount("PUSD", circle.contribution)} PUSD each · {circle.stateCategory.slice(0, 10)}…</small>
-              </button>
-            ))}
-          </div>
-        )}
+        <p className="classic-empty">Saved circles appear in My circles, grouped by the selected network.</p>
       </div>
 
       <div className="pusd-mainnet-build-status">
