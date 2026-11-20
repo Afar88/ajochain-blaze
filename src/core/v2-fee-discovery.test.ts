@@ -257,6 +257,7 @@ describe("on-chain circle discovery", () => {
       [targetScriptHash]: circles.map(({ txid }, index) => ({ tx_hash: txid, height: 100 + index })),
     };
     const rawByTxid = new Map(circles.map(({ txid, raw }) => [txid, raw]));
+    const requestedHistoryHashes: string[] = [];
     let activeHistory = 0;
     let maxHistory = 0;
     let activeTransactions = 0;
@@ -265,6 +266,7 @@ describe("on-chain circle discovery", () => {
       performRequest: async (method: string, arg: string | number) => {
         if (method === "blockchain.block.header") return CHIPNET_GENESIS_HEADER;
         if (method !== "blockchain.scripthash.get_history") throw new Error("Unexpected RPC " + method);
+        requestedHistoryHashes.push(arg as string);
         activeHistory += 1;
         maxHistory = Math.max(maxHistory, activeHistory);
         await new Promise((resolve) => setTimeout(resolve, 3));
@@ -284,6 +286,13 @@ describe("on-chain circle discovery", () => {
       concurrency: 6,
     });
     expect(result).toEqual(circles.slice().reverse().map(({ expected }) => expected));
+    const scriptHash = (address: string) => binToHex(sha256.hash(
+      (cashAddressToLockingBytecode(address) as { bytecode: Uint8Array }).bytecode,
+    ).reverse());
+    expect(requestedHistoryHashes.slice(0, 2)).toEqual([
+      scriptHash(walletAddresses[5]),
+      scriptHash(walletAddresses[1]),
+    ]);
     expect(maxHistory).toBeGreaterThan(1);
     expect(maxHistory).toBeLessThanOrEqual(6);
     expect(maxTransactions).toBeGreaterThan(1);
