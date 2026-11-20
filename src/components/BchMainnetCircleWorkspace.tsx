@@ -909,7 +909,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
               {actionSigningPlan && <details className="advanced-actions">
                 <summary>Advanced</summary>
                 <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action")}>Verify Selene signature · no broadcast</button>
-              </details>
+              </details>}
           {actionSigningPlan && BCH_MAINNET_CIRCLE_SEND_ENABLED && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action", true)}>Sign and send on Mainnet</button>}
             </div>
           )}
