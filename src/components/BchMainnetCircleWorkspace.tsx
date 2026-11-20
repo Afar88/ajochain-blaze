@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { ArrowRight, Copy, LockKeyhole, ShieldCheck } from "lucide-react";
+import { ArrowRight, Copy, LockKeyhole } from "lucide-react";
 import { encodeV2FeeCircleParams } from "../core/v2-fee-discovery";
 import { formatAssetAmount, parseAssetAmount } from "../core/assets";
 import { createBchMainnetCircleDraft, prepareBchMainnetCircleGenesisPreview } from "../core/bch-mainnet-circle";
