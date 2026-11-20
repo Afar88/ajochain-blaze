@@ -28,7 +28,7 @@ function layoutSnapshotAt(width: number) {
       ? "16px"
       : "fluid",
     minimumFontSize: phone ? 14 : 13,
-    navigation: /\.menu-trigger[\\s\\S]*?aria-controls="ajochain-dropdown"/.test(css + readFileSync(resolve(here, "App.tsx"), "utf8"))
+    navigation: /\.menu-trigger[\s\S]*?aria-controls="ajochain-dropdown"/.test(css + readFileSync(resolve(here, "App.tsx"), "utf8"))
       ? "hamburger menu"
       : "missing",
   };
