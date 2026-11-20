@@ -33,6 +33,11 @@ describe("front-end warning and advanced-action guardrails", () => {
     expect((bchSource.match(/<details className="advanced-actions">/g) ?? [])).toHaveLength(2);
   });
 
+  it("provides a copy action beside both Mainnet Member 1 addresses", () => {
+    expect(bch).toMatch(/<div className="creator-member-preview">[\\s\\S]*?<code>\\{initiatorAddress\\}<\\/code>[\\s\\S]*?Copy address/);
+    expect(pusd).toMatch(/<div className="creator-member-preview">[\\s\\S]*?<code>\\{initiatorAddress\\}<\\/code>[\\s\\S]*?Copy address/);
+  });
+
   it("keeps both PUSD dry-run checks inside a collapsed Advanced disclosure", () => {
     const label = "Check Selene approval · no payment";
     const positions = [...pusdSource.matchAll(new RegExp(label, "g"))].map((match) => match.index ?? -1);
