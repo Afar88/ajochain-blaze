@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, "copy/ajo-plain-language"]
   push:
     branches: [main, "build/**"]
   workflow_dispatch:
