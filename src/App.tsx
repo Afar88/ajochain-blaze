@@ -270,9 +270,7 @@ export default function App() {
   }, [gatherMessage, discoveryMessage, addressMatchMessage, pusdSignatureMessage, pusdPlanError]);
 
   const selectedCircleRecord = menuCircles.find((circle) => circle.id === selectedMenuCircle) ?? null;
-  const menuLabel = page === "circle-detail"
-    ? selectedCircleRecord?.name ?? "Circle details"
-    : pageLabels[page];
+  const menuLabel = pageLabels[page];
 
   useEffect(() => {
     const refreshSavedCircles = () => setMenuCircles(readSavedCircleMenuRecords());
@@ -981,7 +979,7 @@ export default function App() {
               <div className="network-choice">
                 {(["chipnet", "mainnet"] as NetworkId[]).map((id) => (
                   <button key={id} type="button" className={network === id ? "network-choice-item selected" : "network-choice-item"} onClick={() => changeNetwork(id)}>
-                    <span className={id === "mainnet" ? "network-dot live" : "network-dot"} />
+                    <span className="network-dot" />
                     <span>{id === "chipnet" ? "Chipnet" : "Mainnet"}</span>
                     {network === id && <Check size={14} />}
                   </button>
