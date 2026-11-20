@@ -173,7 +173,7 @@ function errorMessage(cause: unknown) {
 }
 
 export default function PusdMainnetCircleWorkspace({ network, walletConnected, selectedCircle = null }: Props) {
-  const [name, setName] = useState("My PUSD Ajo Circle");
+  const [name, setName] = useState(() => "PUSD Ajo circle – " + new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" }));
   const [contribution, setContribution] = useState("10.00");
   const [membersText, setMembersText] = useState("");
   const [maxFee, setMaxFee] = useState("20000");
