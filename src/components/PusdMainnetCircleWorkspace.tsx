@@ -142,7 +142,7 @@ function persistPusdChainProgress(
   encoded: string,
   snapshot: PusdMainnetCircleSnapshot,
 ) {
-  updateSavedCircleProgress(window.localStorage, {
+  updateSavedCircleChainStatus(window.localStorage, {
     id: "pusd:" + circle.stateCategory.toLowerCase(),
     encoded,
     network: "mainnet",
@@ -151,7 +151,7 @@ function persistPusdChainProgress(
     asset: "PUSD",
     contribution: circle.contribution.toString(),
     memberCount: circle.members.length,
-  }, snapshot.round, snapshot.completed);
+  }, snapshot.completed ? "completed" : "active", snapshot.round, null);
 }
 
 

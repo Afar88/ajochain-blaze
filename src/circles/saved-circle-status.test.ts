@@ -64,6 +64,14 @@ describe("saved circle network and lifecycle filters", () => {
     expect(filterSavedCirclesByStatus([updated], "completed")).toHaveLength(1);
   });
 
+  it("does not fabricate a completion timestamp when a reader has no block time", () => {
+    const storage = memoryStorage();
+    ensureSavedCircleMetadata(storage, [mainnet]);
+    const completed = updateSavedCircleProgress(storage, mainnet, 5, true);
+    expect(completed.status).toBe("completed");
+    expect(completed.completedAt).toBeNull();
+  });
+
   it("upgrades a saved Active/Unknown circle to Completed from on-chain state", () => {
     const storage = memoryStorage();
     ensureSavedCircleMetadata(storage, [mainnet]);

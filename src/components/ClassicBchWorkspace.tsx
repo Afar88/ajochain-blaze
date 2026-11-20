@@ -5,7 +5,7 @@ import { buildClassicInviteRoute, loadSavedClassicCircles, restoreClassicCircleF
 import { parseAssetAmount } from "../core/assets";
 import { formatBch, type NetworkId } from "../core/network";
 import { wallet } from "../core/wizard-wallet";
-import { updateSavedCircleProgress } from "../circles/saved-circle-status";
+import { updateSavedCircleChainStatus } from "../circles/saved-circle-status";
 
 type Props = {
   network: NetworkId;
@@ -67,7 +67,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
 
   const saveChainProgress = (params: ClassicCircleParams, circleStatus: ClassicCircleStatus, encoded: string | null) => {
     if (!encoded) return;
-    updateSavedCircleProgress(window.localStorage, {
+    updateSavedCircleChainStatus(window.localStorage, {
       id: "classic:" + params.network + ":" + params.stateCategory.toLowerCase(),
       encoded,
       network: params.network,
@@ -76,7 +76,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
       asset: "BCH",
       contribution: params.contribution.toString(),
       memberCount: params.members.length,
-    }, circleStatus.round, circleStatus.completed);
+    }, circleStatus.completed ? "completed" : "active", circleStatus.round, null);
   };
 
   const refresh = async (params = activeCircle) => {
