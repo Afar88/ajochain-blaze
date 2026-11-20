@@ -542,6 +542,58 @@ export class MainnetQuorumNetworkProvider implements NetworkProvider {
 
 
   /**
+   * Small, read-only Electrum RPC surface used by wallet circle discovery.
+   * Each endpoint must return the same normalized history or transaction bytes;
+   * unknown RPC methods are rejected so this provider cannot become a generic
+   * RPC tunnel or expose transaction broadcast.
+   */
+  async performRequest(method: string, ...params: (string | number)[]): Promise<unknown> {
+    if (method === "blockchain.scripthash.get_history") {
+      if (params.length !== 1 || typeof params[0] !== "string" || !/^[0-9a-f]{64}$/i.test(params[0])) {
+        throw new Error("Mainnet script-history lookup requires one valid Electrum script hash.");
+      }
+      await this.verifyTip();
+      const scriptHash = params[0].toLowerCase();
+      const snapshots = await Promise.all(this.providers.map((provider) =>
+        provider.performRequest(method, scriptHash),
+      ));
+      const normalized = snapshots.map(normalizeScriptHistory);
+      const expected = JSON.stringify(normalized[0]);
+      if (normalized.slice(1).some((history) => JSON.stringify(history) !== expected)) {
+        throw new Error("Independent Mainnet Electrum providers disagree on wallet-address transaction history.");
+      }
+      return normalized[0].map(({ txid, height }) => ({ tx_hash: txid, height }));
+    }
+
+    if (method === "blockchain.transaction.get") {
+      if (params.length !== 1 || typeof params[0] !== "string" || !/^[0-9a-f]{64}$/i.test(params[0])) {
+        throw new Error("Mainnet transaction lookup requires one valid transaction ID in raw-hex mode.");
+      }
+      await this.verifyTip();
+      const txid = params[0].toLowerCase();
+      const snapshots = await Promise.all(this.providers.map((provider) =>
+        provider.performRequest(method, txid),
+      ));
+      const normalized = snapshots.map((value) => {
+        if (typeof value !== "string" || !/^(?:[0-9a-f]{2})+$/i.test(value)) {
+          throw new Error("Electrum returned malformed Mainnet transaction bytes.");
+        }
+        const raw = value.toLowerCase();
+        if (hashTransaction(hexToBin(raw)).toLowerCase() !== txid) {
+          throw new Error("Electrum transaction bytes do not match the requested Mainnet transaction ID.");
+        }
+        return raw;
+      });
+      if (normalized.slice(1).some((raw) => raw !== normalized[0])) {
+        throw new Error("Independent Mainnet Electrum providers returned different transaction bytes.");
+      }
+      return normalized[0];
+    }
+
+    throw new Error("Mainnet quorum RPC method is not permitted: " + method);
+  }
+
+  /**
    * Read the recent history of one or more contract scripts from every
    * configured Electrum provider. A transaction is called confirmed only
    * after raw bytes, merkle proof and containing header agree across providers.
