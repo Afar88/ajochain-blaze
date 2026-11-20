@@ -139,6 +139,19 @@ export function shouldPreserveReceiveAddressConfirmation(
   return previous !== null && next !== null && previous === next;
 }
 
+export function walletAddressSnapshotsMatch(
+  expected: readonly WalletAddressEntry[],
+  current: readonly WalletAddressEntry[],
+): boolean {
+  return expected.length === current.length && expected.every((entry, index) => {
+    const candidate = current[index];
+    return Boolean(candidate) &&
+      entry.branch === candidate.branch &&
+      entry.index === candidate.index &&
+      entry.address.toLowerCase() === candidate.address.toLowerCase();
+  });
+}
+
 const PATHS_STORAGE_KEY = 'ajochain:wizardconnect-paths:v1';
 const RECEIVE_INDEX_STORAGE_KEY = 'ajochain:wizardconnect-receive-index:v1';
 
@@ -835,6 +848,7 @@ class WizardWallet {
   waitForConfirmedSession(
     expectedIdentity: string,
     expectedAddress: string,
+    expectedWalletAddresses: readonly WalletAddressEntry[],
     network: Net,
     timeoutMs = 20_000,
   ): Promise<void> {
@@ -875,7 +889,17 @@ class WizardWallet {
         if (!currentAddress ||
             currentAddress.toLowerCase() !== expectedAddress.toLowerCase() ||
             !this.isReceiveAddressConfirmed(network)) {
-          finish(new Error("Selene's active receive address changed. Nothing was signed or broadcast; sync the current address and prepare a fresh gather."));
+          finish(new Error("Selene's active receive address changed. Nothing was broadcast; sync the current address and prepare a fresh gather."));
+          return;
+        }
+        try {
+          const currentWalletAddresses = this.listWalletAddresses(network);
+          if (!walletAddressSnapshotsMatch(expectedWalletAddresses, currentWalletAddresses)) {
+            finish(new Error("Selene's receive/change address set changed during the scan. The old coin-scan result was discarded; scan again with the current wallet."));
+            return;
+          }
+        } catch {
+          finish(new Error("AjoChain could not verify Selene's current receive/change addresses. The gather was stopped before broadcast."));
           return;
         }
         finish();
@@ -883,7 +907,7 @@ class WizardWallet {
 
       unsubscribe = this.onChange(check);
       timer = setTimeout(() => {
-        finish(new Error("Selene is still reconnecting. No signing request was sent; return to AjoChain once WizardConnect is connected, then retry the gather."));
+        finish(new Error("Selene did not reconnect in time to revalidate this gather. Nothing was broadcast; reconnect the same wallet and review its activity before retrying."));
       }, Math.max(1_000, timeoutMs));
       check();
     });
