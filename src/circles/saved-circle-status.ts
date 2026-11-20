@@ -1,5 +1,5 @@
 export type SavedCircleNetwork = "mainnet" | "chipnet";
-export type SavedCircleStatus = "active" | "completed";
+export type SavedCircleStatus = "active" | "completed" | "cancelled" | "unknown";
 
 export type SavedCircleDescriptor = {
   id: string;
@@ -34,7 +34,8 @@ function isMetadata(value: unknown): value is SavedCircleMetadata {
     (item.asset === "BCH" || item.asset === "PUSD") &&
     typeof item.contribution === "string" &&
     Number.isInteger(item.memberCount) &&
-    (item.status === "active" || item.status === "completed");
+    (item.status === "active" || item.status === "completed" ||
+      item.status === "cancelled" || item.status === "unknown");
 }
 
 export function readSavedCircleMetadata(storage: KeyValueStorage): SavedCircleMetadata[] {
@@ -55,6 +56,7 @@ export function readSavedCircleMetadata(storage: KeyValueStorage): SavedCircleMe
 /**
  * Add status metadata without rewriting any legacy saved-circle storage entry.
  * The original encoded invite is copied byte-for-byte into this additive index.
+ * A new record begins Unknown until the read-only chain check completes.
  */
 export function ensureSavedCircleMetadata(
   storage: KeyValueStorage,
@@ -68,7 +70,7 @@ export function ensureSavedCircleMetadata(
       ? { ...previous, ...circle }
       : {
           ...circle,
-          status: "active",
+          status: "unknown",
           completedAt: null,
           round: null,
           checkedAt: null,
@@ -83,6 +85,41 @@ export function ensureSavedCircleMetadata(
   return next;
 }
 
+/** Persist a status derived from a fresh on-chain read; never invent a close time. */
+export function updateSavedCircleChainStatus(
+  storage: KeyValueStorage,
+  circle: SavedCircleDescriptor,
+  status: SavedCircleStatus,
+  round: number | null,
+  completedAt: number | null,
+  checkedAt = Date.now(),
+): SavedCircleMetadata {
+  const records = readSavedCircleMetadata(storage);
+  const previous = records.find((record) => record.id === circle.id);
+  const closed = status === "completed" || status === "cancelled";
+  const record: SavedCircleMetadata = {
+    ...previous,
+    ...circle,
+    status,
+    completedAt: closed
+      ? Number.isSafeInteger(completedAt) ? completedAt : previous?.status === status ? previous.completedAt : null
+      : null,
+    round: Number.isInteger(round) && round !== null && round >= 0 ? round : null,
+    checkedAt: Number.isSafeInteger(checkedAt) ? checkedAt : Date.now(),
+  };
+  const next = [...records.filter((entry) => entry.id !== circle.id), record];
+  storage.setItem(SAVED_CIRCLE_METADATA_KEY, JSON.stringify(next));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("ajochain:saved-circles-changed"));
+  }
+  return record;
+}
+
+/**
+ * Backwards-compatible helper for existing per-circle workspaces. A fresh
+ * completed read keeps an already-known chain close time instead of replacing
+ * it with the current browser time.
+ */
 export function updateSavedCircleProgress(
   storage: KeyValueStorage,
   circle: SavedCircleDescriptor,
@@ -96,7 +133,9 @@ export function updateSavedCircleProgress(
     ...previous,
     ...circle,
     status: completed ? "completed" : "active",
-    completedAt: completed ? previous?.completedAt ?? now : null,
+    completedAt: completed
+      ? previous?.status === "completed" ? previous.completedAt : now
+      : null,
     round: Number.isInteger(round) && round !== null && round >= 0 ? round : null,
     checkedAt: now,
   };
@@ -117,7 +156,9 @@ export function filterSavedCirclesByNetwork<T extends { network: SavedCircleNetw
 
 export function filterSavedCirclesByStatus<T extends { status: SavedCircleStatus }>(
   circles: T[],
-  status: SavedCircleStatus,
+  status: "active" | "completed",
 ): T[] {
-  return circles.filter((circle) => circle.status === status);
+  return circles.filter((circle) => status === "active"
+    ? circle.status === "active" || circle.status === "unknown"
+    : circle.status === "completed" || circle.status === "cancelled");
 }
