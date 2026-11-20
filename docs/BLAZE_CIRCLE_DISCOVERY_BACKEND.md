@@ -22,11 +22,17 @@ A circle is accepted only if:
 
 BCH Mainnet circle discovery also reads on-chain transactions and wallet history. Circle identity and lifecycle are reconstructed from transaction IDs, token categories, covenant scripts, state/receipt outputs and confirmed transaction history. A server-side registry is not the source of truth and must not be introduced as a requirement.
 
+New Mainnet circle creation places the connected initiator at Member 1 before the additional addresses; the creation path uses `buildV2FeeMemberOrder` and has a Mainnet-specific regression test. Discovery preserves the member order encoded in each verified transaction rather than rewriting historical on-chain slots. This matters because member indices are bound to receipt commitments and covenant parameters.
+
 ## Role of Electrum and optional API routes
 
 Electrum endpoints are chain-data providers. They are not the AjoChain backend, a database, or a registry. A provider quorum can improve consistency checks, but endpoint names alone do not prove independent operator ownership or local SPV/chainwork validity.
 
 Optional Vercel/API routes may support operations such as fee estimates, raw-transaction verification or PUSD signed-transaction preflight. Those routes must not own circle state, become a registry, or be required for browser-side chain discovery. They must never replace direct chain verification with cached database records.
+
+## API rate protection
+
+The Node adapter's in-memory throttle is process-local and best-effort. It cannot enforce a shared request budget across independent Vercel serverless instances, so it is not sufficient as the production edge abuse control. Before public API traffic is enabled, configure and test Vercel Firewall/WAF rate-limit rules for `/api/*`, keyed by the platform's source-IP field, and apply tighter limits to expensive verification and submission routes. Do not use an untrusted client-supplied `X-Forwarded-For` value as an identity source. Edge rate limiting is an API protection layer; it must not become a Redis-backed discovery or circle-state dependency.
 
 ## Explicitly not part of BLAZE discovery
 
