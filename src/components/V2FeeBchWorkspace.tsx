@@ -220,7 +220,7 @@ export default function V2FeeBchWorkspace({
     setError("");
     setNotice("");
     if (network !== "chipnet") {
-      setError("Switch to Chipnet. This experimental circle uses test coins only.");
+      setError("Switch to Chipnet to continue.");
       return;
     }
     if (!walletConnected || wallet.state !== "connected") {
