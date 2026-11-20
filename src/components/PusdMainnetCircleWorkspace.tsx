@@ -143,6 +143,23 @@ function persistActiveCircle(circle: PusdMainnetCircleParams) {
   window.localStorage.setItem(ACTIVE_CIRCLE_KEY, JSON.stringify(stored));
 }
 
+function persistPusdChainProgress(
+  circle: PusdMainnetCircleParams,
+  encoded: string,
+  snapshot: PusdMainnetCircleSnapshot,
+) {
+  updateSavedCircleProgress(window.localStorage, {
+    id: "pusd:" + circle.stateCategory.toLowerCase(),
+    encoded,
+    network: "mainnet",
+    kind: "pusd-mainnet",
+    name: circle.name,
+    asset: "PUSD",
+    contribution: circle.contribution.toString(),
+    memberCount: circle.members.length,
+  }, snapshot.round, snapshot.completed);
+}
+
 
 function readDrafts(): Draft[] {
   try {
@@ -227,7 +244,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     void readPusdMainnetCircle(circle).then((snapshot) => {
       if (!current) return;
       setCircleSnapshot(snapshot);
-      persistChainProgress(circle, selectedCircle, snapshot);
+      persistPusdChainProgress(circle, selectedCircle, snapshot);
     }).catch((cause: unknown) => {
       if (current) setError(errorMessage(cause));
     });
@@ -428,23 +445,6 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     }
   };
 
-  function persistChainProgress(
-    circle: PusdMainnetCircleParams,
-    encoded: string,
-    snapshot: PusdMainnetCircleSnapshot,
-  ) {
-    updateSavedCircleProgress(window.localStorage, {
-      id: "pusd:" + circle.stateCategory.toLowerCase(),
-      encoded,
-      network: "mainnet",
-      kind: "pusd-mainnet",
-      name: circle.name,
-      asset: "PUSD",
-      contribution: circle.contribution.toString(),
-      memberCount: circle.members.length,
-    }, snapshot.round, snapshot.completed);
-  }
-
   const readActiveOnChainState = async () => {
     if (!activeCircle) return;
     setLifecycleBusy(true);
@@ -456,7 +456,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     try {
       const snapshot = await readPusdMainnetCircle(activeCircle);
       setCircleSnapshot(snapshot);
-      persistChainProgress(activeCircle, serializeCircle(activeCircle), snapshot);
+      persistPusdChainProgress(activeCircle, serializeCircle(activeCircle), snapshot);
       setNotice("Mainnet circle details checked on the blockchain. This is a read-only status check.");
     } catch (cause) {
       setCircleSnapshot(null);
