@@ -413,7 +413,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
     try {
       const snapshot = await readPusdMainnetCircle(activeCircle);
       setCircleSnapshot(snapshot);
-      setNotice("Mainnet circle state verified from the current read quorum. This is a read-only status check.");
+      setNotice("Mainnet circle details checked on the blockchain. This is a read-only status check.");
     } catch (cause) {
       setCircleSnapshot(null);
       setError(errorMessage(cause));
@@ -549,15 +549,15 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
     <section className="pusd-mainnet-workspace section-card" aria-labelledby="pusd-mainnet-title">
       <div className="section-heading">
         <div>
-          <span className="section-kicker">PARYONUSD · REAL CASHTOKEN CATEGORY</span>
+          <span className="section-kicker">PARYONUSD · DOLLAR TOKEN</span>
           <h2 id="pusd-mainnet-title">Create a PUSD Mainnet circle</h2>
-          <p>Member-owned PUSD escrow, covenant-controlled payouts, 1% treasury fee and pre-payout cancellation.</p>
+          <p>PUSD stays in each member’s control, with clear payout rules, a 1% treasury fee and cancellation before payout.</p>
         </div>
         <span className="classic-network mainnet">Bitcoin Cash Mainnet</span>
       </div>
 
       <div className="pusd-mainnet-safety">
-        <div><ShieldCheck size={17} /><span><b>Mainnet asset selected</b><small>Canonical ParyonUSD category · no test token or Chipnet substitution</small></span></div>
+        <div><ShieldCheck size={17} /><span><b>Mainnet asset selected</b><small>Official ParyonUSD asset · Mainnet only</small></span></div>
         <span className="asset-state neutral">Transactions locked during build</span>
       </div>
 
@@ -571,9 +571,9 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
         </label>
         <label>Contribution per member (PUSD)
           <input value={contribution} onChange={(event) => setContribution(event.target.value)} inputMode="decimal" placeholder="10.00" required />
-          <small>Exact 2-decimal PUSD amount. Internal calculations use integer CashToken units.</small>
+          <small>Enter a PUSD amount using two decimal places.</small>
         </label>
-        <label>Member Mainnet token-aware addresses · one per line
+        <label>Member Mainnet BCH addresses · one per line
           <textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder={"bitcoincash:…\nbitcoincash:…"} required />
           <small>Enter 2–5 unique, token-aware Bitcoin Cash Mainnet addresses in payout order.</small>
         </label>
@@ -589,7 +589,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
 
         {economics && (
           <div className="pusd-mainnet-breakdown">
-            <b>First-round covenant preview</b>
+            <b>First-round savings preview</b>
             <div><span>Gross PUSD pot</span><strong>{formatAssetAmount("PUSD", economics.grossPot)} PUSD</strong></div>
             <div><span>Project fee · 1%</span><strong>{formatAssetAmount("PUSD", economics.projectFee)} PUSD</strong></div>
             <div><span>Next contribution reserved to first recipient</span><strong>{formatAssetAmount("PUSD", economics.firstPayoutReserve)} PUSD</strong></div>
@@ -628,7 +628,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
               {lifecycleBusy ? "Reading…" : "Read on-chain status"}
             </button>
           </div>
-          <p className="classic-empty">Local circle identity saved for tracking. A saved genesis preview is not proof that the on-chain circle has been created.</p>
+          <p className="classic-empty">Local circle identity saved for tracking. A saved setup preview does not mean the circle has been created on the blockchain.</p>
           {circleSnapshot && (
             <div className="pusd-mainnet-breakdown">
               <b>Verified circle state</b>
@@ -720,7 +720,11 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
 
       <div className="pusd-mainnet-build-status">
         <LockKeyhole size={16} />
-        <span><b>PUSD Mainnet circles are live</b><small>Genesis, deposit, payout and cancellation transactions are signed by Selene, re-verified by the server against quorum-authenticated prevouts, exact circle/escrow artifacts, 0x61 wallet sighashes and the BCH 2026 VM, then relayed once through the durable input ledger. Plain PUSD wallet transfers remain locked.</small></span>
+        <span><b>PUSD Mainnet circles are live</b><small>Members approve each payment in Selene. The app checks the circle details before sending. Plain PUSD wallet transfers remain locked.</small>
+          <details className="technical-details">
+            <summary>Technical details</summary>
+            <p>Circle actions are checked against provider-confirmed previous outputs, the exact circle and escrow artifacts, wallet signature hashes and BCH 2026 VM rules. The durable input ledger prevents a transaction from being relayed twice.</p>
+          </details></span>
       </div>
 
       <div className="pusd-mainnet-saved">
@@ -739,7 +743,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected }:
       </div>
 
       <div className="pusd-mainnet-asset-meta">
-        <span>CashToken category</span><code>{PUSD_ASSET.categoryId}</code>
+        <span>Asset identifier</span><code>{PUSD_ASSET.categoryId}</code>
         <span>Asset precision</span><b>{PUSD_ASSET.decimals} decimals</b>
       </div>
     </section>

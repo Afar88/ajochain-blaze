@@ -293,7 +293,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
     try {
       const snapshot = await readV2FeeCircle(activeCircle);
       setCircleSnapshot(snapshot);
-      setNotice("BCH Mainnet circle state verified from the read quorum. This is a read-only status check.");
+      setNotice("BCH Mainnet circle details checked on the blockchain. This is a read-only status check.");
     } catch (cause) {
       setCircleSnapshot(null);
       setError(errorMessage(cause));
@@ -584,7 +584,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
       return;
     }
     if (!walletConnected || wallet.state !== "connected") {
-      setError("Connect Selene through WizardConnect before preparing the Mainnet genesis preview.");
+      setError("Connect Selene through WizardConnect before preparing the circle setup preview.");
       return;
     }
     const initiator = wallet.address("mainnet");
@@ -636,7 +636,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
         inputCount: plan.transactionInputCount,
         outputCount: plan.transactionOutputCount,
       });
-      setNotice("BCH Mainnet genesis preview prepared. Use Sign and send on Mainnet to create the circle with real BCH.");
+      setNotice("BCH Mainnet circle setup preview prepared. Use Sign and send on Mainnet to create the circle with real BCH.");
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -656,7 +656,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
       </div>
 
       <div className="pusd-mainnet-safety">
-        <div><ShieldCheck size={17} /><span><b>Mainnet covenant selected</b><small>Separate V3 circle version · not the older Chipnet circle</small></span></div>
+        <div><ShieldCheck size={17} /><span><b>Mainnet circle rules selected</b><small>Separate V3 circle version · not the older Chipnet circle</small></span></div>
         <span className="asset-state neutral">Real BCH · unaudited contract</span>
       </div>
 
@@ -720,13 +720,17 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
 
       {preview && (
         <div className="pusd-mainnet-breakdown" role="status">
-          <b>Unsigned BCH Mainnet genesis preview</b>
-          <div><span>Circle contract address</span><strong><code>{preview.contractAddress}</code></strong></div>
-          <div><span>State CashToken category</span><strong><code>{preview.stateCategory}</code></strong></div>
-          <div><span>Conservative miner-fee estimate</span><strong>{preview.feeEstimate} sats</strong></div>
-          <div><span>Estimated wallet change</span><strong>{preview.estimatedChange} sats</strong></div>
-          <div><span>Transaction shape</span><strong>{preview.inputCount} inputs · {preview.outputCount} outputs</strong></div>
-          <small>No contract has been deployed. This preview is not a payment or deployment.</small>
+          <b>Circle setup preview</b>
+          <p className="field-hint">Review the estimated network fee and change before you continue. Nothing has been signed or sent.</p>
+          <div><span>Estimated network fee</span><strong>{preview.feeEstimate} sats</strong></div>
+          <div><span>Estimated change back to your wallet</span><strong>{preview.estimatedChange} sats</strong></div>
+          <details className="technical-details">
+            <summary>Technical details</summary>
+            <div><span>Circle contract address</span><strong><code>{preview.contractAddress}</code></strong></div>
+            <div><span>State CashToken category</span><strong><code>{preview.stateCategory}</code></strong></div>
+            <div><span>Transaction shape</span><strong>{preview.inputCount} inputs · {preview.outputCount} outputs</strong></div>
+          </details>
+          <small>Nothing has been sent or created yet.</small>
           {genesisSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis")}>Verify Selene signature · no broadcast</button>}
           {genesisSigningPlan && BCH_MAINNET_CIRCLE_SEND_ENABLED && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis", true)}>Sign and send on Mainnet</button>}
         </div>
@@ -739,7 +743,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
               {lifecycleBusy ? "Reading…" : "Read on-chain status"}
             </button>
           </div>
-          <p className="classic-empty">Local circle identity saved for tracking. A saved genesis preview is not proof that the on-chain circle has been created.</p>
+          <p className="classic-empty">Local circle identity saved for tracking. A saved setup preview does not mean the circle has been created on the blockchain.</p>
           <button type="button" className="secondary-button" onClick={() => void copyInvite()}><Copy size={14} /> Copy invite</button>
           {circleSnapshot && (
             <div className="pusd-mainnet-breakdown">

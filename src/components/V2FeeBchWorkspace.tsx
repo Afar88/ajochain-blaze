@@ -497,15 +497,15 @@ export default function V2FeeBchWorkspace({
     <section className="circle-workspace section-card" aria-labelledby="v2-fee-title">
       <div className="section-heading workspace-heading">
         <div>
-          <span className="section-kicker">MEMBER CREDIT · FEE COVENANT</span>
+          <span className="section-kicker">MEMBER CONTRIBUTIONS · CIRCLE RULES</span>
           <h2 id="v2-fee-title">{view === "create" ? "Fair-round BCH circle" : active?.name ?? "Your circle"}</h2>
           <p>{view === "create" ? "Members fund the current round. When a member receives a payout, exactly one next contribution is withheld and carried forward in that member’s own on-chain receipt." : "Track this circle’s own member credits, contribution status, payout readiness and available actions."}</p>
         </div>
-        <span className="classic-network">Chipnet · automatic future reserve</span>
+        <span className="classic-network">Chipnet · test coins</span>
       </div>
       <div className="safety-note-inline">
         <ShieldCheck size={17} />
-        <span>Experimental and unaudited. Chipnet only. Every payout except the final payout reserves exactly one next contribution for the recipient. It covers the following round; after it is consumed, that member must fund later installments again. No Mainnet signing or broadcasting is enabled.</span>
+        <span>Experimental and not audited. Chipnet test coins only. When a member collects (except on the final turn), one next contribution is held aside for their following round. They make later contributions as usual. This circle cannot send payments on Mainnet.</span>
       </div>
 
       {view === "create" && (<>
@@ -560,8 +560,8 @@ export default function V2FeeBchWorkspace({
             <div><b>Member accountability ledger</b><span>On-chain receipt credits, remaining commitment and payout record</span></div>
             <span className={snapshot.ready || snapshot.completed ? "fee-accounting-status safe" : "fee-accounting-status blocked"}>{snapshot.completed ? "Circle closed" : snapshot.ready ? "Payout unlocked" : "Payout locked"}</span>
           </div>
-          {(active.covenant === "fee-v1" || active.covenant === "fee-v1-guarded") && <p className="classic-error">Legacy rolling-credit circle: it only checks one contribution at a time. A member who stops after receiving a payout can block later rounds. New circles use V3 automatic future-contribution reserves.</p>}
-          {(active.covenant === "fee-v2-escrow" || active.covenant === "fee-v2-escrow-guarded") && <p className="field-hint">This existing V2 circle uses its original full-cycle pre-funding covenant. New circles use V3 automatic future-contribution reserves; this existing circle is not silently migrated.</p>}
+          {(active.covenant === "fee-v1" || active.covenant === "fee-v1-guarded") && <p className="classic-error">Older circle rules: the circle checks one contribution at a time. If a member stops contributing after collecting, later rounds may be blocked. New circles hold aside the next contribution before a payout.</p>}
+          {(active.covenant === "fee-v2-escrow" || active.covenant === "fee-v2-escrow-guarded") && <p className="field-hint">This older circle uses its original full-cycle payment rule. New circles hold aside one next contribution before a payout. Existing circles are not changed automatically.</p>}
           <div className="fee-accounting-table">
             <div className="fee-accounting-row fee-accounting-header"><span>Member</span><span>Paid directly</span><span>Locked now / required</span><span>Payout received</span><span>Still due</span><span>Status</span></div>
             {snapshot.memberAccounting.map((account) => (

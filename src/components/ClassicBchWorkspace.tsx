@@ -48,7 +48,7 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
       const snapshot = await readClassicCircle(params);
       setStatus(snapshot.status);
       setContractAddress(snapshot.contract.address);
-      setNotice("Chain data refreshed from " + params.network + ". A provider response is not a substitute for an independent Mainnet verification quorum.");
+      setNotice("Chain data refreshed from " + params.network + ". For Mainnet, the app checks the circle details with independent blockchain providers.");
     } catch (cause) {
       setStatus(null);
       setError(message(cause));
@@ -292,7 +292,7 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
       assertBchTransactionBroadcastAllowed(activeCircle.network);
       if (!window.confirm(
         "Contribute " + formatBch(activeCircle.contribution) + " to " + activeCircle.name +
-        " on Chipnet?\n\nThe contribution goes to the covenant address:\n" + plan.contract.address,
+        " on Chipnet?\n\nThe contribution goes to this circle address:\n" + plan.contract.address,
       )) return;
       const signed = await wallet.signAndVerify(
         plan.wc,
@@ -318,11 +318,11 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
       const plan = await planClassicPayout(activeCircle);
       assertBchTransactionBroadcastAllowed(activeCircle.network);
       if (!window.confirm(
-        "Broadcast the covenant payout for round " + (plan.round + 1) + "?\n\n" +
+        "Send the payout for round " + (plan.round + 1) + "?\n\n" +
         "Recipient: " + plan.recipient + "\n" +
         "Recipient amount: " + formatBch(plan.payoutAmount) + "\n" +
         "Miner fee: up to " + plan.fee.toString() + " sats\n\n" +
-        "The payout is enforced by the circle covenant and cannot be redirected here.",
+        "The circle rules send this payout to the selected member. It cannot be redirected here.",
       )) return;
       const txid = await plan.provider.sendRawTransaction(plan.builder.build());
       setNotice("Payout broadcast. Transaction ID: " + txid);
@@ -367,7 +367,7 @@ export default function ClassicBchWorkspace({ network, walletConnected }: Props)
         <div>
           <span className="section-kicker">CLASSIC BCH · V1 CONTRACT</span>
           <h2 id="classic-workspace-title">Create and manage circles</h2>
-          <p>Live Chipnet creation, contributions, covenant payouts, and invite recovery.</p>
+          <p>Create Chipnet circles, contribute, collect payouts, and restore with an invite.</p>
         </div>
         <span className={network === "mainnet" ? "classic-network mainnet" : "classic-network"}>
           {network === "mainnet" ? "Mainnet · read-only" : "Chipnet · test"}

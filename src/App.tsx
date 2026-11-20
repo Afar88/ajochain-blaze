@@ -9,6 +9,8 @@ import { getDefaultCircleWorkspace, resolveCircleWorkspaceForNetwork, type Circl
 import { formatAssetAmount, parseAssetAmount, PUSD_ASSET } from "./core/assets";
 import type { PusdTransferPlan } from "./core/pusd-transaction-builder";
 import type { AuthenticatedPusdUtxo } from "./core/pusd-utxo";
+import type { NetworkProvider } from "cashscript";
+import type { WalletConsolidationPlan } from "./core/wallet-consolidation";
 import { PUSD_MAINNET_SPENDING_ENABLED } from "./core/pusd-mainnet-guard";
 import {
   dedupeSavedV2FeeCircleMenuRecords,
@@ -53,6 +55,18 @@ type WalletView = {
   receiveIndex: number;
   mainnetAddressConfirmed: boolean;
 };
+type PreparedGather = {
+  network: NetworkId;
+  destinationAddress: string;
+  walletAddresses: ReturnType<WalletClient["listWalletAddresses"]>;
+  walletIdentity: ReturnType<WalletClient["getSessionIdentity"]>;
+  provider: NetworkProvider;
+  plan: WalletConsolidationPlan;
+};
+type GatherResult =
+  | { status: "success"; txid: string; network: NetworkId }
+  | { status: "error"; message: string };
+
 type PusdView = {
   status: "idle" | "loading" | "ready" | "error";
   amount: bigint;
@@ -63,6 +77,15 @@ type PusdView = {
   utxos: AuthenticatedPusdUtxo[];
   rawPreviousTransactions: Record<string, string>;
 };
+
+const formatBchSatoshis = (satoshis: bigint) => {
+  const whole = (satoshis / 100_000_000n).toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",");
+  const fraction = (satoshis % 100_000_000n).toString().padStart(8, "0");
+  return whole + "." + fraction + " BCH";
+};
+
+const gatherExplorerUrl = (network: NetworkId, txid: string) =>
+  "https://blockexplorer.cash/" + network + "/tx/" + txid;
 
 const pageLabels: Record<Page, string> = {
   overview: "Overview",
@@ -92,6 +115,8 @@ export default function App() {
   const [walletClient, setWalletClient] = useState<WalletClient | null>(null);
   const [gatherBusy, setGatherBusy] = useState(false);
   const [gatherMessage, setGatherMessage] = useState("");
+  const [gatherPlan, setGatherPlan] = useState<PreparedGather | null>(null);
+  const [gatherResult, setGatherResult] = useState<GatherResult | null>(null);
   const [discoveryMessage, setDiscoveryMessage] = useState("");
   const [discoveryRun, setDiscoveryRun] = useState(0);
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
@@ -302,7 +327,7 @@ export default function App() {
     }
     setPusdView({
       status: "loading", amount: 0n,
-      detail: "Authenticating PUSD UTXOs and unspent status through the configured provider quorum…",
+      detail: "Checking your PUSD coins on the blockchain…",
       utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
     });
     void import("./core/pusd-api")
@@ -313,7 +338,7 @@ export default function App() {
           status: "ready",
           amount: result.balance,
           detail: result.providerConfidence + " Electrum providers agreed · block " +
-            result.tipHeight.toLocaleString() + " · " + result.utxos.length + " authenticated token UTXOs",
+            result.tipHeight.toLocaleString() + " · " + result.utxos.length + " PUSD coins found",
           utxoCount: result.utxos.length,
           providerConfidence: result.providerConfidence,
           tipHeight: result.tipHeight,
@@ -455,7 +480,7 @@ export default function App() {
         tipHeight: freshBalance.tipHeight,
         providerConfidence: freshBalance.providerConfidence,
         utxoCount: freshBalance.utxos.length,
-        detail: "Refreshed " + freshBalance.providerConfidence + " provider-authenticated wallet UTXOs immediately before local signature verification.",
+        detail: "Refreshed " + freshBalance.providerConfidence + " wallet coins immediately before checking the signature.",
       }));
     } catch (cause) {
       setPusdSignatureMessage(cause instanceof Error ? cause.message : "PUSD signature verification failed. Nothing was broadcast.");
@@ -569,71 +594,106 @@ export default function App() {
   }, [walletClient, walletView.state, discoveryRun]);
 
   const gatherWalletCoins = async () => {
-    const gatherNetwork = network;
-    if (!walletClient || walletClient.state !== "connected" || !walletAddress) return;
-    const destinationAddress = walletClient.address(gatherNetwork);
-    if (!destinationAddress) {
-      setGatherMessage("The connected Selene receive address is not available for this network.");
+    if (!walletClient || walletClient.state !== "connected" || !walletAddress || gatherBusy) return;
+
+    // First action: scan and display the exact existing plan. No signature or
+    // broadcast is requested until the saver presses the review CTA below.
+    if (!gatherPlan) {
+      const gatherNetwork = network;
+      const destinationAddress = walletClient.address(gatherNetwork);
+      if (!destinationAddress) {
+        setGatherResult({ status: "error", message: "The connected Selene receive address is not available for this network." });
+        return;
+      }
+      if (gatherNetwork === "mainnet" && !walletClient.isReceiveAddressConfirmed("mainnet")) {
+        setGatherResult({ status: "error", message: "Sync the Mainnet receive address currently shown in Selene under Wallet Details before gathering real BCH." });
+        return;
+      }
+      const gatherWalletIdentity = gatherNetwork === "mainnet" ? walletClient.getSessionIdentity() : null;
+      if (gatherNetwork === "mainnet" && !gatherWalletIdentity) {
+        setGatherResult({ status: "error", message: "WizardConnect has not supplied a verifiable Selene wallet identity. Reconnect Selene before gathering Mainnet BCH." });
+        return;
+      }
+      setGatherBusy(true);
+      setGatherResult(null);
+      setGatherMessage("Checking your wallet for BCH coins…");
+      try {
+        const [{ getClassicProvider }, { planWalletConsolidation }] = await Promise.all([
+          import("./core/classic-bch"),
+          import("./core/wallet-consolidation"),
+        ]);
+        // Keep the same verified provider and existing consolidation planner.
+        const provider = await getClassicProvider(gatherNetwork);
+        const walletAddresses = walletClient.listWalletAddresses(gatherNetwork);
+        if (walletAddresses.length === 0) throw new Error("No wallet receive/change addresses are available on " + gatherNetwork + ".");
+
+        // Keep any legacy circle setup output out of the gather plan, exactly as before.
+        const pendingSetupOutpoints = new Set<string>();
+        const setupPrefix = "ajochain:classic-genesis-setup:v1:" + gatherNetwork + ":";
+        for (let i = 0; i < window.localStorage.length; i++) {
+          const key = window.localStorage.key(i);
+          if (!key?.startsWith(setupPrefix)) continue;
+          try {
+            const txid = JSON.parse(window.localStorage.getItem(key) ?? "null")?.txid;
+            if (typeof txid === "string") pendingSetupOutpoints.add(txid.toLowerCase() + ":0");
+          } catch { /* ignore malformed records */ }
+        }
+
+        const plan = await planWalletConsolidation(
+          provider,
+          walletAddresses,
+          destinationAddress,
+          pendingSetupOutpoints,
+          gatherNetwork,
+        );
+        if (gatherNetwork === "mainnet" && gatherWalletIdentity) {
+          setGatherMessage("Coins found. Confirming the same Selene wallet before showing your review…");
+          await walletClient.waitForConfirmedSession(gatherWalletIdentity, destinationAddress, walletAddresses, "mainnet", 25_000);
+        }
+        setGatherPlan({
+          network: gatherNetwork,
+          destinationAddress,
+          walletAddresses,
+          walletIdentity: gatherWalletIdentity,
+          provider,
+          plan,
+        });
+        setGatherMessage("");
+      } catch (cause) {
+        setGatherResult({
+          status: "error",
+          message: cause instanceof Error ? cause.message : "Could not check your BCH coins.",
+        });
+        setGatherMessage("");
+      } finally {
+        setGatherBusy(false);
+      }
       return;
     }
-    if (gatherNetwork === "mainnet" && !walletClient.isReceiveAddressConfirmed("mainnet")) {
-      setGatherMessage("Sync the Mainnet receive address currently shown in Selene under Wallet Details before gathering real BCH.");
+
+    // Second action: reuse the reviewed amounts and destination. Abort if the
+    // wallet or selected network changed after the preview was prepared.
+    const prepared = gatherPlan;
+    const gatherNetwork = prepared.network;
+    const destinationAddress = prepared.destinationAddress;
+    const plan = prepared.plan;
+    const gatherWalletIdentity = prepared.walletIdentity;
+    const walletAddresses = prepared.walletAddresses;
+    if (network !== gatherNetwork || walletClient.address(gatherNetwork) !== destinationAddress ||
+        (gatherNetwork === "mainnet" && walletClient.getSessionIdentity() !== gatherWalletIdentity)) {
+      setGatherPlan(null);
+      setGatherResult({ status: "error", message: "Your wallet or network changed. Check your coins again before gathering." });
       return;
     }
-    const gatherWalletIdentity = gatherNetwork === "mainnet" ? walletClient.getSessionIdentity() : null;
-    if (gatherNetwork === "mainnet" && !gatherWalletIdentity) {
-      setGatherMessage("WizardConnect has not supplied a verifiable Selene wallet identity. Reconnect Selene before gathering Mainnet BCH.");
-      return;
-    }
+
     setGatherBusy(true);
-    setGatherMessage("Scanning this wallet's " + (gatherNetwork === "mainnet" ? "Mainnet" : "Chipnet") + " receive and change addresses…");
+    setGatherResult(null);
     try {
-      const [{ getClassicProvider }, { planWalletConsolidation }] = await Promise.all([
-        import("./core/classic-bch"),
-        import("./core/wallet-consolidation"),
-      ]);
-      // Mainnet gathering must use the fork-checkpointed multi-provider quorum,
-      // never the single-provider connection reserved for read-only discovery.
-      const provider = await getClassicProvider(gatherNetwork);
-      const walletAddresses = walletClient.listWalletAddresses(gatherNetwork);
-      if (walletAddresses.length === 0) throw new Error("No wallet receive/change addresses are available on " + gatherNetwork + ".");
-      // Keep any legacy CashTokens genesis setup output recorded by this wallet out of the gather plan.
-      const pendingSetupOutpoints = new Set<string>();
-      const setupPrefix = "ajochain:classic-genesis-setup:v1:" + gatherNetwork + ":";
-      for (let i = 0; i < window.localStorage.length; i++) {
-        const key = window.localStorage.key(i);
-        if (!key?.startsWith(setupPrefix)) continue;
-        try {
-          const txid = JSON.parse(window.localStorage.getItem(key) ?? "null")?.txid;
-          if (typeof txid === "string") pendingSetupOutpoints.add(txid.toLowerCase() + ":0");
-        } catch { /* ignore malformed records */ }
-      }
-      const plan = await planWalletConsolidation(
-        provider,
-        walletAddresses,
-        destinationAddress,
-        pendingSetupOutpoints,
-        gatherNetwork,
-      );
       const networkLabel = gatherNetwork === "mainnet" ? "Mainnet" : "Chipnet";
-      const realFundsWarning = gatherNetwork === "mainnet"
-        ? "\n\nThis uses real BCH. The only output returns to your connected wallet address. CashTokens and pending circle setup coins are not moved."
-        : "\n\nCashTokens and pending circle setup coins are not moved.";
       if (gatherNetwork === "mainnet" && gatherWalletIdentity) {
-        setGatherMessage("Coin scan complete. Checking that the same Selene wallet and confirmed receive address are back online…");
-        await walletClient.waitForConfirmedSession(gatherWalletIdentity, destinationAddress, walletAddresses, "mainnet", 25_000);
-      }
-      if (!window.confirm(
-        "Gather " + plan.inputCount + " " + networkLabel + " BCH coin(s) into one coin at " + plan.destination + "?\n\n" +
-        "Total " + plan.totalSatoshis.toString() + " sats, estimated miner fee " + plan.fee.toString() + " sats." +
-        realFundsWarning,
-      )) { setGatherMessage(""); return; }
-      if (gatherNetwork === "mainnet" && gatherWalletIdentity) {
-        setGatherMessage("Preparing a single signing request for Selene…");
+        setGatherMessage("Confirming Selene is still connected to the same wallet…");
         await walletClient.waitForConfirmedSession(gatherWalletIdentity, destinationAddress, walletAddresses, "mainnet", 20_000);
       }
-      // WizardConnect retains pending signing requests and re-delivers them
-      // after wallet_ready; keep one request/sequence and never retry it here.
       setGatherMessage("Waiting for Selene to approve the BCH gather…");
       const signed = await walletClient.signAndVerify(
         plan.wc,
@@ -668,16 +728,20 @@ export default function App() {
             typeof payload.txid !== "string" || !/^[0-9a-f]{64}$/i.test(payload.txid)) {
           throw new Error("The Mainnet gather API returned an incomplete result. Check the transaction before trying again.");
         }
-        setGatherMessage(
-          "Mainnet coins gathered back to your wallet. Transaction: " + payload.txid +
-          " · relay: " + (payload.relayStatus ?? "accepted") + ". It is not confirmed yet.",
-        );
+        setGatherResult({ status: "success", txid: payload.txid, network: gatherNetwork });
       } else {
-        const txid = await provider.sendRawTransaction(signed.signedTransaction);
-        setGatherMessage("Chipnet coins gathered. Transaction: " + txid);
+        const txid = await prepared.provider.sendRawTransaction(signed.signedTransaction);
+        setGatherResult({ status: "success", txid, network: gatherNetwork });
       }
+      setGatherPlan(null);
+      setGatherMessage("");
     } catch (cause) {
-      setGatherMessage(cause instanceof Error ? cause.message : "Could not gather coins.");
+      setGatherResult({
+        status: "error",
+        message: cause instanceof Error ? cause.message : "Could not gather coins.",
+      });
+      setGatherPlan(null);
+      setGatherMessage("");
     } finally {
       setGatherBusy(false);
     }
@@ -824,6 +888,18 @@ export default function App() {
               </button>
             </section>
 
+            <section className="how-ajo-works" aria-labelledby="how-ajo-works-title">
+              <div className="how-ajo-heading">
+                <span className="section-kicker">SIMPLE, TOGETHER</span>
+                <h2 id="how-ajo-works-title">How Ajo works</h2>
+              </div>
+              <ol className="how-ajo-steps">
+                <li><span className="how-ajo-number">01</span><div><b>Join</b><small>Join a circle with people you trust.</small></div></li>
+                <li><span className="how-ajo-number">02</span><div><b>Contribute each round</b><small>Everyone adds the agreed amount.</small></div></li>
+                <li><span className="how-ajo-number">03</span><div><b>Collect your turn</b><small>One member receives the pot each round.</small></div></li>
+              </ol>
+            </section>
+
             <section className="overview-status-grid">
               <article className="overview-status-card">
                 <div className="status-card-icon"><Wallet size={18} /></div>
@@ -843,7 +919,7 @@ export default function App() {
               <div><span className="section-kicker">SUPPORTED ASSETS</span><h2>BCH and PUSD</h2><p>Pick what your circle saves in. Fees are always shown up front.</p></div>
               <div className="asset-preview-rows">
                 <div><span className="asset-symbol">B</span><span><b>Bitcoin Cash</b><small>Save in Bitcoin Cash · practise free on the test network first</small></span><span className="asset-state">Available</span></div>
-                <div><span className="asset-symbol pusd-symbol">P</span><span><b>ParyonUSD</b><small>Save in dollars with ParyonUSD · balances checked on-chain</small></span><span className="asset-state neutral">Read only</span></div>
+                <div><span className="asset-symbol pusd-symbol">P</span><span><b>ParyonUSD</b><small>Save in dollars with ParyonUSD · balances checked on the blockchain</small></span><span className="asset-state neutral">Read only</span></div>
               </div>
               <button type="button" className="text-action" onClick={() => navigate("assets")}>View asset details <ArrowRight size={14} /></button>
             </section>
@@ -855,24 +931,24 @@ export default function App() {
             <div className="page-intro">
               <span className="section-kicker">YOUR SAVINGS GROUPS</span>
               <h1>Create a circle</h1>
-              <p>{network === "mainnet" ? "BCH and PUSD are available together as separate Mainnet circle workspaces. Prepare each asset independently; signing and broadcast remain locked pending release approval." : "Choose the Chipnet circle model you want to create. Each saved circle will appear as its own named menu item."}</p>
+              <p>Choose what your group wants to save in, set the amount and members, then review the circle setup before taking action.</p>
             </div>
             <section className="circle-choice-guide" aria-label="Choose a circle type">
               <div className="circle-choice-heading">
                 <div><span className="section-kicker">CHOOSE YOUR CIRCLE</span><h2>What kind of circle do you want?</h2>
-                  <p>{network === "mainnet" ? "Both Mainnet asset workspaces are shown below, so you can prepare BCH and PUSD circles without switching assets." : "Choose the Chipnet circle rules that suit your group. Chipnet funds have no real-money value."}</p></div>
+                  <p>{network === "mainnet" ? "Choose BCH or PUSD. These are separate circles with their own member lists and payments." : "Try the circle options on Chipnet first. Test coins have no real-money value."}</p></div>
               </div>
               <div className="circle-choice-grid">
                 {network === "mainnet" && <>
                 <button type="button" className={circleWorkspace === "bch-mainnet" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-mainnet"} onClick={() => { setCircleWorkspace("bch-mainnet"); document.getElementById("bch-mainnet-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>
                   <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status">Mainnet · live</span></span>
-                  <b>BCH automatic-reserve circle</b>
+                  <b>BCH savings circle</b>
                   <span>For groups saving in Bitcoin Cash. Tracks member contributions and reserves the next installment for each non-final payout.</span>
                   <small>Best when your group wants native BCH and individual member accounting.</small>
                 </button>
                 <button type="button" className={circleWorkspace === "pusd-mainnet" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "pusd-mainnet"} onClick={() => { setCircleWorkspace("pusd-mainnet"); document.getElementById("pusd-mainnet-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>
                   <span className="circle-choice-top"><span className="circle-choice-symbol pusd">PUSD</span><span className="circle-choice-status">Mainnet · live</span></span>
-                  <b>PUSD stable-value circle</b>
+                  <b>PUSD savings circle</b>
                   <span>For groups that prefer ParyonUSD instead of BCH. Contributions and payouts are denominated in PUSD, with BCH needed separately for network fees.</span>
                   <small>Choose this if your group wants a stable-value token rather than BCH price exposure.</small>
                 </button>
@@ -880,15 +956,15 @@ export default function App() {
                 {network === "chipnet" && <>
                 <button type="button" className={circleWorkspace === "bch-fair-round" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-fair-round"} onClick={() => setCircleWorkspace("bch-fair-round")}>
                   <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status testing">Chipnet · test</span></span>
-                  <b>Fair-round BCH circle</b>
+                  <b>BCH savings circle</b>
                   <span>Experimental member-credit model. Members fund the current round; a non-final recipient carries one next contribution forward in their own receipt.</span>
-                  <small>Recommended for testing the newer member-credit and automatic-reserve experience.</small>
+                  <small>Try this option for the newer round-by-round savings experience.</small>
                 </button>
                 <button type="button" className={circleWorkspace === "bch-classic" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-classic"} onClick={() => setCircleWorkspace("bch-classic")}>
                   <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status testing">Chipnet · legacy</span></span>
-                  <b>Classic BCH circle</b>
-                  <span>Original rotating savings circle with a simple aggregate BCH pot and payout order. It does not provide per-member contribution attribution.</span>
-                  <small>Use for existing Classic V1 circles or compatibility testing, not for the newer accounting model.</small>
+                  <b>Classic BCH savings circle</b>
+                  <span>A simple rotating savings group with a shared BCH pot and a set order for payouts.</span>
+                  <small>Use this option for older circles or simple compatibility testing.</small>
                 </button>
                 </>}
               </div>
@@ -975,11 +1051,12 @@ export default function App() {
                 }} disabled={pusdView.status === "loading"}>
                   {pusdView.status === "loading" ? "Verifying…" : !connected ? "Connect wallet" : network !== "mainnet" ? "Switch to Mainnet" : "Refresh verified balance"}
                 </button>
-                {pusdView.status === "ready" && <span className="field-hint">{pusdView.providerConfidence} providers · block {pusdView.tipHeight.toLocaleString()} · {pusdView.utxoCount} authenticated PUSD outputs</span>}
+                {pusdView.status === "ready" && <span className="field-hint">{pusdView.utxoCount} PUSD coins checked on the blockchain
+                  <details className="technical-details"><summary>Technical details</summary><p>{pusdView.providerConfidence} independent providers · block {pusdView.tipHeight.toLocaleString()} · {pusdView.utxoCount} authenticated CashToken UTXOs.</p></details></span>}
               </div>
               <div className="pusd-transfer-box">
                 <div><span className="section-kicker">TRANSFER PLANNER</span><h3>Prepare a PUSD transfer</h3>
-                  <p>Builds a transaction preview from authenticated PUSD UTXOs and a live fee quote. It does not sign or broadcast.</p></div>
+                  <p>Builds a transaction preview from authenticated PUSD coins and the latest network fee estimate. It does not sign or broadcast.</p></div>
                 <label>Recipient Bitcoin Cash address
                   <input value={pusdRecipient} onChange={(event) => { setPusdRecipient(event.target.value); setPusdTransferPlan(null); setPusdSignatureMessage(""); setPusdPlanError(""); }} placeholder="bitcoincash:…" autoComplete="off" />
                 </label>
@@ -1019,7 +1096,7 @@ export default function App() {
               </div>
               <div className="asset-detail-row"><span>Token category</span><code>{PUSD_ASSET.categoryId}</code></div>
               <div className="asset-detail-row"><span>Display precision</span><b>2 decimals</b></div>
-              <div className="asset-detail-row"><span>PUSD circle covenant</span><b className="locked-state">Mainnet V3 build · signing locked</b></div>
+              <div className="asset-detail-row"><span>PUSD circle rules</span><b className="locked-state">Mainnet V3 build · signing locked</b></div>
             </article>
           </section>
         )}
@@ -1066,15 +1143,56 @@ export default function App() {
                     : "This connection's current receive address is not confirmed yet."}
                 </small>
                 {(network === "chipnet" || network === "mainnet") && walletAddress && <>
-                  <button className="secondary-button"
-                    disabled={gatherBusy || (network === "mainnet" && !walletClient?.isReceiveAddressConfirmed("mainnet"))}
-                    onClick={() => void gatherWalletCoins()}>
-                    {gatherBusy ? "Scanning and preparing coins…" : network === "mainnet" && !walletClient?.isReceiveAddressConfirmed("mainnet")
-                      ? "Sync Selene address before gathering"
-                      : network === "mainnet" ? "Gather Mainnet BCH coins to this address" : "Gather Selene coins to this address"}
-                  </button>
-                  {network === "mainnet" && <small className="field-hint">Mainnet gathering uses real BCH and requires Selene approval. Only plain BCH is consolidated back into your own wallet; CashTokens are left untouched.</small>}
-                  {gatherMessage && <p className="wallet-match-message" role="status">{gatherMessage}</p>}
+                  <section className="gather-card" aria-labelledby="gather-title">
+                    <div className="gather-card-heading">
+                      <span className="section-kicker">WALLET CLEAN-UP</span>
+                      <h3 id="gather-title">Gather BCH coins</h3>
+                      <p>Bring your available BCH into one coin in your own wallet. CashTokens are left untouched.</p>
+                    </div>
+                    {!gatherPlan && (
+                      <button className="secondary-button gather-scan-button"
+                        disabled={gatherBusy || (network === "mainnet" && !walletClient?.isReceiveAddressConfirmed("mainnet"))}
+                        onClick={() => void gatherWalletCoins()}>
+                        {gatherBusy ? "Checking your coins…" : network === "mainnet" && !walletClient?.isReceiveAddressConfirmed("mainnet")
+                          ? "Sync Selene address before checking coins"
+                          : "Find BCH coins in my wallet"}
+                      </button>
+                    )}
+                    {gatherPlan && (
+                      <div className="gather-review" aria-live="polite">
+                        <div className="gather-review-row"><span>Total BCH found</span><strong>{formatBchSatoshis(gatherPlan.plan.totalSatoshis)}</strong></div>
+                        <div className="gather-review-row gather-destination"><span>Goes to your wallet</span><code>{gatherPlan.plan.destination}</code></div>
+                        <div className="gather-review-row"><span>Network fee</span><strong>{formatBchSatoshis(gatherPlan.plan.fee)}</strong></div>
+                        <div className="gather-review-row"><span>After the fee</span><strong>{formatBchSatoshis(gatherPlan.plan.outputSatoshis)}</strong></div>
+                        <details className="technical-details">
+                          <summary>Technical details</summary>
+                          <p>{gatherPlan.plan.inputCount} BCH inputs are used. The fee is the existing estimated miner fee. Nothing has been signed or sent yet.</p>
+                        </details>
+                        <button type="button" className="primary-button gather-confirm-button" disabled={gatherBusy} onClick={() => void gatherWalletCoins()}>
+                          {gatherBusy ? "Waiting for Selene…" : "Gather to my wallet"}
+                        </button>
+                        <button type="button" className="secondary-button gather-cancel-button" disabled={gatherBusy} onClick={() => { setGatherPlan(null); setGatherMessage(""); }}>
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                    {gatherBusy && gatherMessage && <p className="wallet-match-message" role="status">{gatherMessage}</p>}
+                    {gatherResult?.status === "success" && (
+                      <div className="gather-result gather-success" role="status">
+                        <b>BCH gathered successfully</b>
+                        <span>Your BCH is on its way back to your wallet. The transaction may take time to confirm.</span>
+                        <a href={gatherExplorerUrl(gatherResult.network, gatherResult.txid)} target="_blank" rel="noreferrer">View transaction <code>{gatherResult.txid}</code></a>
+                      </div>
+                    )}
+                    {gatherResult?.status === "error" && (
+                      <div className="gather-result gather-error" role="alert">
+                        <b>We couldn't gather your BCH</b>
+                        <span>{gatherResult.message}</span>
+                        <button type="button" className="secondary-button" onClick={() => { setGatherResult(null); setGatherPlan(null); }}>Try again</button>
+                      </div>
+                    )}
+                    {network === "mainnet" && <small className="field-hint">Mainnet uses real BCH. Review the total and fee before asking Selene to approve. The coins return to your wallet.</small>}
+                  </section>
                 </>}
                 <button className="secondary-button" disabled={discoveryBusy} onClick={() => setDiscoveryRun((run) => run + 1)}>Check for my circles</button>
                 {discoveryMessage && <p className="wallet-match-message" role="status">{discoveryMessage}</p>}
