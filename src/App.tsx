@@ -674,9 +674,10 @@ export default function App() {
         const newestEntry = derived.find((entry) => entry.index === nextUnusedIndex) ??
           client.listReceiveAddresses("mainnet", nextUnusedIndex).find((entry) => entry.index === nextUnusedIndex);
         if (!newestEntry) throw new Error("Could not derive the next unused Mainnet receive address from this Selene xpub.");
-        const visible = activity.filter((entry) => entry.index < 50 &&
-          (entry.hasHistory || entry.confirmedSatoshis > 0n || entry.unconfirmedSatoshis > 0n));
-        const choices: ReceiveAddressChoice[] = visible.map((entry) => ({
+        // Keep every one of the first 50 derived receive addresses selectable.
+        // A currently displayed Selene address can be unused and therefore have
+        // no history; hiding unused indexes would force a second manual sync step.
+        const choices: ReceiveAddressChoice[] = activity.map((entry) => ({
           index: entry.index,
           address: entry.address,
           confirmedSatoshis: entry.confirmedSatoshis.toString(),
@@ -1662,7 +1663,7 @@ export default function App() {
                     {receiveAddressScanLoading && <span className="receive-address-scan-state">Scanning…</span>}
                   </div>
                   {receiveAddressScanError && <p className="classic-error" role="alert">{receiveAddressScanError}</p>}
-                  {!receiveAddressScanLoading && !receiveAddressScanError && receiveAddressChoices.length === 0 && <p className="field-hint">No address activity found yet. The next unused receive address will appear after the scan.</p>}
+                  {!receiveAddressScanLoading && !receiveAddressScanError && receiveAddressChoices.length === 0 && <p className="field-hint">No derived receive addresses were returned by Selene. Reconnect the wallet and scan again.</p>}
                   {selectedMainnetReceiveAddress && !receiveAddressPickerExpanded && walletClient?.isReceiveAddressConfirmed("mainnet") ? (
                     <div className="receive-address-selected-card">
                       <div className="receive-address-selected-copy">
