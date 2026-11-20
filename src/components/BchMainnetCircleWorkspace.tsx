@@ -24,6 +24,7 @@ type Props = {
   walletConnected: boolean;
   onOpenWalletDetails: () => void;
   selectedCircle?: string | null;
+  onBusyChange?: (busy: boolean) => void;
 };
 
 type Draft = { name: string; contribution: string; members: string[]; initiator?: string; maxFee: string; savedAt: number };
@@ -123,7 +124,7 @@ function errorMessage(cause: unknown) {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-export default function BchMainnetCircleWorkspace({ network, walletConnected, onOpenWalletDetails, selectedCircle = null }: Props) {
+export default function BchMainnetCircleWorkspace({ network, walletConnected, onOpenWalletDetails, selectedCircle = null, onBusyChange }: Props) {
   const [name, setName] = useState(() => "BCH Ajo circle – " + new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" }));
   const [contribution, setContribution] = useState("0.002");
   const [membersText, setMembersText] = useState("");
@@ -157,6 +158,11 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
     inputCount: number;
     outputCount: number;
   } | null>(null);
+
+  useEffect(() => {
+    onBusyChange?.(busy || lifecycleBusy);
+    return () => onBusyChange?.(false);
+  }, [busy, lifecycleBusy, onBusyChange]);
 
   useEffect(() => {
     if (!activeCircle || !walletConnected || wallet.state !== "connected") return;
