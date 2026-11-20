@@ -4,7 +4,8 @@ import { parseAssetAmount } from "../core/assets";
 import { CashTokensGenesisUtxoMissingError, classicAddressToPkh, getClassicProvider, planClassicGenesisSetup } from "../core/classic-bch";
 import { formatBch, type NetworkId } from "../core/network";
 import { wallet } from "../core/wizard-wallet";
-import { dedupeSavedV2FeeCircleRecords } from "../core/v2-fee-circle-records";
+import { dedupeSavedV2FeeCircleRecords, getV2FeeCircleRecordIdentity } from "../core/v2-fee-circle-records";
+import { updateSavedCircleProgress } from "../circles/saved-circle-status";
 import { encodeV2FeeCircleParams } from "../core/v2-fee-discovery";
 import {
   buildV2FeeMemberOrder,
@@ -120,6 +121,21 @@ export default function V2FeeBchWorkspace({
     onCircleSaved?.();
   };
 
+  const persistChainProgress = (params: V2FeeCircleParams, encoded: string, result: Snapshot) => {
+    const identity = getV2FeeCircleRecordIdentity(encoded);
+    if (!identity) return;
+    updateSavedCircleProgress(window.localStorage, {
+      id: "v2:" + identity.key,
+      encoded,
+      network: params.network,
+      kind: params.network === "mainnet" ? "bch-mainnet" : "v2-fee",
+      name: params.name,
+      asset: "BCH",
+      contribution: params.contribution.toString(),
+      memberCount: params.members.length,
+    }, result.round, result.completed);
+  };
+
   const refresh = async (params = active) => {
     if (!params) return;
     setBusy(true);
@@ -127,6 +143,7 @@ export default function V2FeeBchWorkspace({
     try {
       const result = await readV2FeeCircle(params);
       setSnapshot(result);
+      if (selected) persistChainProgress(params, selected, result);
       setNotice("V2 fee-circle state and every member receipt were read from Chipnet.");
     } catch (cause) {
       setSnapshot(null);
@@ -147,7 +164,10 @@ export default function V2FeeBchWorkspace({
     let current = true;
     setSnapshot(null);
     void readV2FeeCircle(active).then((result) => {
-      if (current) setSnapshot(result);
+      if (current) {
+        setSnapshot(result);
+        if (selected) persistChainProgress(active, selected, result);
+      }
     }).catch((cause: unknown) => {
       if (current) setError(errorText(cause));
     });
