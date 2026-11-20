@@ -200,7 +200,8 @@ test("Mainnet BCH gather accepts only one token-free output back to a wallet-der
     180,
   );
   assert.equal(layout.outputSatoshis, 50_000n);
-  assert.deepEqual(layout.inputOutpoints, [Buffer.from(inputHash).reverse().toString("hex") + ":1"]);
+  // libauth already exposes outpointTransactionHash in display (RPC) byte order.
+  assert.deepEqual(layout.inputOutpoints, [Buffer.from(inputHash).toString("hex") + ":1"]);
 
   assert.throws(() => validateBchMainnetGatherLayout(
     makeTransaction({ ...walletOutput, lockingBytecode: Buffer.from(otherScript, "hex") }),
@@ -1112,7 +1113,7 @@ test("PUSD Mainnet server reconstructs the exact circle and each member escrow s
 test("PUSD Mainnet genesis verifier enforces state category, receipt order and escrow scripts", () => {
   const context = createPusdMainnetV3ContractContext(pusdMainnetVerificationCircle);
   const firstInput = {
-    outpointTransactionHash: hexToBin(context.stateCategory).reverse(),
+    outpointTransactionHash: hexToBin(context.stateCategory),
     outpointIndex: 0,
   };
   const sourceOutputs = [

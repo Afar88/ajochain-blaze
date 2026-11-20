@@ -6,7 +6,6 @@ import { assertRequiredPusdSighash, verifySignedPusdTransaction } from "./pusd-s
 const walletScript = "76a914" + "11".repeat(20) + "88ac";
 const recipientScript = "76a914" + "22".repeat(20) + "88ac";
 const attackerScript = "76a914" + "33".repeat(20) + "88ac";
-const reverseHex = (value: string) => value.match(/../g)!.reverse().join("");
 
 const dummyP2pkhUnlocking = () => {
   const signature = new Uint8Array([0x30, 0x01, 0x01, 0x61]);
@@ -44,7 +43,7 @@ function signedSpend(outputScript = recipientScript, outputAmount = 90n, outputS
     version: 2,
     locktime: 0,
     inputs: [{
-      outpointTransactionHash: hexToBin(reverseHex(previous.txid)),
+      outpointTransactionHash: hexToBin(previous.txid),
       outpointIndex: 0,
       sequenceNumber: 0xffffffff,
       unlockingBytecode: dummyP2pkhUnlocking(),
@@ -161,7 +160,7 @@ describe("verifySignedPusdTransaction", () => {
       version: 2,
       locktime: 0,
       inputs: [{
-        outpointTransactionHash: hexToBin(reverseHex(previous.txid)),
+        outpointTransactionHash: hexToBin(previous.txid),
         outpointIndex: 0,
         sequenceNumber: 0xffffffff,
         unlockingBytecode: dummyP2pkhUnlocking(),
@@ -228,7 +227,7 @@ describe("verifySignedPusdTransaction", () => {
       version: 2,
       locktime: 0,
       inputs: [{
-        outpointTransactionHash: hexToBin(reverseHex(previousTxid)),
+        outpointTransactionHash: hexToBin(previousTxid),
         outpointIndex: 0,
         sequenceNumber: 0xffffffff,
         unlockingBytecode: hexToBin("51"),

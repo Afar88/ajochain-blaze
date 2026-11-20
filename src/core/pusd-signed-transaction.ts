@@ -91,7 +91,6 @@ export function assertRequiredPusdSighash(script: Uint8Array): void {
 }
 
 const isHex = (value: string) => /^(?:[0-9a-f]{2})+$/i.test(value);
-const reverseHex = (value: string) => value.match(/../g)!.reverse().join("").toLowerCase();
 
 /**
  * Validate the exact signed BCH transaction against raw previous transactions.
@@ -153,9 +152,9 @@ export async function verifySignedPusdTransaction(
   let inputPusdAmount = 0n;
 
   for (const [inputIndex, input] of transaction.inputs.entries()) {
-    // BCH serializes outpoint hashes in little-endian order; API txids use display order.
+    // libauth decodes outpoint hashes in display (RPC) order, the same order API txids use.
     const outpointBytes = binToHex(input.outpointTransactionHash).toLowerCase();
-    const txid = reverseHex(outpointBytes);
+    const txid = outpointBytes;
     const outpoint = { txid, vout: input.outpointIndex };
     if (!/^[0-9a-f]{64}$/.test(txid) ||
         !Number.isSafeInteger(outpoint.vout) || outpoint.vout < 0) {
