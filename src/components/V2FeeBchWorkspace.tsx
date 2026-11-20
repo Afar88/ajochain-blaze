@@ -566,7 +566,7 @@ export default function V2FeeBchWorkspace({
         <label>Join an existing circle with its invite link<input value={restoreInput} onChange={(event) => setRestoreInput(event.target.value)} placeholder="Paste circle invite URL" /></label>
         <button type="submit" className="secondary-button" disabled={!restoreInput.trim()}>Restore circle</button>
       </form>
-      <p className="field-hint circle-menu-hint">After you create or restore a circle, it appears as its own named item in the three-dot menu under <b>Your circles</b>.</p>
+      <p className="field-hint circle-menu-hint">After you create or restore a circle, it appears on the <b>My circles</b> page for the selected network.</p>
       </>)}
 
       {view === "circle" && active && <div className="classic-active-circle">
