@@ -686,7 +686,7 @@ remove hash invite  const memberAddresses = useMemo(() =>
           </div>
         </div>
       )}
-      {activeCircle && (
+      {activeCircle && (selectedCircle || creationResult) && (
         <div className="pusd-mainnet-saved">
           <div className="section-heading">
             <div><span className="section-kicker">YOUR PUSD CIRCLE</span><h3>{activeCircle.name}</h3></div>
@@ -694,7 +694,7 @@ remove hash invite  const memberAddresses = useMemo(() =>
               {lifecycleBusy ? "Checking…" : "Check circle status"}
             </button>
           </div>
-          <p className="classic-empty">Local circle identity saved for tracking. A saved setup preview does not mean the circle has been created on the blockchain.</p>
+          <p className="classic-empty">Circle details are loaded locally. Check the current on-chain state before taking an action.</p>
           {circleSnapshot && (
             <div className="pusd-mainnet-breakdown">
               <b>Verified circle state</b>
