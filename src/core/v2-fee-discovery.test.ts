@@ -6,6 +6,7 @@ import { createV2FeeCircleContract, v2FeeReceiptCommitment, v2FeeStateCommitment
 import { decodeV2FeeDiscoveryNote, encodeV2FeeDiscoveryNote, v2FeeDiscoveryOutputs } from "./v2-fee-discovery-note";
 import { discoverV2FeeCircles, parseV2FeeDiscoveryTransaction } from "./v2-fee-discovery";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "./project-treasury";
+import { MainnetQuorumNetworkProvider } from "./mainnet-quorum-provider";
 
 const pkh = (byte: number) => new Uint8Array(20).fill(byte);
 const CATEGORY = "0123456789abcdef".repeat(4);
@@ -227,4 +228,54 @@ describe("on-chain circle discovery", () => {
     expect(await discoverV2FeeCircles(provider, [busyAddress, circleAddress], 2)).toEqual([discovered]);
   });
 
+
+  it("discovers the same Mainnet genesis circle from its real creator and member addresses through the verified quorum", async () => {
+    const creatorAddress = "bitcoincash:qr0n65a7etj6falr32y2q288qtm0q2sj0qvn5zlrsn";
+    const memberAddress = "bitcoincash:qp7zcd6jr5rmrjdayfecy2ypywsu8tqnfqxcred43h";
+    const creatorScript = cashAddressToLockingBytecode(creatorAddress);
+    if (typeof creatorScript === "string") throw new Error(creatorScript);
+    const creatorPkh = creatorScript.bytecode.slice(3, 23);
+    const mainnetParams: V2FeeCircleParams = {
+      ...params,
+      covenant: "fee-v3-auto-reserve-mainnet",
+      network: "mainnet",
+      members: [
+        creatorAddress,
+        memberAddress,
+        pkhToAddress(pkh(3), "mainnet"),
+      ],
+      initiator: creatorAddress,
+      treasury: MAINNET_PROJECT_TREASURY_ADDRESS,
+    };
+    const transaction = genesisTx(mainnetParams, contractBytecode(mainnetParams), creatorPkh);
+    const raw = binToHex(encodeTransaction(transaction));
+    const txid = binToHex(hashTransactionUiOrder(hexToBin(raw))).toLowerCase();
+    const scriptHash = (address: string) => {
+      const output = cashAddressToLockingBytecode(address);
+      if (typeof output === "string") throw new Error(output);
+      return binToHex(sha256.hash(output.bytecode).reverse());
+    };
+    const creatorScriptHash = scriptHash(creatorAddress);
+    const memberScriptHash = scriptHash(memberAddress);
+    const createEndpoint = () => ({
+      performRequest: async (method: string, requestedScriptHash: string) => {
+        if (method !== "blockchain.scripthash.get_history") throw new Error("Unexpected Mainnet discovery RPC: " + method);
+        return requestedScriptHash === creatorScriptHash || requestedScriptHash === memberScriptHash
+          ? [{ tx_hash: txid, height: 978_176 }]
+          : [];
+      },
+      getRawTransaction: async () => raw,
+    } as unknown as import("cashscript").ElectrumNetworkProvider);
+
+    for (const walletAddress of [creatorAddress, memberAddress]) {
+      const provider = new MainnetQuorumNetworkProvider([createEndpoint(), createEndpoint()]);
+      (provider as unknown as { verifyTip: () => Promise<{ height: number; hash: string }> }).verifyTip = async () => ({
+        height: 978_200, hash: "dd".repeat(32),
+      });
+      expect(await discoverV2FeeCircles(provider, [walletAddress], 300, "mainnet")).toEqual([{
+        ...mainnetParams,
+        name: "Found circle " + CATEGORY.slice(0, 8),
+      }]);
+    }
+  });
 });

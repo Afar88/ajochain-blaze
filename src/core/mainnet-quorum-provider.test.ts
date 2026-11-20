@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeCashAddress } from "@bitauth/libauth";
+import { encodeCashAddress, hashTransaction, hexToBin } from "@bitauth/libauth";
 import type { ElectrumNetworkProvider, SpendableUtxo } from "cashscript";
 import {
   BCH_MAINNET_GENESIS_HASH,
@@ -156,6 +156,45 @@ describe("BCH Mainnet quorum provider", () => {
     (provider as unknown as { verifyTip: () => Promise<void> }).verifyTip = async () => undefined;
     await expect(provider.getUtxosForAddresses([encoded.address]))
       .rejects.toThrow(/locking script does not match that address/i);
+  });
+
+  it("serves quorum-agreed read-only discovery RPCs and rejects unsafe methods", async () => {
+    const raw = "0100000001" + "11".repeat(32) + "00000000" + "00" + "ffffffff" +
+      "01" + "e803000000000000" + "01" + "51" + "00000000";
+    const txid = hashTransaction(hexToBin(raw)).toLowerCase();
+    const scriptHash = "ab".repeat(32);
+    const history = [
+      { tx_hash: "bb".repeat(32), height: 100 },
+      { tx_hash: "aa".repeat(32), height: 99 },
+    ];
+    const endpoint = (entries: unknown, transaction = raw) => ({
+      performRequest: async (method: string) => {
+        if (method === "blockchain.scripthash.get_history") return entries;
+        if (method === "blockchain.transaction.get") return transaction;
+        throw new Error("Unexpected Electrum RPC: " + method);
+      },
+    }) as unknown as ElectrumNetworkProvider;
+    const quorum = new MainnetQuorumNetworkProvider([endpoint(history), endpoint(history)]);
+    (quorum as unknown as { verifyTip: () => Promise<{ height: number; hash: string }> }).verifyTip = async () => ({
+      height: 900_000, hash: "cc".repeat(32),
+    });
+
+    expect(await quorum.performRequest("blockchain.scripthash.get_history", scriptHash)).toEqual([
+      { tx_hash: "aa".repeat(32), height: 99 },
+      { tx_hash: "bb".repeat(32), height: 100 },
+    ]);
+    expect(await quorum.performRequest("blockchain.transaction.get", txid)).toBe(raw);
+    await expect(quorum.performRequest("blockchain.transaction.broadcast", raw))
+      .rejects.toThrow(/not permitted/);
+
+    const disagreeingHistory = new MainnetQuorumNetworkProvider([
+      endpoint(history), endpoint([{ tx_hash: "aa".repeat(32), height: 98 }, history[0]]),
+    ]);
+    (disagreeingHistory as unknown as { verifyTip: () => Promise<{ height: number; hash: string }> }).verifyTip = async () => ({
+      height: 900_000, hash: "cc".repeat(32),
+    });
+    await expect(disagreeingHistory.performRequest("blockchain.scripthash.get_history", scriptHash))
+      .rejects.toThrow(/disagree on wallet-address transaction history/);
   });
 
   it("cannot broadcast through the read-only Mainnet quorum provider", async () => {
