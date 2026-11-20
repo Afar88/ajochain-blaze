@@ -684,7 +684,11 @@ export default function App() {
           unconfirmedSatoshis: entry.unconfirmedSatoshis.toString(),
           hasHistory: entry.hasHistory,
           hasPendingHistory: entry.hasPendingHistory,
-          status: entry.confirmedSatoshis > 0n || (entry.hasHistory && !entry.hasPendingHistory) ? "confirmed" : "pending",
+          status: entry.confirmedSatoshis > 0n || (entry.hasHistory && !entry.hasPendingHistory)
+            ? "confirmed"
+            : entry.hasPendingHistory || entry.unconfirmedSatoshis > 0n
+              ? "pending"
+              : "unused",
           newest: false,
         }));
         if (!choices.some((choice) => choice.index === newestEntry.index)) {
