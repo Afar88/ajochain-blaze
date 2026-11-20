@@ -368,6 +368,13 @@ const pageLabels: Record<Page, string> = {
 
 export default function App() {
   const [network, setNetwork] = useState<NetworkId>(() => getDefaultNetwork(import.meta.env.PROD));
+  const [riskNoticeCollapsed, setRiskNoticeCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem("ajochain:circle-risk-notice:v1:" + getDefaultNetwork(import.meta.env.PROD)) === "collapsed";
+    } catch { return false; }
+  });
+  const riskNoticeStorageKey = "ajochain:circle-risk-notice:v1:" + network;
   const [page, setPage] = useState<Page>("overview");
   const [createCircleView, setCreateCircleView] = useState<"choose" | "form">("choose");
   const [createCircleWorkspaceBusy, setCreateCircleWorkspaceBusy] = useState(false);
@@ -428,6 +435,13 @@ export default function App() {
 
   const walletAddress = walletClient?.address(network) ?? null;
   const connected = walletView.state === "connected";
+  const otherNetworkAddress = walletClient?.address(network === "mainnet" ? "chipnet" : "mainnet") ?? null;
+  const walletNetworkMismatch = connected && !walletAddress && Boolean(otherNetworkAddress);
+  const walletStateLabel = walletView.state === "connecting" ? "Connecting"
+    : walletView.state === "reconnecting" ? "Reconnecting"
+      : walletView.state === "disconnecting" ? "Disconnecting"
+        : walletView.state === "disconnected" ? "Disconnected"
+          : connected ? "Connected" : "Connect wallet";
 
   const walletSessionIdentity = walletClient?.getSessionIdentity() ?? null;
   const discoveryEffectDependencies = getDiscoveryEffectDependencies(
@@ -459,6 +473,12 @@ export default function App() {
   ) ?? null;
 
   useEffect(() => {
+    try {
+      setRiskNoticeCollapsed(window.localStorage.getItem(riskNoticeStorageKey) === "collapsed");
+    } catch { setRiskNoticeCollapsed(false); }
+  }, [riskNoticeStorageKey]);
+
+  useEffect(() => {
     // A network change can also mean Selene is showing a different receive
     // address. Require the user to sync the address for the newly selected
     // BCH network rather than carrying an old confirmation across networks.
@@ -484,6 +504,24 @@ export default function App() {
   const visibleStatusCircles = filterSavedCirclesByStatus(visibleNetworkCircles, circleStatusTab);
   const networkCircleCounts = countCircleStatuses(visibleNetworkCircles);
   const menuLabel = pageLabels[page];
+  const renderCircleRiskNotice = () => (
+    <details
+      className="circle-risk-notice"
+      open={!riskNoticeCollapsed}
+      onToggle={(event) => {
+        const collapsed = !event.currentTarget.open;
+        setRiskNoticeCollapsed(collapsed);
+        try {
+          if (collapsed) window.localStorage.setItem(riskNoticeStorageKey, "collapsed");
+          else window.localStorage.removeItem(riskNoticeStorageKey);
+        } catch { /* notice remains usable when storage is unavailable */ }
+      }}
+    >
+      <summary><ShieldCheck size={18} /> {network === "mainnet" ? "Mainnet safety notice" : "Chipnet notice"} <span>{riskNoticeCollapsed ? "Show" : "Hide"}</span></summary>
+      <p>{circleRiskNoticeText(network)}</p>
+      <button type="button" className="secondary-button" onClick={() => setMenuOpen(true)}>Change network</button>
+    </details>
+  );
 
   useEffect(() => {
     const refreshSavedCircles = () => setMenuCircles(readSavedCircleMenuRecords());
