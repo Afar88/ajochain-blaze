@@ -2303,7 +2303,9 @@ export default function App() {
               <div className="wallet-detail-body">
                 {qrDataUrl && <img className="wallet-qr" src={qrDataUrl} alt="WizardConnect pairing QR code" />}
                 {walletView.uri && <a className="primary-button wallet-open-link" href={walletView.uri}>Open in Selene <ArrowRight size={15} /></a>}
-                {walletView.state === "connecting" && <p className="wallet-match-message">Approve the WizardConnect session in Selene, then return here.</p>}
+                {walletView.state === "connecting" && <p className="wallet-match-message">Connecting to Selene. Approve the session in Selene, then return here.</p>}
+                {walletView.state === "reconnecting" && <p className="wallet-match-message" role="status">Reconnecting to Selene. Keep this page open while the relay recovers.</p>}
+                {walletView.state === "disconnected" && <p className="wallet-match-message" role="status">Wallet disconnected. Tap Reconnect to try again.</p>}
                 {walletView.error && <p className="wallet-match-message" role="alert">{walletView.error}</p>}
                 <div className="wallet-modal-actions">
                   <button className="primary-button" onClick={() => {
@@ -2312,7 +2314,7 @@ export default function App() {
                       if (walletClient.state === "idle") walletClient.connect();
                       else if (walletClient.state === "disconnected") walletClient.startFreshPairing();
                     }
-                  }}>Retry saved session / connect</button>
+                  }}>Reconnect</button>
                   <button className="secondary-button" onClick={() => walletClient?.startFreshPairing()}>Start fresh pairing</button>
                   <button className="secondary-button" onClick={() => setShowWallet(false)}>Close</button>
                 </div>
