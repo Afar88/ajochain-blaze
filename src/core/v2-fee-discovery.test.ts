@@ -6,6 +6,7 @@ import { createV2FeeCircleContract, v2FeeReceiptCommitment, v2FeeStateCommitment
 import { decodeV2FeeDiscoveryNote, encodeV2FeeDiscoveryNote, v2FeeDiscoveryOutputs } from "./v2-fee-discovery-note";
 import { discoverV2FeeCircles, parseV2FeeDiscoveryTransaction } from "./v2-fee-discovery";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "./project-treasury";
+import { MainnetQuorumNetworkProvider } from "./mainnet-quorum-provider";
 
 const pkh = (byte: number) => new Uint8Array(20).fill(byte);
 const CATEGORY = "0123456789abcdef".repeat(4);
@@ -227,4 +228,46 @@ describe("on-chain circle discovery", () => {
     expect(await discoverV2FeeCircles(provider, [busyAddress, circleAddress], 2)).toEqual([discovered]);
   });
 
+
+  it("discovers the same Mainnet genesis circle from its creator and another member through the verified quorum", async () => {
+    const mainnetParams: V2FeeCircleParams = {
+      ...params,
+      covenant: "fee-v3-auto-reserve-mainnet",
+      network: "mainnet",
+      members: [
+        pkhToAddress(pkh(2), "mainnet"),
+        pkhToAddress(pkh(1), "mainnet"),
+        pkhToAddress(pkh(3), "mainnet"),
+      ],
+      initiator: pkhToAddress(pkh(1), "mainnet"),
+      treasury: MAINNET_PROJECT_TREASURY_ADDRESS,
+    };
+    const transaction = genesisTx(mainnetParams, contractBytecode(mainnetParams), pkh(1));
+    const raw = binToHex(encodeTransaction(transaction));
+    const txid = binToHex(hashTransactionUiOrder(hexToBin(raw))).toLowerCase();
+    const scriptHash = (address: string) =>
+      binToHex(sha256.hash((cashAddressToLockingBytecode(address) as { bytecode: Uint8Array }).bytecode).reverse());
+    const creatorScriptHash = scriptHash(mainnetParams.initiator);
+    const memberScriptHash = scriptHash(mainnetParams.members[0]);
+    const endpoint = {
+      performRequest: async (method: string, requestedScriptHash: string) => {
+        if (method !== "blockchain.scripthash.get_history") throw new Error("Unexpected Mainnet discovery RPC: " + method);
+        return requestedScriptHash === creatorScriptHash || requestedScriptHash === memberScriptHash
+          ? [{ tx_hash: txid, height: 978_176 }]
+          : [];
+      },
+      getRawTransaction: async () => raw,
+    } as unknown as import("cashscript").ElectrumNetworkProvider;
+
+    for (const walletAddress of [mainnetParams.initiator, mainnetParams.members[0]]) {
+      const provider = new MainnetQuorumNetworkProvider([endpoint, { ...endpoint }]);
+      (provider as unknown as { verifyTip: () => Promise<{ height: number; hash: string }> }).verifyTip = async () => ({
+        height: 978_200, hash: "dd".repeat(32),
+      });
+      expect(await discoverV2FeeCircles(provider, [walletAddress], 300, "mainnet")).toEqual([{
+        ...mainnetParams,
+        name: "Found circle " + CATEGORY.slice(0, 8),
+      }]);
+    }
+  });
 });
