@@ -9,16 +9,17 @@ import { wallet } from "../core/wizard-wallet";
 type Props = {
   network: NetworkId;
   walletConnected: boolean;
+  selectedCircle?: string | null;
 };
 
 function message(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-export default function ClassicBchWorkspace({ network, walletConnected }: Props) {
+export default function ClassicBchWorkspace({ network, walletConnected, selectedCircle = null }: Props) {
   const [saved, setSaved] = useState<SavedClassicCircle[]>(() => loadSavedClassicCircles(window.localStorage));
-  const [selected, setSelected] = useState<string | null>(() => loadSavedClassicCircles(window.localStorage)[0]?.encoded ?? null);
-  const [name, setName] = useState("My Ajo Circle");
+  const [selected, setSelected] = useState<string | null>(() => selectedCircle ?? loadSavedClassicCircles(window.localStorage)[0]?.encoded ?? null);
+  const [name, setName] = useState(() => "Ajo circle – " + new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" }));
   const [amount, setAmount] = useState("0.001");
   const [maxFee, setMaxFee] = useState("10000");
   const [membersText, setMembersText] = useState("");
