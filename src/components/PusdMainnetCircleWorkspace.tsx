@@ -25,7 +25,7 @@ import {
   getPayoutDisabledReason,
   shouldRenderCircleCreation,
 } from "./mainnet-circle-lifecycle-ui";
-import { updateSavedCircleProgress } from "../circles/saved-circle-status";
+import { updateSavedCircleChainStatus } from "../circles/saved-circle-status";
 
 type Props = { network: NetworkId; walletConnected: boolean; selectedAddressPendingOnly?: boolean; selectedCircle?: string | null; onBusyChange?: (busy: boolean) => void };
 type Draft = {
