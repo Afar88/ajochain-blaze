@@ -3,6 +3,7 @@ import { decodeCashAddress } from "@bitauth/libauth";
 import {
   wizardRelayStatusMessage,
   shouldPreserveReceiveAddressConfirmation,
+  walletAddressSnapshotsMatch,
   isCurrentReceiveAddressConfirmed,
   buildWizardSignRequest,
   assertP2pkhWalletInputCoverage,
@@ -180,6 +181,31 @@ describe("WizardConnect covenant-input sighash inspection", () => {
   });
 });
 
+
+describe("WizardConnect wallet address snapshot validation", () => {
+  const original = [
+    { branch: "receive" as const, index: 0, address: "bitcoincash:qexample1" },
+    { branch: "change" as const, index: 0, address: "bitcoincash:qexample2" },
+  ];
+
+  it("accepts the same receive/change path and address snapshot", () => {
+    expect(walletAddressSnapshotsMatch(original, [...original])).toBe(true);
+    expect(walletAddressSnapshotsMatch(original, original.map((entry) => ({
+      ...entry, address: entry.address.toUpperCase(),
+    })))).toBe(true);
+  });
+
+  it("rejects changed addresses, paths, ordering, and address counts", () => {
+    expect(walletAddressSnapshotsMatch(original, [
+      original[0], { ...original[1], address: "bitcoincash:qchanged" },
+    ])).toBe(false);
+    expect(walletAddressSnapshotsMatch(original, [
+      original[0], { ...original[1], index: 1 },
+    ])).toBe(false);
+    expect(walletAddressSnapshotsMatch(original, [...original].reverse())).toBe(false);
+    expect(walletAddressSnapshotsMatch(original, original.slice(0, 1))).toBe(false);
+  });
+});
 
 describe("WizardConnect receive-address confirmation across relay handshakes", () => {
   const walletIdentity = "ab".repeat(32);
