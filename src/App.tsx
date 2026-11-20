@@ -20,7 +20,15 @@ import {
   ensureSavedCircleMetadata,
   filterSavedCirclesByNetwork,
   filterSavedCirclesByStatus,
+  updateSavedCircleChainStatus,
+  type SavedCircleStatus,
 } from "./circles/saved-circle-status";
+import {
+  checkCircleStatusesWithLimits,
+  countCircleStatuses,
+  shouldAutoHideDiscoveryMessage,
+  type ChainCircleSnapshot,
+} from "./circles/on-chain-circle-status";
 const ClassicBchWorkspace = lazy(() => import("./components/ClassicBchWorkspace"));
 const V2FeeBchWorkspace = lazy(() => import("./components/V2FeeBchWorkspace"));
 const PusdMainnetCircleWorkspace = lazy(() => import("./components/PusdMainnetCircleWorkspace"));
@@ -41,8 +49,9 @@ type MenuCircle = {
   contribution: string;
   contributionLabel: string;
   memberCount: number;
-  status: "active" | "completed";
+  status: SavedCircleStatus;
   completedAt: number | null;
+  checkedAt: number | null;
   round: number | null;
 };
 
@@ -91,7 +100,7 @@ function readSavedCircleMenuRecords(): MenuCircle[] {
       id, kind, encoded, name: name.trim() || "Ajo circle", detail,
       label: (name.trim() || "Ajo circle") + " · " + detail, network,
       asset, contribution, contributionLabel: formattedContribution || "Contribution unavailable", memberCount,
-      status: "active", completedAt: null, round: null,
+      status: "unknown", completedAt: null, checkedAt: null, round: null,
     });
   };
 
@@ -179,8 +188,9 @@ function readSavedCircleMenuRecords(): MenuCircle[] {
     const saved = byId.get(circle.id);
     return {
       ...circle,
-      status: saved?.status ?? "active",
+      status: saved?.status ?? "unknown",
       completedAt: saved?.completedAt ?? null,
+      checkedAt: saved?.checkedAt ?? null,
       round: saved?.round ?? null,
     };
   });
@@ -383,6 +393,7 @@ export default function App() {
   const [discoveryMessage, setDiscoveryMessage] = useState("");
   const [discoveryRun, setDiscoveryRun] = useState(0);
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
+  const [circleStatusRetryRun, setCircleStatusRetryRun] = useState(0);
   const [walletView, setWalletView] = useState<WalletView>({
     state: "idle", uri: null, qrUri: null, walletName: null, error: null,
     receiveIndex: 0, mainnetAddressConfirmed: false, addressSetRevision: 0,
@@ -428,6 +439,10 @@ export default function App() {
     choices: receiveAddressChoices,
   };
   const discoveryBusyRef = useRef(false);
+  const discoveryMessageTimerRef = useRef<number | null>(null);
+  const circleStatusScannedKeysRef = useRef(new Set<string>());
+  const circleStatusSessionRef = useRef<string | null | undefined>(undefined);
+  const circleStatusRetryIdsRef = useRef<string[]>([]);
   const activeDiscoveryRunRef = useRef<{
     sessionKey: string;
     cancelled: boolean;
@@ -461,6 +476,7 @@ export default function App() {
   ) ?? null;
   const visibleNetworkCircles = filterSavedCirclesByNetwork(menuCircles, network);
   const visibleStatusCircles = filterSavedCirclesByStatus(visibleNetworkCircles, circleStatusTab);
+  const networkCircleCounts = countCircleStatuses(visibleNetworkCircles);
   const menuLabel = pageLabels[page];
 
   useEffect(() => {
@@ -478,6 +494,139 @@ export default function App() {
   useEffect(() => {
     if (walletView.state !== "connected") setAddressMatchMessage("");
   }, [walletView.state]);
+
+  const circleStatusSignature = menuCircles.map((circle) =>
+    circle.id + ":" + circle.encoded,
+  ).join("|");
+
+  useEffect(() => {
+    // Re-check saved circles on load, when newly discovered circles are added,
+    // and after a wallet reconnect. Status reads are public/read-only chain calls.
+    if (circleStatusSessionRef.current !== walletSessionIdentity) {
+      circleStatusSessionRef.current = walletSessionIdentity;
+      circleStatusScannedKeysRef.current.clear();
+    }
+    const retryIds = circleStatusRetryIdsRef.current.splice(0);
+    const retrySet = new Set(retryIds);
+    const targets = menuCircles.filter((circle) => {
+      const key = circle.id + ":" + circle.encoded;
+      return retrySet.has(circle.id) || !circleStatusScannedKeysRef.current.has(key);
+    });
+    if (targets.length === 0) return;
+    for (const circle of targets) {
+      circleStatusScannedKeysRef.current.add(circle.id + ":" + circle.encoded);
+    }
+
+    let current = true;
+    const readStatus = async (circle: MenuCircle): Promise<ChainCircleSnapshot> => {
+      if (circle.kind === "v2-fee" || circle.kind === "bch-mainnet") {
+        const [{ decodeV2FeeCircle, readV2FeeCircle }] = await Promise.all([
+          import("./core/v2-fee-bch"),
+        ]);
+        const params = decodeV2FeeCircle(circle.encoded);
+        const snapshot = await readV2FeeCircle(params);
+        return {
+          round: snapshot.round,
+          completed: snapshot.completed,
+          stateVerified: !snapshot.completed && snapshot.round !== null,
+          closedAs: snapshot.closedAs ?? null,
+          completedAt: snapshot.completedAt ?? null,
+        };
+      }
+      if (circle.kind === "classic") {
+        const { decodeClassicCircle, readClassicCircle } = await import("./core/classic-bch");
+        const params = decodeClassicCircle(circle.encoded);
+        const snapshot = await readClassicCircle(params);
+        return {
+          round: snapshot.status.round,
+          completed: snapshot.status.round === params.members.length && Boolean(snapshot.status.stateUtxo),
+          stateVerified: snapshot.status.stateVerified,
+          completedAt: null,
+        };
+      }
+      if (circle.kind === "pusd-mainnet") {
+        const { PusdCircleClosedError, readPusdMainnetCircle } = await import("./core/pusd-mainnet-circle");
+        const payload: unknown = JSON.parse(circle.encoded);
+        if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+          throw new Error("Saved PUSD circle data is invalid.");
+        }
+        const value = payload as Record<string, unknown>;
+        if (value.version !== 3 || value.network !== "mainnet" ||
+            typeof value.name !== "string" || !Array.isArray(value.members) ||
+            !value.members.every((member) => typeof member === "string") ||
+            typeof value.contribution !== "string" || !/^\d+$/.test(value.contribution) ||
+            typeof value.maxFee !== "string" || !/^\d+$/.test(value.maxFee) ||
+            typeof value.initiator !== "string" || typeof value.stateCategory !== "string" ||
+            typeof value.treasury !== "string") {
+          throw new Error("Saved PUSD circle data is incomplete.");
+        }
+        try {
+          const snapshot = await readPusdMainnetCircle({
+            version: 3,
+            network: "mainnet",
+            name: value.name,
+            members: value.members as string[],
+            contribution: BigInt(value.contribution),
+            maxFee: BigInt(value.maxFee),
+            initiator: value.initiator,
+            stateCategory: value.stateCategory,
+            treasury: value.treasury,
+          });
+          return { round: snapshot.round, completed: snapshot.completed, stateVerified: true, completedAt: null };
+        } catch (cause) {
+          if (cause instanceof PusdCircleClosedError) {
+            return {
+              round: value.members.length,
+              completed: true,
+              closedAs: cause.closedAs,
+              completedAt: cause.completedAt,
+            };
+          }
+          throw cause;
+        }
+      }
+      throw new Error("No read-only status checker is available for this saved circle type.");
+    };
+
+    void (async () => {
+      const outcomes = await checkCircleStatusesWithLimits(targets, readStatus, {
+        concurrency: 4,
+        requestTimeoutMs: 10_000,
+        overallTimeoutMs: 45_000,
+      });
+      if (!current) return;
+      for (const outcome of outcomes) {
+        const circle = outcome.item;
+        updateSavedCircleChainStatus(window.localStorage, {
+          id: circle.id,
+          encoded: circle.encoded,
+          network: circle.network,
+          kind: circle.kind,
+          name: circle.name,
+          asset: circle.asset,
+          contribution: circle.contribution,
+          memberCount: circle.memberCount,
+        }, outcome.result.status, outcome.result.round, outcome.result.completedAt);
+      }
+      setMenuCircles(readSavedCircleMenuRecords());
+    })();
+
+    return () => { current = false; };
+  }, [circleStatusSignature, walletSessionIdentity, circleStatusRetryRun]);
+
+  const retryCircleStatus = (circle: MenuCircle) => {
+    circleStatusRetryIdsRef.current = [...circleStatusRetryIdsRef.current, circle.id];
+    setCircleStatusRetryRun((revision) => revision + 1);
+  };
+
+  const openMenuCircle = (circle: MenuCircle) => {
+    setSelectedMenuCircle(circle.id);
+    setCircleWorkspace(circle.kind === "v2-fee" ? "bch-fair-round"
+      : circle.kind === "classic" ? "bch-classic"
+        : circle.kind === "bch-mainnet" ? "bch-mainnet" : "pusd-mainnet");
+    setPage("circle-detail");
+    setMenuOpen(false);
+  };
 
   const clearCreateCircleHistoryEntry = () => {
     const currentState = window.history.state;
@@ -1076,6 +1225,10 @@ export default function App() {
     if (!walletClient || walletView.state !== "connected" || walletClient.state !== "connected") {
       return;
     }
+    if (discoveryMessageTimerRef.current !== null) {
+      window.clearTimeout(discoveryMessageTimerRef.current);
+      discoveryMessageTimerRef.current = null;
+    }
 
     // Snapshot selected and active receive addresses exactly once at scan start.
     // Changes to receiveAddressChoices/receiveIndex do not restart this run.
@@ -1084,7 +1237,25 @@ export default function App() {
     let mainnetTimedOut = false;
     let chipnetStatus = "Chipnet: checking…";
     let mainnetStatus = "Mainnet: checking…";
-    const publishStatus = () => setDiscoveryMessage(chipnetStatus + " · " + mainnetStatus);
+    const publishStatus = () => {
+      setDiscoveryMessage(chipnetStatus + " · " + mainnetStatus);
+      if (discoveryMessageTimerRef.current !== null) {
+        window.clearTimeout(discoveryMessageTimerRef.current);
+        discoveryMessageTimerRef.current = null;
+      }
+      const terminalStates = [chipnetStatus, mainnetStatus].map((status) =>
+        status.includes("checking…") ? "checking" as const
+          : /timed out/i.test(status) ? "timeout" as const
+            : /unavailable|cancelled/i.test(status) ? "error" as const
+              : "success" as const,
+      );
+      if (shouldAutoHideDiscoveryMessage(terminalStates)) {
+        discoveryMessageTimerRef.current = window.setTimeout(() => {
+          setDiscoveryMessage("");
+          discoveryMessageTimerRef.current = null;
+        }, 4_000);
+      }
+    };
     const run = {
       sessionKey,
       cancelled: false,
@@ -1410,6 +1581,53 @@ export default function App() {
     BigInt(selectedReceiveAddressChoice.confirmedSatoshis) === 0n &&
     (BigInt(selectedReceiveAddressChoice.unconfirmedSatoshis) > 0n || selectedReceiveAddressChoice.hasPendingHistory));
 
+
+  const renderCircleRows = (circles: MenuCircle[], compact = false) => (
+    <div className={compact ? "my-circles-list compact-list" : "my-circles-list"}>
+      {circles.map((circle) => (
+        <div className="my-circle-entry" key={circle.id}>
+          <button type="button" className="my-circle-row" onClick={() => openMenuCircle(circle)}>
+            <span className="my-circle-copy">
+              <b>{circle.name}</b>
+              <span>{circle.asset} · {circle.contributionLabel} · {circle.memberCount} members</span>
+              <small>{circle.status === "completed" || circle.status === "cancelled"
+                ? (circle.status === "cancelled" ? "Cancelled" : "Completed") +
+                  (circle.completedAt ? " · " + new Date(circle.completedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "")
+                : circle.status === "unknown"
+                  ? circle.checkedAt === null ? "Checking on-chain status…" : "Status unavailable · latest chain read failed"
+                  : circle.round === null
+                    ? "Checking round progress · " + circle.memberCount + " members"
+                    : "Round " + Math.min(circle.round + 1, circle.memberCount) + " of " + circle.memberCount}</small>
+            </span>
+            <span className={
+              circle.status === "completed" ? "my-circle-status completed"
+                : circle.status === "cancelled" ? "my-circle-status cancelled"
+                  : circle.status === "unknown" ? circle.checkedAt === null ? "my-circle-status checking" : "my-circle-status unavailable" : "my-circle-status"
+            }>{circle.status === "completed" ? "Completed"
+              : circle.status === "cancelled" ? "Cancelled"
+                : circle.status === "unknown" ? circle.checkedAt === null ? "Checking…" : "Status unavailable" : "Active"}</span>
+            <ArrowRight size={17} />
+          </button>
+          {circle.status === "unknown" && circle.checkedAt !== null && (
+            <button type="button" className="secondary-button circle-status-retry"
+              onClick={() => retryCircleStatus(circle)}>Retry status check</button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderCircleTabs = () => (
+    <div className="my-circles-tabs" role="tablist" aria-label="Circle status">
+      <button type="button" role="tab" aria-selected={circleStatusTab === "active"}
+        className={circleStatusTab === "active" ? "selected" : ""}
+        onClick={() => setCircleStatusTab("active")}>Active ({networkCircleCounts.active})</button>
+      <button type="button" role="tab" aria-selected={circleStatusTab === "completed"}
+        className={circleStatusTab === "completed" ? "selected" : ""}
+        onClick={() => setCircleStatusTab("completed")}>Completed ({networkCircleCounts.completed})</button>
+    </div>
+  );
+
   return (
     <main className="app-shell compact-app">
       <header className="app-header">
@@ -1417,9 +1635,19 @@ export default function App() {
           <span className="brand-mark">a</span><span>AjoChain</span>
         </a>
         <div className="header-actions">
-          {connected && (
+          <button type="button" className="header-network-pill" onClick={() => {
+            setMenuCircles(readSavedCircleMenuRecords());
+            setMenuOpen(true);
+          }} aria-label={"Selected network: " + NETWORKS[network].label + ". Open network options."}>
+            <span className="network-dot" />{network === "mainnet" ? "Mainnet" : "Chipnet"}
+          </button>
+          {connected ? (
             <button className="header-wallet-chip" type="button" onClick={() => setShowWallet(true)}>
               <span className="wallet-live-dot" />{shortAddress(walletAddress)}
+            </button>
+          ) : (
+            <button className="header-wallet-chip header-connect-button" type="button" onClick={openWallet}>
+              Connect
             </button>
           )}
           <button
@@ -1512,8 +1740,46 @@ export default function App() {
       </header>
 
       <div className="page-body">
+
         {page === "overview" && (
           <>
+            <section className="overview-network-notice" aria-label="Selected network notice">
+              <div className="overview-notice-icon"><ShieldCheck size={18} /></div>
+              <div className="overview-notice-copy">
+                <span className="section-kicker">NETWORK NOTICE</span>
+                <b>{network === "mainnet" ? "Bitcoin Cash Mainnet · real funds" : "Chipnet · testing only"}</b>
+                <p>{network === "mainnet"
+                  ? "Mainnet uses real BCH and PUSD. Review every amount and miner fee; wallet approval is required. Circle contracts are unaudited."
+                  : "Chipnet is a testing network. Test BCH has no real-money value and cannot be used as Mainnet funds."}</p>
+              </div>
+              <button type="button" className="secondary-button overview-network-change"
+                onClick={() => setMenuOpen(true)}>Change network</button>
+            </section>
+
+            <section className="overview-my-circles section-card" aria-labelledby="overview-circles-title">
+              <div className="section-heading overview-circles-heading">
+                <div><span className="section-kicker">YOUR SAVINGS</span><h2 id="overview-circles-title">My circles</h2>
+                  <p>{NETWORKS[network].label} circles, classified from read-only chain status.</p></div>
+                <button type="button" className="text-action" onClick={() => navigate("my-circles")}>View all <ArrowRight size={14} /></button>
+              </div>
+              {renderCircleTabs()}
+              {visibleStatusCircles.length === 0 ? (
+                <div className="my-circles-empty overview-empty">
+                  <h2>{circleStatusTab === "active" ? "No active circles yet" : "No completed circles yet"}</h2>
+                  <p>{circleStatusTab === "active"
+                    ? "Create your first circle or restore an invite. New circles appear here after their status is checked."
+                    : "Completed payouts and confirmed cancellations appear here."}</p>
+                  <button type="button" className="secondary-button" onClick={() => navigate("my-circles")}>Open My circles</button>
+                </div>
+              ) : renderCircleRows(visibleStatusCircles.slice(0, 3), true)}
+              {visibleNetworkCircles.length > 3 && (
+                <button type="button" className="text-action overview-view-more" onClick={() => navigate("my-circles")}>
+                  View all {visibleNetworkCircles.length} circles <ArrowRight size={14} />
+                </button>
+              )}
+              <span className="circle-scan-summary" role="status">✓ {NETWORKS[network].label}: {networkCircleCounts.active} active, {networkCircleCounts.completed} completed</span>
+            </section>
+
             <section className="welcome-hero">
               <div className="welcome-kicker"><span /> AJO · ESUSU · ON BITCOIN CASH</div>
               <h1>Your Ajo savings circle,<br /><em>on Bitcoin Cash.</em></h1>
@@ -1521,6 +1787,15 @@ export default function App() {
               <button className="primary-button hero-cta" type="button" onClick={() => navigate("create-circle")}>
                 Create a circle <ArrowRight size={16} />
               </button>
+            </section>
+
+            <section className="overview-activity section-card" aria-labelledby="overview-activity-title">
+              <div className="section-heading"><div><span className="section-kicker">LATEST RECORDS</span><h2 id="overview-activity-title">Activity</h2></div>
+                <button type="button" className="text-action" onClick={() => navigate("activity")}>All activity <ArrowRight size={14} /></button>
+              </div>
+              <Suspense fallback={<p className="classic-empty">Loading chain-backed activity…</p>}>
+                <ActivityRecords />
+              </Suspense>
             </section>
 
             <section className="how-ajo-works" aria-labelledby="how-ajo-works-title">
@@ -1639,12 +1914,18 @@ export default function App() {
           </section>
         )}
 
+
         {page === "my-circles" && (
           <section className="page-section my-circles-page">
             <div className="page-intro">
               <span className="section-kicker">YOUR SAVINGS CIRCLES</span>
               <h1>{network === "mainnet" ? "Mainnet circles" : "Chipnet test circles"}</h1>
-              <p>Circles are shown only for the network selected in the navigation menu.</p>
+              <p>Circles are shown only for the network selected in the navigation menu. Status is read from the selected network's blockchain.</p>
+            </div>
+            <div className="circle-scan-summary-row">
+              <span className="circle-scan-summary" role="status">✓ {NETWORKS[network].label}: {networkCircleCounts.active} active, {networkCircleCounts.completed} completed</span>
+              {visibleNetworkCircles.some((circle) => circle.status === "unknown") &&
+                <span className="circle-scan-warning" role="status">{visibleNetworkCircles.filter((circle) => circle.status === "unknown").length} status check(s) unavailable</span>}
             </div>
             {network === "mainnet" && (
               <section className="pusd-mainnet-saved mainnet-invite-join" aria-label="Join a Mainnet circle">
@@ -1661,55 +1942,23 @@ export default function App() {
                 {mainnetInviteNotice && <p className="classic-notice" role="status">{mainnetInviteNotice}</p>}
               </section>
             )}
-            <div className="my-circles-tabs" role="tablist" aria-label="Circle status">
-              <button type="button" role="tab" aria-selected={circleStatusTab === "active"}
-                className={circleStatusTab === "active" ? "selected" : ""}
-                onClick={() => setCircleStatusTab("active")}>Active</button>
-              <button type="button" role="tab" aria-selected={circleStatusTab === "completed"}
-                className={circleStatusTab === "completed" ? "selected" : ""}
-                onClick={() => setCircleStatusTab("completed")}>Completed</button>
-            </div>
+            {renderCircleTabs()}
             {visibleStatusCircles.length === 0 ? (
               <div className="my-circles-empty">
                 {circleStatusTab === "active" ? (
                   <>
                     <h2>No active circles on {network === "mainnet" ? "Mainnet" : "Chipnet"} yet</h2>
-                    <p>New circles appear here as soon as they are saved on this network.</p>
+                    <p>New circles appear here as soon as they are saved and their chain status is checked.</p>
                     <button type="button" className="primary-button" onClick={() => navigate("create-circle")}>Create a circle</button>
                   </>
                 ) : (
                   <>
                     <h2>No completed circles yet</h2>
-                    <p>Circles move here after the blockchain confirms that every payout is complete.</p>
+                    <p>Completed payouts and confirmed cancellations move here after the blockchain check. Cancelled circles are labelled separately.</p>
                   </>
                 )}
               </div>
-            ) : (
-              <div className="my-circles-list">
-                {visibleStatusCircles.map((circle) => (
-                  <button type="button" key={circle.id} className="my-circle-row" onClick={() => {
-                    setSelectedMenuCircle(circle.id);
-                    setCircleWorkspace(circle.kind === "v2-fee" ? "bch-fair-round"
-                      : circle.kind === "classic" ? "bch-classic"
-                        : circle.kind === "bch-mainnet" ? "bch-mainnet" : "pusd-mainnet");
-                    setPage("circle-detail");
-                    setMenuOpen(false);
-                  }}>
-                    <span className="my-circle-copy">
-                      <b>{circle.name}</b>
-                      <span>{circle.asset} · {circle.contributionLabel} · {circle.memberCount} members</span>
-                      <small>{circle.status === "completed"
-                        ? "Completed" + (circle.completedAt ? " · " + new Date(circle.completedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "")
-                        : circle.round === null
-                          ? "Round progress pending · " + circle.memberCount + " members"
-                          : "Round " + Math.min(circle.round + 1, circle.memberCount) + " of " + circle.memberCount}</small>
-                    </span>
-                    <span className={circle.status === "completed" ? "my-circle-status completed" : "my-circle-status"}>{circle.status === "completed" ? "Completed" : "Active"}</span>
-                    <ArrowRight size={17} />
-                  </button>
-                ))}
-              </div>
-            )}
+            ) : renderCircleRows(visibleStatusCircles)}
           </section>
         )}
 

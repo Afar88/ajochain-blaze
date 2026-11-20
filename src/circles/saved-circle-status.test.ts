@@ -4,6 +4,7 @@ import {
   filterSavedCirclesByNetwork,
   filterSavedCirclesByStatus,
   readSavedCircleMetadata,
+  updateSavedCircleChainStatus,
   updateSavedCircleProgress,
   type SavedCircleDescriptor,
 } from "./saved-circle-status";
@@ -44,10 +45,10 @@ describe("saved circle network and lifecycle filters", () => {
       .toEqual([chipnet.id]);
   });
 
-  it("treats records without lifecycle metadata as Active until chain state is checked", () => {
+  it("keeps records Unknown until a read-only chain check completes", () => {
     const storage = memoryStorage();
     const [record] = ensureSavedCircleMetadata(storage, [mainnet]);
-    expect(record.status).toBe("active");
+    expect(record.status).toBe("unknown");
     expect(record.completedAt).toBeNull();
     expect(filterSavedCirclesByStatus([record], "active")).toHaveLength(1);
     expect(filterSavedCirclesByStatus([record], "completed")).toHaveLength(0);
@@ -61,6 +62,61 @@ describe("saved circle network and lifecycle filters", () => {
     expect(updated.completedAt).toBe(1_800_000_000_000);
     expect(filterSavedCirclesByStatus([updated], "active")).toHaveLength(0);
     expect(filterSavedCirclesByStatus([updated], "completed")).toHaveLength(1);
+  });
+
+  it("does not fabricate a completion timestamp when a reader has no block time", () => {
+    const storage = memoryStorage();
+    ensureSavedCircleMetadata(storage, [mainnet]);
+    const completed = updateSavedCircleProgress(storage, mainnet, 5, true);
+    expect(completed.status).toBe("completed");
+    expect(completed.completedAt).toBeNull();
+  });
+
+  it("upgrades a saved Active/Unknown circle to Completed from on-chain state", () => {
+    const storage = memoryStorage();
+    ensureSavedCircleMetadata(storage, [mainnet]);
+    updateSavedCircleChainStatus(storage, mainnet, "active", 2, null, 1_800_000_000_000);
+    const completed = updateSavedCircleChainStatus(storage, mainnet, "completed", 5, 1_800_000_100_000, 1_800_000_100_001);
+    expect(completed.status).toBe("completed");
+    expect(completed.completedAt).toBe(1_800_000_100_000);
+    expect(filterSavedCirclesByStatus([completed], "active")).toHaveLength(0);
+    expect(filterSavedCirclesByStatus([completed], "completed")).toHaveLength(1);
+  });
+
+  it("saves Cancelled in the Completed tab with its own status label", () => {
+    const storage = memoryStorage();
+    ensureSavedCircleMetadata(storage, [mainnet]);
+    const cancelled = updateSavedCircleChainStatus(storage, mainnet, "cancelled", 5, null, 1_800_000_200_000);
+    expect(cancelled.status).toBe("cancelled");
+    expect(filterSavedCirclesByStatus([cancelled], "active")).toHaveLength(0);
+    expect(filterSavedCirclesByStatus([cancelled], "completed")).toHaveLength(1);
+  });
+
+  it("clears a stale local completion time when the chain cannot supply a block time", () => {
+    const storage = memoryStorage();
+    ensureSavedCircleMetadata(storage, [mainnet]);
+    updateSavedCircleChainStatus(storage, mainnet, "completed", 5, 1_800_000_000_000);
+    const updated = updateSavedCircleChainStatus(storage, mainnet, "completed", 5, null, 1_800_000_100_000);
+    expect(updated.completedAt).toBeNull();
+  });
+
+  it("stores Unknown after a failed read rather than preserving a saved Completed guess", () => {
+    const storage = memoryStorage();
+    ensureSavedCircleMetadata(storage, [mainnet]);
+    updateSavedCircleChainStatus(storage, mainnet, "completed", 5, 1_800_000_000_000);
+    const unknown = updateSavedCircleChainStatus(storage, mainnet, "unknown", null, null, 1_800_000_500_000);
+    expect(unknown.status).toBe("unknown");
+    expect(unknown.completedAt).toBeNull();
+    expect(filterSavedCirclesByStatus([unknown], "active")).toHaveLength(1);
+    expect(filterSavedCirclesByStatus([unknown], "completed")).toHaveLength(0);
+  });
+
+  it("does not let a legacy progress refresh relabel an already Cancelled circle as Completed", () => {
+    const storage = memoryStorage();
+    ensureSavedCircleMetadata(storage, [mainnet]);
+    updateSavedCircleChainStatus(storage, mainnet, "cancelled", 5, null);
+    const refreshed = updateSavedCircleProgress(storage, mainnet, 5, true, 1_800_000_800_000);
+    expect(refreshed.status).toBe("cancelled");
   });
 
   it("keeps the original encoded circle payload unchanged during metadata updates", () => {

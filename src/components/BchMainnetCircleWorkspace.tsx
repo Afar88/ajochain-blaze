@@ -17,7 +17,7 @@ import {
 } from "../core/v2-fee-bch";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "../core/project-treasury";
 import { getV2FeeCircleRecordIdentity } from "../core/v2-fee-circle-records";
-import { updateSavedCircleProgress } from "../circles/saved-circle-status";
+import { updateSavedCircleChainStatus } from "../circles/saved-circle-status";
 import { wallet } from "../core/wizard-wallet";
 import type { NetworkId } from "../core/network-config";
 import {
@@ -321,7 +321,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
   const persistChainProgress = (circle: V2FeeCircleParams, encoded: string, snapshot: Awaited<ReturnType<typeof readV2FeeCircle>>) => {
     const identity = getV2FeeCircleRecordIdentity(encoded);
     if (!identity) return;
-    updateSavedCircleProgress(window.localStorage, {
+    updateSavedCircleChainStatus(window.localStorage, {
       id: "v2:" + identity.key,
       encoded,
       network: "mainnet",
@@ -330,7 +330,8 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
       asset: "BCH",
       contribution: circle.contribution.toString(),
       memberCount: circle.members.length,
-    }, snapshot.round, snapshot.completed);
+    }, snapshot.closedAs === "cancelled" ? "cancelled" : snapshot.completed ? "completed" : "active",
+    snapshot.round, snapshot.completedAt ?? null);
   };
 
   const readActiveOnChainState = async () => {
