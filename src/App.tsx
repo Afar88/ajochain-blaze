@@ -539,7 +539,7 @@ export default function App() {
         const snapshot = await readClassicCircle(params);
         return {
           round: snapshot.status.round,
-          completed: snapshot.status.completed,
+          completed: snapshot.status.round === params.members.length && Boolean(snapshot.status.stateUtxo),
           stateVerified: snapshot.status.stateVerified,
           completedAt: null,
         };
