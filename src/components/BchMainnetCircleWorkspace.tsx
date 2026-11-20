@@ -24,6 +24,7 @@ import type { NetworkId } from "../core/network-config";
 type Props = {
   network: NetworkId;
   walletConnected: boolean;
+  selectedAddressPendingOnly?: boolean;
   onOpenWalletDetails: () => void;
   selectedCircle?: string | null;
   onBusyChange?: (busy: boolean) => void;
@@ -126,7 +127,7 @@ function errorMessage(cause: unknown) {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-export default function BchMainnetCircleWorkspace({ network, walletConnected, onOpenWalletDetails, selectedCircle = null, onBusyChange }: Props) {
+export default function BchMainnetCircleWorkspace({ network, walletConnected, selectedAddressPendingOnly = false, onOpenWalletDetails, selectedCircle = null, onBusyChange }: Props) {
   const [name, setName] = useState(() => "BCH Ajo circle – " + new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" }));
   const [contribution, setContribution] = useState("0.002");
   const [membersText, setMembersText] = useState("");
@@ -454,6 +455,12 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
       return;
     }
     if (signingPlan.operation === "genesis") {
+      if (selectedAddressPendingOnly) {
+        setGenesisSigningPlan(null);
+        setPreview(null);
+        setError("Wait for confirmation before creating a circle.");
+        return;
+      }
       const currentAddress = wallet.address("mainnet");
       if (!wallet.isReceiveAddressConfirmed("mainnet") || !currentAddress ||
           !sameMainnetAddress(currentAddress, signingPlan.circle.initiator)) {
@@ -629,7 +636,11 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
       return null;
     }
     if (!initiatorAddressConfirmed) {
-      setError("Sync the Mainnet receive address currently shown in Selene under Wallet Details before preparing the circle.");
+      setError("Choose a receive address derived from your connected Selene wallet in Wallet Details before preparing the circle.");
+      return null;
+    }
+    if (selectedAddressPendingOnly) {
+      setError("Wait for confirmation before creating a circle.");
       return null;
     }
     if (memberOrder.error) {
@@ -764,11 +775,14 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
         <div ref={creationSummaryRef} className="pusd-mainnet-breakdown mainnet-create-summary" role="status">
           <b>Review your circle</b>
           <button type="button" className="primary-button mainnet-create-primary"
-            disabled={lifecycleBusy || busy || !walletConnected || !BCH_MAINNET_CIRCLE_SEND_ENABLED}
+            disabled={lifecycleBusy || busy || !walletConnected || !BCH_MAINNET_CIRCLE_SEND_ENABLED || selectedAddressPendingOnly}
             onClick={() => void createCircleInSelene()}>
             {lifecycleBusy ? "Approve in Selene…" : "Create circle in Selene"}
           </button>
+          <p className="receive-address-payout-note">Payouts for this circle will go to {genesisSigningPlan.circle.initiator.slice(0, 10)}…{genesisSigningPlan.circle.initiator.slice(-6)}. It stays in your Selene wallet.</p>
+          {selectedAddressPendingOnly && <p className="receive-address-pending-warning" role="alert">Wait for confirmation before creating a circle.</p>}
           <div><span>Members</span><strong>{genesisSigningPlan.circle.members.length}</strong></div>
+          <div><span>Member 1 · payout address</span><strong><code>{genesisSigningPlan.circle.initiator}</code></strong></div>
           <div><span>Contribution per member</span><strong>{formatAssetAmount("BCH", genesisSigningPlan.circle.contribution)} BCH</strong></div>
           <div><span>Estimated network fee</span><strong>{preview.feeEstimate} sats</strong></div>
           <details className="technical-details">

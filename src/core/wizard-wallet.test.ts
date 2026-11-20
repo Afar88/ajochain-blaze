@@ -5,6 +5,9 @@ import {
   shouldPreserveReceiveAddressConfirmation,
   walletAddressSnapshotsMatch,
   isCurrentReceiveAddressConfirmed,
+  getNextUnusedReceiveAddressIndex,
+  selectDefaultReceiveAddressIndex,
+  findDerivedReceiveAddressEntry,
   buildWizardSignRequest,
   assertP2pkhWalletInputCoverage,
   assertRequiredContractWalletSighash,
@@ -399,5 +402,38 @@ describe("WizardConnect Selene address matching", () => {
     const otherWallet = deriveWizardConnectReceiveAddress("hdwalletv1", () => Uint8Array.from([0x03, ...new Uint8Array(32).fill(0xee)]), "chipnet", 0)!;
     expect(findWizardConnectReceiveIndex(otherWallet, "hdwalletv1", getPubkey, "chipnet", 10)).toBeNull();
     expect(findWizardConnectReceiveIndex("", "hdwalletv1", getPubkey, "chipnet")).toBeNull();
+  });
+});
+
+
+describe("Selene receive-address picker", () => {
+  const derived = [
+    { branch: "receive" as const, index: 0, address: "bitcoincash:qold" },
+    { branch: "receive" as const, index: 1, address: "bitcoincash:qnew" },
+    { branch: "change" as const, index: 0, address: "bitcoincash:qchange" },
+  ];
+
+  it("defaults to the receive address with the most confirmed BCH", () => {
+    const activity = [
+      { index: 0, address: derived[0].address, hasHistory: true, confirmedSatoshis: 20_000n, unconfirmedSatoshis: 0n },
+      { index: 1, address: derived[1].address, hasHistory: true, confirmedSatoshis: 75_000n, unconfirmedSatoshis: 9_000n },
+    ];
+    expect(selectDefaultReceiveAddressIndex(activity, 2)).toBe(1);
+  });
+
+  it("uses the next unused receive index when no confirmed BCH balance exists", () => {
+    const activity = [
+      { index: 0, address: derived[0].address, hasHistory: true, confirmedSatoshis: 0n, unconfirmedSatoshis: 400n },
+      { index: 1, address: derived[1].address, hasHistory: true, confirmedSatoshis: 0n, unconfirmedSatoshis: 0n },
+    ];
+    expect(getNextUnusedReceiveAddressIndex(activity)).toBe(2);
+    expect(selectDefaultReceiveAddressIndex(activity, getNextUnusedReceiveAddressIndex(activity))).toBe(2);
+  });
+
+  it("accepts only an exact receive address from the derived set", () => {
+    expect(findDerivedReceiveAddressEntry(" BITCOINCASH:QOLD ", derived)).toEqual(derived[0]);
+    expect(findDerivedReceiveAddressEntry(derived[2].address, derived)).toBeNull();
+    expect(findDerivedReceiveAddressEntry("bitcoincash:qexternal", derived)).toBeNull();
+    expect(findDerivedReceiveAddressEntry("", derived)).toBeNull();
   });
 });

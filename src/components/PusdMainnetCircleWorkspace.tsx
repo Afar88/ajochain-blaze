@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
 import { PUSD_ASSET, formatAssetAmount, parseAssetAmount } from "../core/assets";
 import { classicAddressToPkh } from "../core/classic-bch";
+import { pkhToTokenAwareAddress } from "../core/bch-address";
 import { calculatePusdCircleEconomics } from "../core/pusd-circle-economics";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "../core/project-treasury";
 import { MAX_CIRCLE_MEMBERS, MIN_CIRCLE_MEMBERS } from "../core/member-ledger";
@@ -20,7 +21,7 @@ import { wallet } from "../core/wizard-wallet";
 import type { NetworkId } from "../core/network-config";
 import { updateSavedCircleProgress } from "../circles/saved-circle-status";
 
-type Props = { network: NetworkId; walletConnected: boolean; selectedCircle?: string | null; onBusyChange?: (busy: boolean) => void };
+type Props = { network: NetworkId; walletConnected: boolean; selectedAddressPendingOnly?: boolean; selectedCircle?: string | null; onBusyChange?: (busy: boolean) => void };
 type Draft = {
   name: string;
   contribution: string;
@@ -177,7 +178,7 @@ function errorMessage(cause: unknown) {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-export default function PusdMainnetCircleWorkspace({ network, walletConnected, selectedCircle = null, onBusyChange }: Props) {
+export default function PusdMainnetCircleWorkspace({ network, walletConnected, selectedAddressPendingOnly = false, selectedCircle = null, onBusyChange }: Props) {
   const [name, setName] = useState(() => "PUSD Ajo circle – " + new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" }));
   const [contribution, setContribution] = useState("10.00");
   const [membersText, setMembersText] = useState("");
@@ -245,15 +246,21 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
   const memberAddresses = useMemo(() =>
     membersText.split(/\r?\n/).map((address) => address.trim()).filter(Boolean),
   [membersText]);
+  const initiatorAddress = walletConnected && wallet.state === "connected" ? wallet.address("mainnet") : null;
+  const initiatorMemberAddress = initiatorAddress
+    ? pkhToTokenAwareAddress(classicAddressToPkh(initiatorAddress, "mainnet"), "mainnet")
+    : null;
+  const circleMembers = useMemo(() => initiatorMemberAddress ? [initiatorMemberAddress, ...memberAddresses] : memberAddresses,
+    [initiatorMemberAddress, memberAddresses]);
 
   const economics = useMemo(() => {
     try {
-      if (memberAddresses.length < MIN_CIRCLE_MEMBERS || memberAddresses.length > MAX_CIRCLE_MEMBERS) return null;
-      return calculatePusdCircleEconomics(memberAddresses.length, parseAssetAmount("PUSD", contribution));
+      if (circleMembers.length < MIN_CIRCLE_MEMBERS || circleMembers.length > MAX_CIRCLE_MEMBERS) return null;
+      return calculatePusdCircleEconomics(circleMembers.length, parseAssetAmount("PUSD", contribution));
     } catch {
       return null;
     }
-  }, [memberAddresses, contribution]);
+  }, [circleMembers, contribution]);
 
   const saveDraft = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -266,15 +273,20 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       if (!name.trim() || name.trim().length > 60) {
         throw new Error("Enter a circle name between 1 and 60 characters.");
       }
-      if (memberAddresses.length < 2 || memberAddresses.length > 5) {
-        throw new Error("Enter 2–5 member token-aware Bitcoin Cash Mainnet addresses, one per line.");
+      if (!initiatorAddress || !initiatorMemberAddress || !walletConnected || wallet.state !== "connected" || !wallet.isReceiveAddressConfirmed("mainnet")) {
+        throw new Error("Choose a receive address derived from your connected Selene wallet in Wallet Details before saving this draft.");
       }
-      const keys = memberAddresses.map(addressKey);
+      if (selectedAddressPendingOnly) throw new Error("Wait for confirmation before creating a circle.");
+      if (memberAddresses.length < 1 || memberAddresses.length > 4) {
+        throw new Error("Add 1–4 other token-aware Bitcoin Cash Mainnet addresses. Your selected Selene address is Member 1.");
+      }
+      const circleMembers = [initiatorMemberAddress, ...memberAddresses];
+      const keys = circleMembers.map(addressKey);
       if (new Set(keys).size !== keys.length) {
-        throw new Error("Every member must have a unique Mainnet address.");
+        throw new Error("Every member must have a unique Mainnet address, including your selected Selene address.");
       }
       const units = parseAssetAmount("PUSD", contribution);
-      calculatePusdCircleEconomics(memberAddresses.length, units);
+      calculatePusdCircleEconomics(circleMembers.length, units);
       if (!/^\d+$/.test(maxFee.trim()) || BigInt(maxFee.trim()) < 1000n) {
         throw new Error("Maximum BCH miner fee must be at least 1,000 whole satoshis.");
       }
@@ -282,7 +294,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       const draft: Draft = {
         name: name.trim(),
         contribution: units.toString(),
-        members: memberAddresses,
+        members: circleMembers,
         maxFeeSatoshis: maxFee.trim(),
         savedAt: Date.now(),
       };
@@ -317,19 +329,33 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       return null;
     }
     const initiatorAddress = wallet.address("mainnet");
-    if (!initiatorAddress) {
-      setError("The connected wallet does not expose a verified Mainnet receive address.");
+    if (!initiatorAddress || !wallet.isReceiveAddressConfirmed("mainnet")) {
+      setError("Choose a receive address derived from your connected Selene wallet in Wallet Details before preparing a PUSD circle.");
       return null;
     }
+    if (selectedAddressPendingOnly) {
+      setError("Wait for confirmation before creating a circle.");
+      return null;
+    }
+    if (memberAddresses.length < 1 || memberAddresses.length > 4) {
+      setError("Add 1–4 other Mainnet member addresses. Your selected Selene address is Member 1.");
+      return null;
+    }
+    const selectedTokenAddress = pkhToTokenAwareAddress(classicAddressToPkh(initiatorAddress, "mainnet"), "mainnet");
+    const circleMembers = [selectedTokenAddress, ...memberAddresses];
     setBusy(true);
     try {
       const units = parseAssetAmount("PUSD", contribution);
       const plan = await planPusdMainnetCircleGenesis({
         name: name.trim(),
-        members: memberAddresses,
+        members: circleMembers,
         contribution: units,
         maxFee: BigInt(maxFee.trim()),
       }, initiatorAddress);
+      if (!wallet.isReceiveAddressConfirmed("mainnet") || wallet.address("mainnet") !== initiatorAddress ||
+          plan.params.initiator !== initiatorAddress || addressKey(plan.params.members[0]) !== addressKey(initiatorAddress)) {
+        throw new Error("The selected Selene address changed while preparing this PUSD circle. Choose it again and prepare a fresh preview.");
+      }
       const signingPlan: MainnetSigningPlan = {
         wc: plan.wc, walletInputs: plan.walletInputs,
         prompt: "Check PUSD Mainnet circle setup for " + name.trim(),
@@ -367,17 +393,40 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       setError("This signed-transaction review plan is older than 60 seconds. Refresh the circle state and prepare a new plan before asking Selene to sign.");
       return;
     }
+    if (signingPlan.operation === "genesis") {
+      const selectedAddress = wallet.address("mainnet");
+      if (selectedAddressPendingOnly) {
+        setError("Wait for confirmation before creating a circle.");
+        return;
+      }
+      if (!selectedAddress || !wallet.isReceiveAddressConfirmed("mainnet") ||
+          selectedAddress !== signingPlan.circle.initiator || addressKey(signingPlan.circle.members[0]) !== addressKey(selectedAddress)) {
+        setGenesisSigningPlan(null);
+        setPreparedPlan(null);
+        setError("The selected Selene receive address changed after the PUSD preview. Choose it again and prepare a fresh circle.");
+        return;
+      }
+    }
     setLifecycleBusy(true);
     setError("");
     setNotice("");
     try {
       const walletAddress = wallet.address("mainnet");
       if (!walletAddress) throw new Error("The connected Selene session does not expose a Mainnet P2PKH signing address.");
+      if (signingPlan.operation === "genesis" &&
+          (!wallet.isReceiveAddressConfirmed("mainnet") || walletAddress !== signingPlan.circle.initiator ||
+           addressKey(signingPlan.circle.members[0]) !== addressKey(walletAddress))) {
+        throw new Error("The selected Selene receive address changed before approval. The PUSD circle was not signed or broadcast.");
+      }
       const locallyVerified = await wallet.signAndVerify(
         signingPlan.wc,
         signingPlan.walletInputs,
         signingPlan.prompt + (send ? " (verify and relay on BCH Mainnet)" : " (independent server verification only; never broadcast)"),
       );
+      if (signingPlan.operation === "genesis" &&
+          (!wallet.isReceiveAddressConfirmed("mainnet") || wallet.address("mainnet") !== signingPlan.circle.initiator)) {
+        throw new Error("The selected Selene receive address changed after signing. The signed PUSD transaction was discarded and was not sent.");
+      }
       const circleRequest = {
         operation: signingPlan.operation,
         circle: {
@@ -433,6 +482,10 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
   };
 
   const createCircleInSelene = async () => {
+    if (selectedAddressPendingOnly) {
+      setError("Wait for confirmation before creating a circle.");
+      return;
+    }
     let signingPlan = genesisSigningPlan;
     if (!signingPlan || Date.now() - signingPlan.createdAt > 60_000) {
       signingPlan = await prepareCreationPlan();
@@ -579,7 +632,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
   const restore = (draft: Draft) => {
     setName(draft.name);
     setContribution(formatAssetAmount("PUSD", BigInt(draft.contribution)));
-    setMembersText(draft.members.join("\n"));
+    setMembersText(draft.members.slice(1).join("\n"));
     setMaxFee(draft.maxFeeSatoshis);
     setNotice("Draft loaded. Review member addresses and amounts before preparing the Mainnet transaction plan.");
     setError("");
@@ -613,10 +666,15 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
           <input value={contribution} onChange={(event) => setContribution(event.target.value)} inputMode="decimal" placeholder="10.00" required />
           <small>Enter a PUSD amount using two decimal places.</small>
         </label>
-        <label>Member Mainnet BCH addresses · one per line
+        <div className="creator-member-preview">
+          <b>Member 1 · You, the initiator</b>
+          {initiatorAddress ? <><code>{initiatorAddress}</code><small>{wallet.isReceiveAddressConfirmed("mainnet") ? "Selected from your connected Selene receive addresses" : "Choose a derived Mainnet receive address in Wallet Details first"}</small></> : "Connect Selene and choose your receive address. It will be Member 1 automatically."}
+        </div>
+        <label>Other members' Mainnet BCH addresses · one per line
           <textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder={"bitcoincash:…\nbitcoincash:…"} required />
-          <small>Add 2–5 unique Bitcoin Cash Mainnet addresses that can receive PUSD, in payout order. Your connected Selene address is always first.</small>
+          <small>Add 1–4 other unique token-aware Bitcoin Cash Mainnet addresses. Your selected Selene address is Member 1 and receives your circle payout when it is your turn.</small>
         </label>
+        {selectedAddressPendingOnly && <p className="receive-address-pending-warning" role="alert">Wait for confirmation before creating a circle.</p>}
         <label>Maximum BCH miner fee per action (satoshis)
           <input value={maxFee} onChange={(event) => setMaxFee(event.target.value)} inputMode="numeric" required />
           <small>Network fees and the small BCH amount needed to deliver PUSD are separate from PUSD contributions.</small>
@@ -649,7 +707,10 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       {preparedPlan && genesisSigningPlan && (
         <div ref={creationSummaryRef} className="pusd-mainnet-breakdown mainnet-create-summary" role="status">
           <b>Review your circle</b>
-          <button type="button" className="primary-button mainnet-create-primary" disabled={lifecycleBusy || busy || !walletConnected}
+          <p className="receive-address-payout-note">Payouts for this circle will go to {genesisSigningPlan.circle.initiator.slice(0, 10)}…{genesisSigningPlan.circle.initiator.slice(-6)}. It stays in your Selene wallet.</p>
+          {selectedAddressPendingOnly && <p className="receive-address-pending-warning" role="alert">Wait for confirmation before creating a circle.</p>}
+          <div><span>Member 1 · payout address</span><strong><code>{genesisSigningPlan.circle.members[0]}</code></strong></div>
+          <button type="button" className="primary-button mainnet-create-primary" disabled={lifecycleBusy || busy || !walletConnected || selectedAddressPendingOnly}
             onClick={() => void createCircleInSelene()}>
             {lifecycleBusy ? "Approve in Selene…" : "Create circle in Selene"}
           </button>

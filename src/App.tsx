@@ -195,6 +195,17 @@ type WalletView = {
   error: string | null;
   receiveIndex: number;
   mainnetAddressConfirmed: boolean;
+  addressSetRevision: number;
+};
+type ReceiveAddressChoice = {
+  index: number;
+  address: string;
+  confirmedSatoshis: string;
+  unconfirmedSatoshis: string;
+  hasHistory: boolean;
+  hasPendingHistory: boolean;
+  status: "confirmed" | "pending" | "unused";
+  newest: boolean;
 };
 type PreparedGather = {
   network: NetworkId;
@@ -275,9 +286,12 @@ export default function App() {
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
   const [walletView, setWalletView] = useState<WalletView>({
     state: "idle", uri: null, qrUri: null, walletName: null, error: null,
-    receiveIndex: 0, mainnetAddressConfirmed: false,
+    receiveIndex: 0, mainnetAddressConfirmed: false, addressSetRevision: 0,
   });
   const [showWallet, setShowWallet] = useState(false);
+  const [receiveAddressChoices, setReceiveAddressChoices] = useState<ReceiveAddressChoice[]>([]);
+  const [receiveAddressScanLoading, setReceiveAddressScanLoading] = useState(false);
+  const [receiveAddressScanError, setReceiveAddressScanError] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [seleneAddress, setSeleneAddress] = useState("");
   const [addressMatchMessage, setAddressMatchMessage] = useState("");
@@ -576,6 +590,7 @@ export default function App() {
           error: client.error,
           receiveIndex: client.receiveIndex,
           mainnetAddressConfirmed: client.isReceiveAddressConfirmed("mainnet"),
+          addressSetRevision: client.addressSetRevision,
         });
         unsubscribe = client.onChange(sync);
         sync();
@@ -609,6 +624,87 @@ export default function App() {
       .catch(() => { if (active) setQrDataUrl(""); });
     return () => { active = false; };
   }, [walletView.qrUri]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!showWallet || network !== "mainnet" || walletView.state !== "connected" || !walletClient || walletClient.state !== "connected") {
+      setReceiveAddressChoices([]);
+      setReceiveAddressScanError("");
+      setReceiveAddressScanLoading(false);
+      return () => { cancelled = true; };
+    }
+    const client = walletClient;
+    const identity = client.getSessionIdentity();
+    const revision = client.addressSetRevision;
+    setReceiveAddressScanLoading(true);
+    setReceiveAddressScanError("");
+    void (async () => {
+      try {
+        const [{ getClassicProvider }, { getNextUnusedReceiveAddressIndex, selectDefaultReceiveAddressIndex }] = await Promise.all([
+          import("./core/classic-bch"),
+          import("./core/wizard-wallet"),
+        ]);
+        const derived = client.listReceiveAddresses("mainnet", 49);
+        if (derived.length === 0) throw new Error("Selene has not supplied a usable Mainnet receive xpub yet.");
+        const provider = await getClassicProvider("mainnet");
+        const activityProvider = provider as typeof provider & {
+          getAddressActivityForAddresses?: (addresses: readonly string[]) => Promise<Array<{
+            address: string; hasHistory: boolean; hasPendingHistory: boolean;
+            confirmedSatoshis: bigint; unconfirmedSatoshis: bigint;
+          }>>;
+        };
+        if (typeof activityProvider.getAddressActivityForAddresses !== "function") {
+          throw new Error("The verified Mainnet provider does not support receive-address activity scanning.");
+        }
+        const scanned = await activityProvider.getAddressActivityForAddresses(derived.map((entry) => entry.address));
+        if (cancelled || client.state !== "connected" || client.getSessionIdentity() !== identity ||
+            client.addressSetRevision !== revision) return;
+        const byAddress = new Map(scanned.map((entry) => [entry.address.toLowerCase(), entry]));
+        const activity = derived.map((entry) => {
+          const result = byAddress.get(entry.address.toLowerCase());
+          if (!result) throw new Error("Mainnet activity scan omitted a derived Selene receive address.");
+          return { ...result, index: entry.index };
+        });
+        const nextUnusedIndex = getNextUnusedReceiveAddressIndex(activity);
+        const newestEntry = derived.find((entry) => entry.index === nextUnusedIndex) ??
+          client.listReceiveAddresses("mainnet", nextUnusedIndex).find((entry) => entry.index === nextUnusedIndex);
+        if (!newestEntry) throw new Error("Could not derive the next unused Mainnet receive address from this Selene xpub.");
+        const visible = activity.filter((entry) => entry.index < 50 &&
+          (entry.hasHistory || entry.confirmedSatoshis > 0n || entry.unconfirmedSatoshis > 0n));
+        const choices: ReceiveAddressChoice[] = visible.map((entry) => ({
+          index: entry.index,
+          address: entry.address,
+          confirmedSatoshis: entry.confirmedSatoshis.toString(),
+          unconfirmedSatoshis: entry.unconfirmedSatoshis.toString(),
+          hasHistory: entry.hasHistory,
+          hasPendingHistory: entry.hasPendingHistory,
+          status: entry.confirmedSatoshis > 0n || (entry.hasHistory && !entry.hasPendingHistory) ? "confirmed" : "pending",
+          newest: false,
+        }));
+        if (!choices.some((choice) => choice.index === newestEntry.index)) {
+          choices.push({
+            index: newestEntry.index, address: newestEntry.address,
+            confirmedSatoshis: "0", unconfirmedSatoshis: "0",
+            hasHistory: false, hasPendingHistory: false, status: "unused", newest: true,
+          });
+        } else {
+          const newestChoice = choices.find((choice) => choice.index === newestEntry.index);
+          if (newestChoice) newestChoice.newest = true;
+        }
+        choices.sort((left, right) => left.index - right.index);
+        setReceiveAddressChoices(choices);
+        if (!client.isReceiveAddressConfirmed("mainnet")) {
+          const defaultIndex = selectDefaultReceiveAddressIndex(activity, nextUnusedIndex);
+          client.selectReceiveAddressIndex(defaultIndex, "mainnet");
+        }
+      } catch (cause) {
+        if (!cancelled) setReceiveAddressScanError(cause instanceof Error ? cause.message : "Could not scan Selene receive addresses.");
+      } finally {
+        if (!cancelled) setReceiveAddressScanLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showWallet, network, walletClient, walletView.state, walletView.addressSetRevision]);
 
   useEffect(() => {
     let active = true;
@@ -1081,6 +1177,10 @@ export default function App() {
     bchBalanceScan.address.toLowerCase() === walletAddress.toLowerCase()
     ? bchBalanceScan
     : null;
+  const selectedReceiveAddressChoice = receiveAddressChoices.find((choice) => choice.index === walletView.receiveIndex) ?? null;
+  const selectedAddressPendingOnly = network === "mainnet" && Boolean(selectedReceiveAddressChoice &&
+    BigInt(selectedReceiveAddressChoice.confirmedSatoshis) === 0n &&
+    (BigInt(selectedReceiveAddressChoice.unconfirmedSatoshis) > 0n || selectedReceiveAddressChoice.hasPendingHistory));
 
   return (
     <main className="app-shell compact-app">
@@ -1288,10 +1388,12 @@ export default function App() {
                 <Suspense fallback={<div className="workspace-loading"><span className="loading-orb" />Loading your circle form…</div>}>
                   {network === "mainnet" && circleWorkspace === "bch-mainnet" && (
                     <BchMainnetCircleWorkspace key="create-bch-mainnet" network={network} walletConnected={connected}
+                      selectedAddressPendingOnly={selectedAddressPendingOnly}
                       onOpenWalletDetails={openWallet} onBusyChange={setCreateCircleWorkspaceBusy} />
                   )}
                   {network === "mainnet" && circleWorkspace === "pusd-mainnet" && (
                     <PusdMainnetCircleWorkspace key="create-pusd-mainnet" network={network} walletConnected={connected}
+                      selectedAddressPendingOnly={selectedAddressPendingOnly}
                       onBusyChange={setCreateCircleWorkspaceBusy} />
                   )}
                   {network === "chipnet" && circleWorkspace === "bch-fair-round" && (
@@ -1403,10 +1505,12 @@ export default function App() {
                 <ClassicBchWorkspace key={selectedCircleRecord.id} network={network} walletConnected={connected} selectedCircle={selectedCircleRecord.encoded} />
               )}
               {selectedCircleRecord?.kind === "bch-mainnet" && (
-                <BchMainnetCircleWorkspace key={selectedCircleRecord.id} network={network} walletConnected={connected} onOpenWalletDetails={openWallet} selectedCircle={selectedCircleRecord.encoded} />
+                <BchMainnetCircleWorkspace key={selectedCircleRecord.id} network={network} walletConnected={connected}
+                  selectedAddressPendingOnly={selectedAddressPendingOnly} onOpenWalletDetails={openWallet} selectedCircle={selectedCircleRecord.encoded} />
               )}
               {selectedCircleRecord?.kind === "pusd-mainnet" && (
-                <PusdMainnetCircleWorkspace key={selectedCircleRecord.id} network={network} walletConnected={connected} selectedCircle={selectedCircleRecord.encoded} />
+                <PusdMainnetCircleWorkspace key={selectedCircleRecord.id} network={network} walletConnected={connected}
+                  selectedAddressPendingOnly={selectedAddressPendingOnly} selectedCircle={selectedCircleRecord.encoded} />
               )}
             </Suspense>
           </section>
@@ -1536,7 +1640,33 @@ export default function App() {
                 <div className="wallet-address-card"><span>{NETWORKS[network].label}</span><code>{walletAddress ?? "Address not available yet"}</code>{walletAddress
                   ? <small>Derived receive address · index {walletView.receiveIndex}. Selene may rotate to another receive index; those addresses can belong to the same seed, but they are different on-chain addresses. Sync the currently displayed Selene Receive address below before creating or managing a circle.</small>
                   : <small className="wallet-match-message">WizardConnect is connected, but no valid live receive key is available yet. Check the Selene session and reconnect if needed.</small>}</div>
-                <label className="field-label" htmlFor="selene-address">Sync with the address currently shown on Selene's {NETWORKS[network].label} Receive screen</label>
+                {network === "mainnet" && <section className="receive-address-picker" aria-labelledby="receive-address-picker-title">
+                  <div className="receive-address-picker-heading"><div><b id="receive-address-picker-title">Choose your Mainnet receive address</b><small>Only addresses derived from this connected Selene wallet can be selected.</small></div>
+                    {receiveAddressScanLoading && <span className="receive-address-scan-state">Scanning…</span>}</div>
+                  {receiveAddressScanError && <p className="classic-error" role="alert">{receiveAddressScanError}</p>}
+                  {!receiveAddressScanLoading && !receiveAddressScanError && receiveAddressChoices.length === 0 && <p className="field-hint">No address activity found yet. The next unused receive address will appear after the scan.</p>}
+                  <div className="receive-address-choice-list">
+                    {receiveAddressChoices.map((choice) => {
+                      const total = BigInt(choice.confirmedSatoshis) + BigInt(choice.unconfirmedSatoshis);
+                      const displayTotal = total > 0n ? total : 0n;
+                      const selected = walletView.receiveIndex === choice.index && walletClient?.isReceiveAddressConfirmed("mainnet");
+                      return <button type="button" key={choice.index} className={selected ? "receive-address-choice selected" : "receive-address-choice"}
+                        aria-pressed={Boolean(selected)} onClick={() => {
+                          try {
+                            const chosen = walletClient?.selectReceiveAddressIndex(choice.index, "mainnet");
+                            if (!chosen) throw new Error("Reconnect Selene before choosing a receive address.");
+                            setGatherPlan(null); setGatherResult(null); setBchBalanceScan(null);
+                            setAddressMatchMessage("Selected Selene receive address " + shortAddress(chosen) + " (index " + choice.index + "). Gather and circle creation will use this address.");
+                          } catch (cause) { setAddressMatchMessage(cause instanceof Error ? cause.message : "Could not select this receive address."); }
+                        }}>
+                        <span className="receive-address-choice-copy"><b>{shortAddress(choice.address)}</b><small>{formatBchSatoshis(displayTotal)} · {choice.status === "confirmed" ? "Confirmed" : choice.status === "pending" ? "Pending" : "Unused"}</small></span>
+                        <span className="receive-address-choice-tags">{choice.newest && <small className="receive-address-newest">Newest in Selene</small>}{selected && <small className="receive-address-selected">Selected</small>}</span>
+                      </button>;
+                    })}
+                  </div>
+                  {selectedAddressPendingOnly && <p className="receive-address-pending-warning" role="alert">Wait for confirmation before creating a circle.</p>}
+                </section>}
+                <label className="field-label" htmlFor="selene-address">Or sync by pasting the address currently shown on Selene's {NETWORKS[network].label} Receive screen</label>
                 <input id="selene-address" className="form-control" value={seleneAddress} onChange={(event) => setSeleneAddress(event.target.value)} placeholder="Paste the current Selene receive address" autoComplete="off" />
                 <button className="primary-button" onClick={() => {
                   try {
