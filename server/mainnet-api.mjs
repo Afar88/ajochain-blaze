@@ -372,12 +372,15 @@ async function getFeeRateQuorum(sessions) {
   };
 }
 
-async function getUnspentSnapshots(sessions, lockingBytecodes) {
+// Without server.version negotiation Fulcrum answers with protocol 1.4, which
+// hides token-bearing UTXOs from listunspent unless "include_tokens" is passed.
+// Spend verifiers must see covenant state/receipt NFTs and PUSD token inputs.
+async function getUnspentSnapshots(sessions, lockingBytecodes, { includeTokens = false } = {}) {
   const scriptHashes = [...new Set(lockingBytecodes.map(lockingBytecodeToScriptHash))];
   const snapshots = await Promise.all(sessions.map(async (session) => {
     const byOutpoint = new Map();
     for (const scriptHash of scriptHashes) {
-      const result = await session.call("blockchain.scripthash.listunspent", [scriptHash]);
+      const result = await session.call("blockchain.scripthash.listunspent", includeTokens ? [scriptHash, "include_tokens"] : [scriptHash]);
       const normalized = normalizeElectrumUnspent(result);
       for (const utxo of normalized) {
         const key = utxo.txid + ":" + utxo.vout;
@@ -1661,7 +1664,7 @@ export async function verifyBchMainnetCircleTransaction(sessions, tip, body) {
     inputSatoshis += sourceOutput.valueSatoshis;
   }
 
-  const currentUtxoSnapshots = await getUnspentSnapshots(sessions, [...new Set(inputScripts)]);
+  const currentUtxoSnapshots = await getUnspentSnapshots(sessions, [...new Set(inputScripts)], { includeTokens: true });
   const currentUtxos = new Map(currentUtxoSnapshots[0].map((utxo) => [
     utxo.txid + ":" + utxo.vout,
     utxo,
@@ -2337,7 +2340,7 @@ export async function verifyPusdMainnetCircleTransaction(sessions, tip, body) {
     transaction, sourceOutputs, inputScripts, walletScripts, context, operation, body,
   );
 
-  const initialSnapshots = await getUnspentSnapshots(sessions, [...new Set(inputScripts)]);
+  const initialSnapshots = await getUnspentSnapshots(sessions, [...new Set(inputScripts)], { includeTokens: true });
   const initialUnspent = new Map(initialSnapshots[0].map((utxo) => [
     utxo.txid + ":" + utxo.vout, utxo,
   ]));
@@ -2370,7 +2373,7 @@ export async function verifyPusdMainnetCircleTransaction(sessions, tip, body) {
 
   // Re-check every covenant, escrow and wallet input after VM execution so
   // stale transactions are rejected immediately before returning verification.
-  const finalSnapshots = await getUnspentSnapshots(sessions, [...new Set(inputScripts)]);
+  const finalSnapshots = await getUnspentSnapshots(sessions, [...new Set(inputScripts)], { includeTokens: true });
   const finalUnspent = new Map(finalSnapshots[0].map((utxo) => [
     utxo.txid + ":" + utxo.vout, utxo,
   ]));
@@ -2529,7 +2532,7 @@ export async function verifyBchMainnetGatherTransaction(sessions, tip, body) {
     throw new Error("Mainnet BCH gather miner fee is outside the safe 1–2 sat/byte consolidation limit.");
   }
 
-  const snapshots = await getUnspentSnapshots(sessions, [...new Set(inputScripts)]);
+  const snapshots = await getUnspentSnapshots(sessions, [...new Set(inputScripts)], { includeTokens: true });
   const currentUtxos = new Map(snapshots[0].map((utxo) => [
     utxo.txid + ":" + utxo.vout,
     utxo,
