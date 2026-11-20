@@ -2130,7 +2130,7 @@ export default function App() {
                 )}
                 <button type="button" className="secondary-button" disabled={!pusdTransferPlan || pusdSignatureBusy || !connected || network !== "mainnet"}
                   onClick={() => void verifyPusdTransferSignature()}>
-                  {pusdSignatureBusy ? "Checking Selene approval…" : "Check Selene approval · no payment"}
+                  {pusdSignatureBusy ? "Test signing…" : "Test sign · no money sent"}
                 </button>
                 {pusdSignatureMessage && <p className="classic-notice" role="status">{pusdSignatureMessage}</p>}
                 <button type="button" className="primary-button" disabled={!PUSD_MAINNET_SPENDING_ENABLED || !pusdTransferPlan}
