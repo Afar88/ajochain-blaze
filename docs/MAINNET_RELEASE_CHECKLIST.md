@@ -58,7 +58,8 @@ CI now emits the exact source SHA-256, compiled artifact JSON SHA-256 and compil
 ## Production operations
 
 - [ ] Configure `ELECTRUM_SERVERS` and the same-order `ELECTRUM_PROVIDER_OPERATORS` list in the BLAZE server environment. The API rejects missing, duplicate or mismatched operator IDs and reports only the declared IDs in health responses. These labels are not proof: attach operator ownership, hosting/fault-domain and endpoint-control evidence for every provider; verify monitoring, timeouts and failover separately.
-- [ ] PUSD API environment configured with the minimum required settings; no private endpoint credentials are exposed to the browser.
+- [ ] Configure the private Electrum provider manifest for API-backed Mainnet reads. Configure `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` only for the PUSD transfer and BCH wallet-gather submission paths that use the durable idempotency ledger; missing ledger credentials must fail those submissions closed. Do not expose either provider or ledger credentials to the browser.
+- [ ] Configure and test deployment-wide Vercel Firewall/WAF rate limits for public `/api/*` traffic, with route-specific protection for expensive verification and submission endpoints. The Node adapter's in-memory limiter is per process only and is not sufficient across serverless instances.
 - [ ] Confirm on-chain circle discovery works directly from BCH wallet history and transaction data without any Neon, Postgres, Upstash or central registry dependency. Test request-size limits, origin handling and error handling for optional API routes separately; those routes do not own or index circle state.
 - [ ] Production build, CI, dependency review, and security scans pass on the exact release commit.
 - [ ] Backup/recovery plan for circle invite metadata and clear disclosure that local browser storage is not a durable account.
