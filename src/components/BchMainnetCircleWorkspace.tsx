@@ -133,7 +133,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
   const [maxFee, setMaxFee] = useState("10000");
   const [drafts, setDrafts] = useState<Draft[]>(readDrafts);
   const [activeCircle, setActiveCircle] = useState<V2FeeCircleParams | null>(readActiveCircle);
-  const [deployedCircles, setDeployedCircles] = useState<V2FeeCircleParams[]>(readDeployedCircles);
+  const [, setDeployedCircles] = useState<V2FeeCircleParams[]>(readDeployedCircles);
   const [inviteInput, setInviteInput] = useState("");
   useEffect(() => {
     const refresh = () => setDeployedCircles(readDeployedCircles());
