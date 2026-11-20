@@ -766,7 +766,16 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
         <div className="creator-member-preview">
           <b>Member 1 · You, the initiator</b>
           {initiatorAddress
-            ? <><code>{initiatorAddress}</code><small>{initiatorAddressConfirmed ? "Confirmed from Selene's current Receive screen" : "Candidate address derived from this connected wallet · not yet matched to Selene's displayed Receive address"}</small></>
+            ? <>
+                <code>{initiatorAddress}</code>
+                <button className="secondary-button wallet-copy-address" type="button" onClick={() => {
+                  const pendingCopy = navigator.clipboard?.writeText(initiatorAddress);
+                  if (!pendingCopy) { setNotice("Copy is unavailable. Select the address and copy it manually."); return; }
+                  void pendingCopy.then(() => setNotice("Member 1 address copied."))
+                    .catch(() => setNotice("Could not copy the address. Select it and copy manually."));
+                }}><Copy size={15} /> Copy address</button>
+                <small>{initiatorAddressConfirmed ? "Confirmed from Selene's current Receive screen" : "Candidate address derived from this connected wallet · not yet matched to Selene's displayed Receive address"}</small>
+              </>
             : "Connect Selene and sync the address currently shown on its Mainnet Receive screen. Your address will be added first automatically."}
           {initiatorAddress && !initiatorAddressConfirmed && (
             <button className="secondary-button" type="button" onClick={onOpenWalletDetails}>
