@@ -815,7 +815,15 @@ async function readV2FeeClosingBlockTime(
 ): Promise<number | null> {
   if (!Number.isSafeInteger(height) || height <= 0) return null;
   try {
-    const response = await electrum.performRequest("blockchain.block.header", height);
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const response = await Promise.race([
+      electrum.performRequest("blockchain.block.header", height),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error("Block header lookup timed out.")), 2_000);
+      }),
+    ]).finally(() => {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    });
     const header = typeof response === "string"
       ? response
       : response && typeof response === "object" && "hex" in response &&

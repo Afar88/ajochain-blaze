@@ -125,8 +125,9 @@ export function updateSavedCircleProgress(
   circle: SavedCircleDescriptor,
   round: number | null,
   completed: boolean,
-  now = Date.now(),
+  now?: number,
 ): SavedCircleMetadata {
+  const checkedAt = now ?? Date.now();
   const records = readSavedCircleMetadata(storage);
   const previous = records.find((record) => record.id === circle.id);
   const record: SavedCircleMetadata = {
@@ -135,10 +136,10 @@ export function updateSavedCircleProgress(
     status: completed ? previous?.status === "cancelled" ? "cancelled" : "completed" : "active",
     completedAt: completed
       ? previous?.status === "cancelled" ? previous.completedAt
-        : previous?.status === "completed" ? previous.completedAt : now
+        : previous?.status === "completed" ? previous.completedAt : now ?? null
       : null,
     round: Number.isInteger(round) && round !== null && round >= 0 ? round : null,
-    checkedAt: now,
+    checkedAt,
   };
   const next = [...records.filter((entry) => entry.id !== circle.id), record];
   storage.setItem(SAVED_CIRCLE_METADATA_KEY, JSON.stringify(next));
