@@ -1921,7 +1921,7 @@ export default function App() {
                       </button>
                     </>}
                   </div>
-                  <p className="circle-choice-disclaimer"><ShieldCheck size={15} /> {network === "mainnet" ? "BCH and PUSD Mainnet circles use real funds and unaudited contracts; start small." : "Chipnet is a testing network only. Use test BCH; it has no real-money value and cannot be used as Mainnet funds."}</p>
+                  
                 </section>
               </>
             ) : (
