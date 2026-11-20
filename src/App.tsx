@@ -879,7 +879,11 @@ export default function App() {
             <Suspense fallback={<div className="workspace-loading"><span className="loading-orb" />Loading Mainnet asset workspaces…</div>}>
               {network === "mainnet" && <>
                 <div className="mainnet-dual-workspaces">
-                  <div id="bch-mainnet-workspace" className="circle-workspace-panel"><BchMainnetCircleWorkspace network={network} walletConnected={connected} /></div>
+                  <div id="bch-mainnet-workspace" className="circle-workspace-panel"><BchMainnetCircleWorkspace
+                    network={network}
+                    walletConnected={connected}
+                    onOpenWalletDetails={openWallet}
+                  /></div>
                   <div id="pusd-mainnet-workspace" className="circle-workspace-panel"><PusdMainnetCircleWorkspace network={network} walletConnected={connected} /></div>
                 </div>
                 {/* Legacy invite links remain accessible as a read-only compatibility workspace. */}
