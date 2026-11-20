@@ -35,9 +35,9 @@ The app does not send wallet xpubs, seeds or private keys to a registry. No serv
 
 The repository has optional API routes for chain reads and additional PUSD signed-transaction verification. These routes do not own circle records, do not register circles and are not required for browser-side on-chain discovery.
 
-The Upstash Redis shared rate limiter was removed from the common request path. Absence of Redis credentials must not block chain discovery or read-only transaction verification.
+The Upstash Redis shared rate limiter was removed from the common request path. The remaining Node adapter throttle is process-local and best-effort; it is not deployment-wide across Vercel serverless instances. Public API routes therefore require separately configured and tested Vercel Firewall/WAF rate limits at the edge. Absence of Redis credentials must not block chain discovery or read-only transaction verification.
 
-The separate PUSD submission-ledger adapter is only a transaction-submission/idempotency mechanism for a future broadcast path. It is not a circle registry or a source of circle truth. PUSD Mainnet broadcast remains separately gated off.
+The durable Upstash submission ledger is separate from discovery. It is used by the PUSD Mainnet transfer-submission path (which remains hard-disabled by its code gate) and the BCH Mainnet wallet-gather submission path. Missing credentials or ledger failures block those submissions before relay. The ledger is not a circle registry and is not used for BCH V3 circle discovery or BCH V3 circle broadcast.
 
 ## Separate transaction paths
 
