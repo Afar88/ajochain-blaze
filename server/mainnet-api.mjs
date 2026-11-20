@@ -2573,9 +2573,25 @@ export async function broadcastBchMainnetGatherTransaction(
     throw new Error("BCH Mainnet wallet gathering is disabled until its release gate is approved.");
   }
   const verification = await verifyBchMainnetGatherTransaction(sessions, tip, body);
+  let relay;
+  // A gather only consolidates the connected wallet's own token-free P2PKH
+  // coins into one of that wallet's derived addresses. Relaying the exact
+  // same signed bytes twice cannot pay anyone twice, and
+  // broadcastPusdTransactionOnce already resolves ambiguous relays by txid
+  // lookup. So the durable ledger is used when configured, but its absence
+  // no longer blocks a wallet-only gather.
+  if (!isPusdBroadcastLedgerConfigured()) {
+    relay = await broadcastPusdTransactionOnce(sessions, body.signedTransactionHex, verification.txid);
+    return {
+      ...verification,
+      broadcast: true,
+      relayStatus: relay.relayStatus,
+      message: "Verified Mainnet BCH was consolidated back to the connected wallet and relayed (" +
+        relay.relayStatus + "). The transaction is not confirmed yet.",
+    };
+  }
   const ledger = createUpstashPusdBroadcastLedger();
   const reservation = await ledger.reserve(verification.txid, body.signedTransactionHex);
-  let relay;
   if (!reservation.acquired) {
     if (reservation.record.status === "accepted" ||
         reservation.record.status === "already-known") {
@@ -2633,6 +2649,28 @@ export async function broadcastPusdMainnetCircleTransaction(
     const txid = typeof body?.signedTransactionHex === "string" && isHex(body.signedTransactionHex)
       ? hashTransaction(hexToBin(body.signedTransactionHex)).toLowerCase()
       : null;
+    if (txid && !isPusdBroadcastLedgerConfigured()) {
+      // Without the optional ledger, recover from the chain itself: if a
+      // provider already knows this exact transaction, it was relayed.
+      for (const session of sessions) {
+        try {
+          const known = await session.call("blockchain.transaction.get", [txid]);
+          if (typeof known === "string" && isHex(known) &&
+              hashTransaction(hexToBin(known)).toLowerCase() === txid) {
+            return {
+              network: "mainnet",
+              operation: body.operation,
+              txid,
+              verified: true,
+              broadcast: true,
+              relayStatus: "already-known",
+              message: "This PUSD Mainnet circle transaction was already relayed (already-known). It is not confirmed yet.",
+            };
+          }
+        } catch { /* try the next provider */ }
+      }
+      throw cause;
+    }
     if (txid) {
       const record = await createUpstashPusdBroadcastLedger().get(txid);
       if (record && (record.status === "accepted" || record.status === "already-known")) {
@@ -2649,6 +2687,19 @@ export async function broadcastPusdMainnetCircleTransaction(
       }
     }
     throw cause;
+  }
+  if (!isPusdBroadcastLedgerConfigured()) {
+    // The chain rejects double-spends and the covenant fixes every payout,
+    // so the optional ledger is bookkeeping only. broadcastPusdTransactionOnce
+    // relays once and resolves ambiguous results by txid lookup.
+    const directRelay = await broadcastPusdTransactionOnce(sessions, body.signedTransactionHex, verification.txid);
+    return {
+      ...verification,
+      broadcast: true,
+      relayStatus: directRelay.relayStatus,
+      message: "All PUSD Mainnet V3 circle checks passed and the transaction was relayed (" +
+        directRelay.relayStatus + "). It is not confirmed yet.",
+    };
   }
   const ledger = createUpstashPusdBroadcastLedger();
   const reservation = await ledger.reserve(verification.txid, body.signedTransactionHex);
