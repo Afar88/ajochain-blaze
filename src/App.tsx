@@ -100,7 +100,7 @@ function readSavedCircleMenuRecords(): MenuCircle[] {
       id, kind, encoded, name: name.trim() || "Ajo circle", detail,
       label: (name.trim() || "Ajo circle") + " · " + detail, network,
       asset, contribution, contributionLabel: formattedContribution || "Contribution unavailable", memberCount,
-      status: "active", completedAt: null, round: null,
+      status: "unknown", completedAt: null, checkedAt: null, round: null,
     });
   };
 
