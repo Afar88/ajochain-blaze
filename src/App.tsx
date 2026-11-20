@@ -328,13 +328,12 @@ export default function App() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setGatherMessage("");
-      setDiscoveryMessage("");
       setAddressMatchMessage("");
       setPusdSignatureMessage("");
       setPusdPlanError("");
     }, 20_000);
     return () => window.clearTimeout(timer);
-  }, [gatherMessage, discoveryMessage, addressMatchMessage, pusdSignatureMessage, pusdPlanError]);
+  }, [gatherMessage, addressMatchMessage, pusdSignatureMessage, pusdPlanError]);
 
   const selectedCircleRecord = menuCircles.find((circle) =>
     circle.id === selectedMenuCircle && circle.network === network,
@@ -935,11 +934,34 @@ export default function App() {
 
   useEffect(() => {
     // Discovery is read-only and uses the connected wallet's own addresses on each BCH network.
-    // Each network is isolated so a failed Chipnet endpoint cannot hide working Mainnet circles.
+    // Each network persists its circles and publishes its status as soon as it finishes.
     if (!walletClient || walletView.state !== "connected" || walletClient.state !== "connected") return;
     let cancelled = false;
+    let chipnetTimedOut = false;
+    let mainnetTimedOut = false;
+    let chipnetStatus = "Chipnet: checking…";
+    let mainnetStatus = "Mainnet: checking…";
+    const publishStatus = () => setDiscoveryMessage(chipnetStatus + " · " + mainnetStatus);
+    const statusFor = (
+      networkName: string,
+      result: PromiseSettledResult<{ foundCount: number }>,
+      timedOut: boolean,
+    ) => {
+      if (result.status === "rejected") {
+        return networkName + ": " + (timedOut ? "timed out" : "unavailable") + ", tap Retry to check again.";
+      }
+      const count = result.value.foundCount;
+      if (timedOut) {
+        return networkName + ": timed out" + (count > 0 ? "; found " + count + " circle" + (count === 1 ? "" : "s") : "") + ", tap Retry.";
+      }
+      return count > 0
+        ? networkName + ": found " + count + " circle" + (count === 1 ? "" : "s") + "."
+        : networkName + ": checked, none found.";
+    };
     setDiscoveryBusy(true);
-    setDiscoveryMessage("Checking Chipnet and BCH Mainnet for circles that include this wallet…");
+    chipnetStatus = "Chipnet: checking…";
+    mainnetStatus = "Mainnet: checking…";
+    publishStatus();
     void (async () => {
       try {
         const [{ getClassicProvider }, { discoverV2FeeCircles, encodeV2FeeCircleParams }, { dedupeSavedV2FeeCircleRecords, getV2FeeCircleRecordIdentity }] = await Promise.all([
@@ -949,13 +971,17 @@ export default function App() {
         ]);
         if (cancelled) return;
 
-        const [chipnetResult, mainnetResult] = await settleIndependentTasks(
+        await settleIndependentTasks(
           async () => {
             const provider = await getClassicProvider("chipnet");
             const addresses = walletClient.listWalletAddresses("chipnet").map((entry) => entry.address);
             if (addresses.length === 0) throw new Error("No Chipnet receive/change addresses are available from this wallet.");
-            const found = await discoverV2FeeCircles(provider, addresses);
-            if (cancelled) return 0;
+            const found = await discoverV2FeeCircles(provider, addresses, undefined, "chipnet", {
+              requestTimeoutMs: 10_000,
+              overallTimeoutMs: 45_000,
+              onTimeout: () => { chipnetTimedOut = true; },
+            });
+            if (cancelled) return { foundCount: 0 };
 
             const stored: unknown = JSON.parse(window.localStorage.getItem(V2_MENU_STORAGE_KEY) || "[]");
             const existing = dedupeSavedV2FeeCircleRecords(stored);
@@ -968,19 +994,47 @@ export default function App() {
               .map((params) => ({ encoded: encodeV2FeeCircleParams(params), savedAt: 0 }));
             if (additions.length > 0) {
               window.localStorage.setItem(V2_MENU_STORAGE_KEY, JSON.stringify([...existing, ...additions]));
-              setMenuCircles(readSavedCircleMenuRecords());
             }
-            return additions.length;
+            if (!cancelled) setMenuCircles(readSavedCircleMenuRecords());
+            return { foundCount: found.length };
           },
           async () => {
-            const mainnetAddresses = walletClient.listWalletAddresses("mainnet").map((entry) => entry.address);
-            if (mainnetAddresses.length === 0) throw new Error("No Mainnet receive/change addresses are available from this wallet.");
-            // Mainnet discovery must use the same independently verified, read-only
-            // quorum as every other Mainnet coin/history read. Scan the entire
-            // receive/change set derived from this connected Selene wallet.
+            const mainnetEntries = walletClient.listWalletAddresses("mainnet");
+            if (mainnetEntries.length === 0) throw new Error("No Mainnet receive/change addresses are available from this wallet.");
+            // Prioritize Selene's currently selected receive address, then every receive
+            // address whose latest activity scan found history or a non-zero balance.
+            const selectedAddress = mainnetEntries.find((entry) =>
+              entry.branch === "receive" && entry.index === walletView.receiveIndex,
+            )?.address;
+            const knownActiveAddresses = receiveAddressChoices
+              .filter((choice) => choice.hasHistory || choice.hasPendingHistory ||
+                BigInt(choice.confirmedSatoshis) > 0n || BigInt(choice.unconfirmedSatoshis) > 0n)
+              .sort((left, right) => {
+                const leftTotal = BigInt(left.confirmedSatoshis) + BigInt(left.unconfirmedSatoshis);
+                const rightTotal = BigInt(right.confirmedSatoshis) + BigInt(right.unconfirmedSatoshis);
+                return leftTotal === rightTotal ? left.index - right.index : leftTotal > rightTotal ? -1 : 1;
+              })
+              .map((choice) => choice.address);
+            const priorityAddresses = [
+              ...(selectedAddress ? [selectedAddress] : []),
+              ...knownActiveAddresses,
+            ];
+            // Mainnet discovery stays on the independently verified, read-only
+            // quorum. All receive/change addresses remain eligible after priority addresses.
             const provider = await getClassicProvider("mainnet");
-            const mainnetFound = await discoverV2FeeCircles(provider, mainnetAddresses, undefined, "mainnet");
-            if (cancelled) return 0;
+            const mainnetFound = await discoverV2FeeCircles(
+              provider,
+              mainnetEntries.map((entry) => entry.address),
+              undefined,
+              "mainnet",
+              {
+                priorityAddresses,
+                requestTimeoutMs: 10_000,
+                overallTimeoutMs: 45_000,
+                onTimeout: () => { mainnetTimedOut = true; },
+              },
+            );
+            if (cancelled) return { foundCount: 0 };
 
             const savedMainnet: unknown = JSON.parse(window.localStorage.getItem(BCH_MAINNET_CIRCLES_STORAGE_KEY) || "[]");
             const savedList = Array.isArray(savedMainnet) ? savedMainnet.filter((entry): entry is string => typeof entry === "string") : [];
@@ -992,32 +1046,33 @@ export default function App() {
             if (mainnetAdditions.length > 0) {
               window.localStorage.setItem(BCH_MAINNET_CIRCLES_STORAGE_KEY, JSON.stringify([...savedList, ...mainnetAdditions.map(encodeV2FeeCircleParams)]));
               window.dispatchEvent(new Event("ajochain:bch-mainnet-circles-changed"));
-              setMenuCircles(readSavedCircleMenuRecords());
             }
-            return mainnetAdditions.length;
+            if (!cancelled) setMenuCircles(readSavedCircleMenuRecords());
+            return { foundCount: mainnetFound.length };
+          },
+          (result) => {
+            if (cancelled) return;
+            chipnetStatus = statusFor("Chipnet", result, chipnetTimedOut);
+            publishStatus();
+          },
+          (result) => {
+            if (cancelled) return;
+            mainnetStatus = statusFor("Mainnet", result, mainnetTimedOut);
+            publishStatus();
           },
         );
-
-        if (cancelled) return;
-        const chipnetMessage = chipnetResult.status === "fulfilled"
-          ? chipnetResult.value > 0
-            ? "Chipnet: found " + chipnetResult.value + " new circle" + (chipnetResult.value === 1 ? "" : "s") + "."
-            : "Chipnet: checked; no new circles found."
-          : "Chipnet: discovery unavailable; invite links still work.";
-        const mainnetMessage = mainnetResult.status === "fulfilled"
-          ? mainnetResult.value > 0
-            ? "Mainnet: found " + mainnetResult.value + " new BCH circle" + (mainnetResult.value === 1 ? "" : "s") + "."
-            : "Mainnet: checked; no new circles found."
-          : "Mainnet: discovery unavailable; invite links still work.";
-        setDiscoveryMessage(chipnetMessage + " " + mainnetMessage);
       } catch {
-        if (!cancelled) setDiscoveryMessage("Couldn't load on-chain circle discovery. Invite links still work.");
+        if (!cancelled) {
+          chipnetStatus = "Chipnet: unavailable, tap Retry to check again.";
+          mainnetStatus = "Mainnet: unavailable, tap Retry to check again.";
+          publishStatus();
+        }
       } finally {
         if (!cancelled) setDiscoveryBusy(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [walletClient, walletView.state, discoveryRun]);
+  }, [walletClient, walletView.state, walletView.receiveIndex, receiveAddressChoices, discoveryRun]);
 
   const gatherWalletCoins = async () => {
     if (!walletClient || walletClient.state !== "connected" || !walletAddress || gatherBusy) return;
@@ -1777,7 +1832,7 @@ export default function App() {
                     {network === "mainnet" && <small className="field-hint">Mainnet uses real BCH. Review the total and fee before asking Selene to approve. The coins return to your wallet.</small>}
                   </section>
                 </>}
-                <button className="secondary-button" disabled={discoveryBusy} onClick={() => setDiscoveryRun((run) => run + 1)}>Check for my circles</button>
+                <button className="secondary-button" disabled={discoveryBusy} onClick={() => setDiscoveryRun((run) => run + 1)}>{discoveryBusy ? "Checking circles…" : discoveryMessage ? "Retry discovery" : "Check for my circles"}</button>
                 {discoveryMessage && <p className="wallet-match-message" role="status">{discoveryMessage}</p>}
                 <button className="secondary-button" onClick={() => void walletClient?.disconnect()}>Disconnect wallet</button>
               </div>
