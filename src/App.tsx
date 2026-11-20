@@ -252,6 +252,9 @@ export default function App() {
   const [menuCircles, setMenuCircles] = useState<MenuCircle[]>(readSavedCircleMenuRecords);
   const [selectedMenuCircle, setSelectedMenuCircle] = useState<string | null>(null);
   const [circleStatusTab, setCircleStatusTab] = useState<"active" | "completed">("active");
+  const [mainnetInviteInput, setMainnetInviteInput] = useState("");
+  const [mainnetInviteError, setMainnetInviteError] = useState("");
+  const [mainnetInviteNotice, setMainnetInviteNotice] = useState("");
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => {
     if (typeof window === "undefined") return "dark";
     try {
@@ -389,6 +392,66 @@ export default function App() {
     setCreateCircleWorkspaceBusy(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+  const importMainnetCircleInvite = (input: string) => {
+    const candidate = input.trim();
+    const routeMatch = candidate.match(/#\/(bch-mainnet|pusd-mainnet)\/([A-Za-z0-9_-]+)/);
+    const encoded = routeMatch?.[2] ?? candidate;
+    const payload = decodeMenuCirclePayload(encoded);
+    if (!payload || payload.network !== "mainnet" || typeof payload.name !== "string" ||
+        typeof payload.stateCategory !== "string" || !Array.isArray(payload.members) ||
+        !payload.members.every((member) => typeof member === "string")) {
+      throw new Error("Paste a valid BCH or PUSD Mainnet circle invite link.");
+    }
+
+    if (payload.covenant === "fee-v3-auto-reserve-mainnet") {
+      const identity = getV2FeeCircleRecordIdentity(encoded);
+      if (!identity || identity.network !== "mainnet" || payload.version !== 2) {
+        throw new Error("This is not a valid BCH Mainnet V3 circle invite.");
+      }
+      const existing: unknown = JSON.parse(window.localStorage.getItem(BCH_MAINNET_CIRCLES_STORAGE_KEY) || "[]");
+      const records = Array.isArray(existing) ? existing.filter((item): item is string => typeof item === "string") : [];
+      const next = [encoded, ...records.filter((entry) => getV2FeeCircleRecordIdentity(entry)?.key !== identity.key)].slice(0, 50);
+      window.localStorage.setItem(BCH_MAINNET_CIRCLES_STORAGE_KEY, JSON.stringify(next));
+      window.dispatchEvent(new Event("ajochain:bch-mainnet-circles-changed"));
+      return "BCH Mainnet circle added. Open it from the list to check its on-chain state.";
+    }
+
+    if (payload.version === 3 && typeof payload.contribution === "string" &&
+        /^\d+$/.test(payload.contribution) && typeof payload.maxFee === "string" &&
+        /^\d+$/.test(payload.maxFee)) {
+      const identity = payload.stateCategory.toLowerCase();
+      const serialized = JSON.stringify(payload);
+      const existing: unknown = JSON.parse(window.localStorage.getItem(PUSD_MAINNET_CIRCLES_STORAGE_KEY) || "[]");
+      const records = Array.isArray(existing) ? existing.filter((item): item is string => typeof item === "string") : [];
+      const next = [serialized, ...records.filter((entry) => {
+        try {
+          const saved: unknown = JSON.parse(entry);
+          if (!saved || typeof saved !== "object") return true;
+          const savedCategory = (saved as Record<string, unknown>).stateCategory;
+          return typeof savedCategory !== "string" || savedCategory.toLowerCase() !== identity;
+        } catch { return true; }
+      })].slice(0, 50);
+      window.localStorage.setItem(PUSD_MAINNET_CIRCLES_STORAGE_KEY, JSON.stringify(next));
+      return "PUSD Mainnet circle added. Open it from the list to check its on-chain state.";
+    }
+
+    throw new Error("This invite is not a supported BCH or PUSD Mainnet circle.");
+  };
+
+  const joinMainnetCircleWithInvite = () => {
+    setMainnetInviteError("");
+    setMainnetInviteNotice("");
+    try {
+      const message = importMainnetCircleInvite(mainnetInviteInput);
+      setMenuCircles(readSavedCircleMenuRecords());
+      setCircleStatusTab("active");
+      setMainnetInviteInput("");
+      setMainnetInviteNotice(message);
+    } catch (cause) {
+      setMainnetInviteError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
 
   useEffect(() => {
     const handleCreateCirclePopState = (event: PopStateEvent) => {
@@ -430,13 +493,20 @@ export default function App() {
     let lastInviteHash = "";
     const restoreInviteFromHash = () => {
       const hash = window.location.hash;
-      if (hash.startsWith("#/bch-mainnet/") && hash !== lastInviteHash) {
-        // BchMainnetCircleWorkspace validates and saves the invite from the hash when it mounts.
+      if ((hash.startsWith("#/bch-mainnet/") || hash.startsWith("#/pusd-mainnet/")) && hash !== lastInviteHash) {
         lastInviteHash = hash;
         setNetwork("mainnet");
-        setPage("create-circle");
-        enterCreateCircleForm("bch-mainnet");
+        setPage("my-circles");
+        setCircleStatusTab("active");
         setMenuOpen(false);
+        setMainnetInviteError("");
+        setMainnetInviteNotice("");
+        try {
+          setMainnetInviteNotice(importMainnetCircleInvite(hash));
+          setMenuCircles(readSavedCircleMenuRecords());
+        } catch (cause) {
+          setMainnetInviteError(cause instanceof Error ? cause.message : String(cause));
+        }
         return;
       }
       if (!hash.startsWith("#/classic/") || hash === lastInviteHash) return;
@@ -1246,6 +1316,21 @@ export default function App() {
               <h1>{network === "mainnet" ? "Mainnet circles" : "Chipnet test circles"}</h1>
               <p>Circles are shown only for the network selected in the navigation menu.</p>
             </div>
+            {network === "mainnet" && (
+              <section className="pusd-mainnet-saved mainnet-invite-join" aria-label="Join a Mainnet circle">
+                <div className="section-heading">
+                  <div><span className="section-kicker">INVITE</span><h2>Join a circle</h2></div>
+                </div>
+                <label>Circle invite link
+                  <input value={mainnetInviteInput} onChange={(event) => setMainnetInviteInput(event.target.value)}
+                    placeholder="Paste a BCH or PUSD Mainnet invite link" autoComplete="off" />
+                </label>
+                <button type="button" className="secondary-button" disabled={!mainnetInviteInput.trim()}
+                  onClick={joinMainnetCircleWithInvite}>Join with invite</button>
+                {mainnetInviteError && <p className="classic-error" role="alert">{mainnetInviteError}</p>}
+                {mainnetInviteNotice && <p className="classic-notice" role="status">{mainnetInviteNotice}</p>}
+              </section>
+            )}
             <div className="my-circles-tabs" role="tablist" aria-label="Circle status">
               <button type="button" role="tab" aria-selected={circleStatusTab === "active"}
                 className={circleStatusTab === "active" ? "selected" : ""}

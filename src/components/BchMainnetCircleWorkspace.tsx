@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ArrowRight, Copy, LockKeyhole, ShieldCheck } from "lucide-react";
 import { encodeV2FeeCircleParams } from "../core/v2-fee-discovery";
 import { formatAssetAmount, parseAssetAmount } from "../core/assets";
@@ -134,7 +134,6 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
   const [drafts, setDrafts] = useState<Draft[]>(readDrafts);
   const [activeCircle, setActiveCircle] = useState<V2FeeCircleParams | null>(readActiveCircle);
   const [, setDeployedCircles] = useState<V2FeeCircleParams[]>(readDeployedCircles);
-  const [inviteInput, setInviteInput] = useState("");
   useEffect(() => {
     const refresh = () => setDeployedCircles(readDeployedCircles());
     window.addEventListener(BCH_MAINNET_CIRCLES_CHANGED_EVENT, refresh);
@@ -148,6 +147,8 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
   } | null>(null);
   const [genesisSigningPlan, setGenesisSigningPlan] = useState<MainnetSigningPlan | null>(null);
   const [actionSigningPlan, setActionSigningPlan] = useState<MainnetSigningPlan | null>(null);
+  const [creationResult, setCreationResult] = useState<{ txid: string; explorerUrl: string; inviteUrl: string } | null>(null);
+  const creationSummaryRef = useRef<HTMLDivElement>(null);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -165,6 +166,10 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
     onBusyChange?.(busy || lifecycleBusy);
     return () => onBusyChange?.(false);
   }, [busy, lifecycleBusy, onBusyChange]);
+
+  useEffect(() => {
+    if (preview) creationSummaryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [preview]);
 
   useEffect(() => {
     if (!activeCircle || !walletConnected || wallet.state !== "connected") return;
@@ -435,8 +440,8 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
     }
   };
 
-  const verifyMainnetSignature = async (target: "genesis" | "action", send = false) => {
-    const signingPlan = target === "genesis" ? genesisSigningPlan : actionSigningPlan;
+  const verifyMainnetSignature = async (target: "genesis" | "action", send = false, signingPlanOverride?: MainnetSigningPlan | null) => {
+    const signingPlan = signingPlanOverride ?? (target === "genesis" ? genesisSigningPlan : actionSigningPlan);
     if (!signingPlan) return;
     if (network !== "mainnet" || !walletConnected || wallet.state !== "connected") {
       setError("Reconnect Selene on BCH Mainnet before starting signature verification.");
@@ -516,10 +521,21 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
         const sent = (verification.message || "Transaction sent.") + " Transaction: " + (verification.txid || "unknown");
         setNotice(sent);
         if (target === "genesis") {
+          if (typeof verification.txid !== "string" || !/^[0-9a-f]{64}$/i.test(verification.txid)) {
+            throw new Error("The Mainnet broadcast response did not include a valid transaction ID. The circle was not added to My circles.");
+          }
+          const inviteUrl = window.location.origin + window.location.pathname + INVITE_ROUTE + encodeV2FeeCircleParams(signingPlan.circle);
+          setCreationResult({
+            txid: verification.txid,
+            explorerUrl: "https://blockexplorer.cash/mainnet/tx/" + verification.txid,
+            inviteUrl,
+          });
+          setActiveCircle(signingPlan.circle);
           try {
+            persistActiveCircle(signingPlan.circle);
             setDeployedCircles(addDeployedCircle(signingPlan.circle));
           } catch {
-            setNotice(sent + ". This browser could not add it to the saved circle list; copy the invite now to keep it.");
+            setNotice(sent + ". The transaction was sent, but this browser could not save the circle locally. Its invite is shown below.");
           }
         }
         return;
@@ -534,6 +550,15 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
     } finally {
       setLifecycleBusy(false);
     }
+  };
+
+  const createCircleInSelene = async () => {
+    let signingPlan = genesisSigningPlan;
+    if (!signingPlan || Date.now() - signingPlan.createdAt > 60_000) {
+      signingPlan = await prepareGenesisPlan();
+    }
+    if (!signingPlan) return;
+    await verifyMainnetSignature("genesis", true, signingPlan);
   };
 
   const selectCircle = (circle: V2FeeCircleParams) => {
@@ -571,83 +596,49 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCircle]);
 
-  const importInvite = (text: string) => {
-    setError("");
-    setNotice("");
-    try {
-      const candidate = text.trim();
-      const match = candidate.match(/#\/bch-mainnet\/([A-Za-z0-9_-]+)/) ?? candidate.match(/^([A-Za-z0-9_-]{8,})$/);
-      if (!match) throw new Error("Paste a BCH Mainnet circle invite link.");
-      const circle = decodeV2FeeCircle(match[1]);
-      if (circle.network !== "mainnet" || circle.covenant !== "fee-v3-auto-reserve-mainnet") {
-        throw new Error("This invite is not for a BCH Mainnet V3 circle.");
-      }
-      setDeployedCircles(addDeployedCircle(circle));
-      selectCircle(circle);
-      setInviteInput("");
-      setNotice("Circle added from the invite. Read its on-chain status before paying.");
-    } catch (cause) {
-      setError(errorMessage(cause));
-    }
-  };
-
-  const joinWithInvite = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    importInvite(inviteInput);
-  };
-
-  useEffect(() => {
-    const fromHash = () => {
-      if (window.location.hash.startsWith(INVITE_ROUTE)) importInvite(window.location.hash);
-    };
-    fromHash();
-    window.addEventListener("hashchange", fromHash);
-    return () => window.removeEventListener("hashchange", fromHash);
-  }, []);
-
   const copyInvite = async () => {
     if (!activeCircle) return;
     const link = window.location.origin + window.location.pathname + INVITE_ROUTE + encodeV2FeeCircleParams(activeCircle);
     try {
       await navigator.clipboard.writeText(link);
-      setNotice("Invite link copied. Members paste it under Join a circle with an invite link.");
+      setNotice("Invite link copied. Share it with your circle members.");
     } catch {
       setNotice("Clipboard is unavailable. Invite link: " + link);
     }
   };
 
-  const prepare = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const prepareGenesisPlan = async (): Promise<MainnetSigningPlan | null> => {
     setError("");
     setNotice("");
     setPreview(null);
     setGenesisSigningPlan(null);
     setActionSigningPlan(null);
+    setCreationResult(null);
 
     if (network !== "mainnet") {
       setError("Switch the app to Bitcoin Cash Mainnet. This V3 BCH circle uses the shared Mainnet fee treasury.");
-      return;
+      return null;
     }
     if (!walletConnected || wallet.state !== "connected") {
       setError("Connect Selene through WizardConnect before preparing the circle setup preview.");
-      return;
+      return null;
     }
     const initiator = wallet.address("mainnet");
     if (!initiator) {
       setError("No verified Mainnet receive address is available from the connected wallet. Match Selene's current receive address in Wallet Details first.");
-      return;
+      return null;
     }
     if (!initiatorAddressConfirmed) {
       setError("Sync the Mainnet receive address currently shown in Selene under Wallet Details before preparing the circle.");
-      return;
+      return null;
     }
     if (memberOrder.error) {
       setError(memberOrder.error);
-      return;
+      return null;
     }
     if (!/^\d+$/.test(maxFee.trim())) {
       setError("Maximum miner fee must be a whole number of satoshis.");
-      return;
+      return null;
     }
     setBusy(true);
     try {
@@ -664,14 +655,13 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
           wallet.address("mainnet") !== initiator) {
         throw new Error("Selene's Mainnet connection or receive address changed during preview preparation. Sync the address and prepare again.");
       }
-      setGenesisSigningPlan({
+      const signingPlan: MainnetSigningPlan = {
         wc: plan.wc, walletInputs: plan.walletInputs,
         prompt: "Verify BCH Mainnet circle setup for " + name.trim(),
         createdAt: Date.now(),
         operation: "genesis", circle: plan.params,
-      });
-      setActiveCircle(plan.params);
-      persistActiveCircle(plan.params);
+      };
+      setGenesisSigningPlan(signingPlan);
       setCircleSnapshot(null);
       setPreview({
         contractAddress: plan.contractAddress,
@@ -681,12 +671,19 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
         inputCount: plan.transactionInputCount,
         outputCount: plan.transactionOutputCount,
       });
-      setNotice("BCH Mainnet circle setup preview prepared. Use Sign and send on Mainnet to create the circle with real BCH.");
+      setNotice("BCH Mainnet circle setup preview prepared. Nothing has been signed or sent.");
+      return signingPlan;
     } catch (cause) {
       setError(errorMessage(cause));
+      return null;
     } finally {
       setBusy(false);
     }
+  };
+
+  const prepare = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await prepareGenesisPlan();
   };
 
   return (
@@ -757,30 +754,53 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
         <div className="pusd-mainnet-actions">
           <button className="secondary-button" type="button" onClick={saveDraft} disabled={network !== "mainnet" || !walletConnected || !initiatorAddressConfirmed}>Save local draft</button>
         <button className="primary-button" type="submit" disabled={busy || network !== "mainnet" || !walletConnected || !initiatorAddressConfirmed || Boolean(memberOrder.error)}>
-          {busy ? "Preparing circle setup…" : "Preview circle setup"} <ArrowRight size={15} />
+          {busy ? "Preparing circle setup…" : "Continue"} <ArrowRight size={15} />
         </button>
         </div>
         <small className="field-hint">Member order is fixed at creation: your connected Mainnet address is Member 1, followed by the addresses above. Each address is a specific receive key from a wallet seed, so use the address currently shown by Selene before creating the circle.</small>
       </form>
 
-      {preview && (
-        <div className="pusd-mainnet-breakdown" role="status">
-          <b>Circle setup preview</b>
-          <p className="field-hint">Review the estimated network fee and change before you continue. Nothing has been signed or sent.</p>
+      {preview && genesisSigningPlan && (
+        <div ref={creationSummaryRef} className="pusd-mainnet-breakdown mainnet-create-summary" role="status">
+          <b>Review your circle</b>
+          <button type="button" className="primary-button mainnet-create-primary"
+            disabled={lifecycleBusy || busy || !walletConnected || !BCH_MAINNET_CIRCLE_SEND_ENABLED}
+            onClick={() => void createCircleInSelene()}>
+            {lifecycleBusy ? "Approve in Selene…" : "Create circle in Selene"}
+          </button>
+          <div><span>Members</span><strong>{genesisSigningPlan.circle.members.length}</strong></div>
+          <div><span>Contribution per member</span><strong>{formatAssetAmount("BCH", genesisSigningPlan.circle.contribution)} BCH</strong></div>
           <div><span>Estimated network fee</span><strong>{preview.feeEstimate} sats</strong></div>
-          <div><span>Estimated change back to your wallet</span><strong>{preview.estimatedChange} sats</strong></div>
           <details className="technical-details">
             <summary>Technical details</summary>
             <div><span>Circle contract address</span><strong><code>{preview.contractAddress}</code></strong></div>
             <div><span>State CashToken category</span><strong><code>{preview.stateCategory}</code></strong></div>
             <div><span>Transaction shape</span><strong>{preview.inputCount} inputs · {preview.outputCount} outputs</strong></div>
+            <div><span>Estimated change back to your wallet</span><strong>{preview.estimatedChange} sats</strong></div>
+            <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected}
+              onClick={() => void verifyMainnetSignature("genesis")}>Check Selene approval · no payment</button>
           </details>
-          <small>Nothing has been sent or created yet.</small>
-          {genesisSigningPlan && <button type="button" className="secondary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis")}>Check Selene approval · no payment</button>}
-          {genesisSigningPlan && BCH_MAINNET_CIRCLE_SEND_ENABLED && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("genesis", true)}>Sign and send on Mainnet</button>}
+          <small>Nothing has been created yet. The circle is saved only after the Mainnet broadcast returns a transaction ID.</small>
         </div>
       )}
-      {activeCircle && (
+      {creationResult && (
+        <div className="pusd-mainnet-breakdown mainnet-create-success" role="status">
+          <b>Circle created</b>
+          <p>Selene approved the transaction and the Mainnet relay returned a transaction ID.</p>
+          <div><span>Transaction ID</span><strong><a href={creationResult.explorerUrl} target="_blank" rel="noreferrer">{creationResult.txid}</a></strong></div>
+          <div className="mainnet-create-invite">
+            <span>Invite link to share</span>
+            <a href={creationResult.inviteUrl}>{creationResult.inviteUrl}</a>
+            <button type="button" className="secondary-button" onClick={() => {
+              void navigator.clipboard.writeText(creationResult.inviteUrl).then(
+                () => setNotice("Invite link copied. Share it with your circle members."),
+                () => setNotice("Invite link: " + creationResult.inviteUrl),
+              );
+            }}>Copy invite link</button>
+          </div>
+        </div>
+      )}
+      {activeCircle && (selectedCircle || creationResult) && (
         <div className="pusd-mainnet-saved">
           <div className="section-heading">
             <div><span className="section-kicker">CIRCLE LIFECYCLE · MAINNET READ-ONLY</span><h3>{activeCircle.name}</h3></div>
@@ -788,7 +808,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
               {lifecycleBusy ? "Checking…" : "Check circle status"}
             </button>
           </div>
-          <p className="classic-empty">Local circle identity saved for tracking. A saved setup preview does not mean the circle has been created on the blockchain.</p>
+          <p className="classic-empty">Circle details are loaded locally. Check the current on-chain state before taking an action.</p>
           <button type="button" className="secondary-button" onClick={() => void copyInvite()}><Copy size={14} /> Copy invite</button>
           {circleSnapshot && (
             <div className="pusd-mainnet-breakdown">
@@ -826,15 +846,6 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, on
 
       {error && <p className="classic-error" role="alert">{error}</p>}
       {notice && <p className="classic-notice" role="status">{notice}</p>}
-
-      <div className="pusd-mainnet-saved">
-        <div className="section-heading"><div><span className="section-kicker">INVITE</span><h3>Add an existing BCH Mainnet circle</h3></div></div>
-        <form className="classic-form" onSubmit={joinWithInvite}>
-          <label>Circle invite link<input value={inviteInput} onChange={(event) => setInviteInput(event.target.value)} placeholder="Paste circle invite link" /></label>
-          <button type="submit" className="secondary-button" disabled={!inviteInput.trim()}>Add circle</button>
-        </form>
-        <p className="classic-empty">Saved circles appear in My circles, grouped by the selected network.</p>
-      </div>
 
       <div className="pusd-mainnet-saved">
         <div className="section-heading"><div><span className="section-kicker">LOCAL DRAFTS</span><h3>Saved BCH Mainnet circles</h3></div><small>{drafts.length} saved</small></div>

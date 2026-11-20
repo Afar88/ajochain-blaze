@@ -2165,3 +2165,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 
 .my-circles-back { margin: 0 0 14px; }
+
+
+/* Mainnet circle creation: make the review action prominent and keep shared links readable on phones. */
+.mainnet-create-summary { scroll-margin-top: 1rem; }
+.mainnet-create-primary { width: 100%; min-height: 48px; font-size: 12px; }
+.mainnet-create-success { margin-top: 14px; }
+.mainnet-create-invite { display: grid; gap: 7px; min-width: 0; overflow-wrap: anywhere; }
+.mainnet-create-invite a { font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; word-break: break-word; }
+.mainnet-invite-join { display: grid; gap: 10px; }
+.mainnet-invite-join .section-heading { margin-bottom: 2px; }
