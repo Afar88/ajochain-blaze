@@ -269,7 +269,7 @@ export function getDiscoveryNetworkStatus(
   if (timedOut) {
     return networkName + ": timed out" + (count > 0
       ? "; found " + count + " circle" + (count === 1 ? "" : "s")
-      : "") + ", tap Retry.";
+      : "") + ", tap Retry to check again.";
   }
   return count > 0
     ? networkName + ": found " + count + " circle" + (count === 1 ? "" : "s") + "."
