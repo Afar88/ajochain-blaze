@@ -892,7 +892,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
             <summary>Details</summary>
             <details className="technical-details">
             <summary>Details</summary>
-            <p>Before sending, the app checks the previous payments, circle rules and wallet approval. It prevents the same payment from being sent twice.</p>
+            <p>Before sending, the app checks the payment and circle rules. It prevents duplicate payments.</p>
           </details>
           </details></div>
       </div>
