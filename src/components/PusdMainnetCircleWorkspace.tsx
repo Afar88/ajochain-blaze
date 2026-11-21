@@ -195,6 +195,12 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
   const [testSignChecked, setTestSignChecked] = useState<"genesis" | "action" | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const [activeCircle, setActiveCircle] = useState<PusdMainnetCircleParams | null>(readActiveCircle);
   const [circleSnapshot, setCircleSnapshot] = useState<PusdMainnetCircleSnapshot | null>(null);
   const [depositAmount, setDepositAmount] = useState("10.00");
@@ -291,7 +297,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       if (!initiatorAddress || !initiatorMemberAddress || !walletConnected || wallet.state !== "connected" || !wallet.isReceiveAddressConfirmed("mainnet")) {
         throw new Error("Choose a receive address derived from your connected Selene wallet in Wallet Details before saving this draft.");
       }
-      if (selectedAddressPendingOnly) throw new Error("Wait for confirmation before creating a circle.");
+      if (selectedAddressPendingOnly) throw new Error("Wait 1 confirmation, then create.");
       if (memberAddresses.length < 1 || memberAddresses.length > 4) {
         throw new Error("Add 1–4 other token-aware Bitcoin Cash Mainnet addresses. Your selected Selene address is Member 1.");
       }
@@ -340,7 +346,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       return null;
     }
     if (!walletConnected || wallet.state !== "connected") {
-      setError("Connect Selene through WizardConnect before preparing a Mainnet creation plan.");
+      setError("Connect Selene in Selene before preparing a Mainnet creation plan.");
       return null;
     }
     const initiatorAddress = wallet.address("mainnet");
@@ -349,7 +355,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       return null;
     }
     if (selectedAddressPendingOnly) {
-      setError("Wait for confirmation before creating a circle.");
+      setError("Wait 1 confirmation, then create.");
       return null;
     }
     if (memberAddresses.length < 1 || memberAddresses.length > 4) {
@@ -411,7 +417,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     if (signingPlan.operation === "genesis") {
       const selectedAddress = wallet.address("mainnet");
       if (selectedAddressPendingOnly) {
-        setError("Wait for confirmation before creating a circle.");
+        setError("Wait 1 confirmation, then create.");
         return;
       }
       if (!selectedAddress || !wallet.isReceiveAddressConfirmed("mainnet") ||
@@ -465,7 +471,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         else setActionSigningPlan(null);
         const sent =
           "PUSD Mainnet " + signingPlan.operation + " transaction sent. Transaction: " +
-          relayed.txid + " (relay: " + relayed.relayStatus + "). It is not confirmed yet; refresh the circle state after it confirms.";
+          relayed.txid + " It is waiting for confirmation. Check the circle again after it confirms.";
         setNotice(sent);
         if (target === "genesis") {
           if (!/^[0-9a-f]{64}$/i.test(relayed.txid)) {
@@ -504,7 +510,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
 
   const createCircleInSelene = async () => {
     if (selectedAddressPendingOnly) {
-      setError("Wait for confirmation before creating a circle.");
+      setError("Wait 1 confirmation, then create.");
       return;
     }
     let signingPlan = genesisSigningPlan;
@@ -551,7 +557,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     if (!activeCircle) return;
     const address = wallet.address("mainnet");
     if (!walletConnected || wallet.state !== "connected" || !address) {
-      setError("Connect the Mainnet member wallet through WizardConnect first.");
+      setError("Connect the Mainnet member wallet in Selene first.");
       return;
     }
     setLifecycleBusy(true);
@@ -593,7 +599,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     if (!activeCircle) return;
     const address = wallet.address("mainnet");
     if (!walletConnected || wallet.state !== "connected" || !address) {
-      setError("Connect a wallet to sponsor the payout miner fee through WizardConnect first.");
+      setError("Connect a wallet to sponsor the payout miner fee in Selene first.");
       return;
     }
     setLifecycleBusy(true);
@@ -629,7 +635,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     if (!activeCircle) return;
     const address = wallet.address("mainnet");
     if (!walletConnected || wallet.state !== "connected" || !address) {
-      setError("Connect the registered circle initiator wallet through WizardConnect first.");
+      setError("Connect the registered circle initiator wallet in Selene first.");
       return;
     }
     setLifecycleBusy(true);
@@ -729,7 +735,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
           <textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder={"bitcoincash:…\nbitcoincash:…"} required />
           <small>Add 1–4 other unique token-aware Bitcoin Cash Mainnet addresses. Your selected Selene address is Member 1 and receives your circle payout when it is your turn.</small>
         </label>
-        {selectedAddressPendingOnly && <p className="receive-address-pending-warning" role="alert">Wait for confirmation before creating a circle.</p>}
+        {selectedAddressPendingOnly && <p className="receive-address-pending-warning" role="alert">Wait 1 confirmation, then create.</p>}
         <label>Maximum BCH miner fee per action (satoshis)
           <input value={maxFee} onChange={(event) => setMaxFee(event.target.value)} inputMode="numeric" required />
           <small>Network fees and the small BCH amount needed to deliver PUSD are separate from PUSD contributions.</small>
@@ -763,7 +769,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         <div ref={creationSummaryRef} className="pusd-mainnet-breakdown mainnet-create-summary" role="status">
           <b>Review your circle</b>
           <p className="receive-address-payout-note">Payouts for this circle will go to {genesisSigningPlan.circle.initiator.slice(0, 10)}…{genesisSigningPlan.circle.initiator.slice(-6)}. It stays in your Selene wallet.</p>
-          {selectedAddressPendingOnly && <p className="receive-address-pending-warning" role="alert">Wait for confirmation before creating a circle.</p>}
+          {selectedAddressPendingOnly && <p className="receive-address-pending-warning" role="alert">Wait 1 confirmation, then create.</p>}
           <div><span>Member 1 · payout address</span><strong><code>{genesisSigningPlan.circle.members[0]}</code></strong></div>
           <button type="button" className="primary-button mainnet-create-primary" disabled={lifecycleBusy || busy || !walletConnected || selectedAddressPendingOnly}
             onClick={() => void createCircleInSelene()}>
@@ -789,7 +795,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       {creationResult && (
         <div className="pusd-mainnet-breakdown mainnet-create-success" role="status">
           <b>Circle created</b>
-          <p>Selene approved the transaction and the Mainnet relay returned a transaction ID.</p>
+          <p>Selene approved the transaction and the Mainnet returned a transaction ID.</p>
           <div><span>Transaction ID</span><strong><a href={creationResult.explorerUrl} target="_blank" rel="noreferrer">{creationResult.txid}</a></strong></div>
           <div className="mainnet-create-invite">
             <span>Invite link to share</span>
@@ -861,7 +867,9 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
           )}       </div>
       )}
 
-      {error && <p className="classic-error" role="alert">{error}</p>}
+      {error && <p className="classic-error" role="alert">{error}
+        <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setError("")}>×</button>
+      </p>}
       {notice && <p className="classic-notice" role="status">{notice}</p>}
 
       {isCircleOpen && activeCircle && (
