@@ -70,9 +70,13 @@ describe("phone-width layout guardrails", () => {
   it("keeps Home, circle and wallet text wrapping at 360px, 390px and 412px", () => {
     const phoneRules = stylesSource.slice(stylesSource.lastIndexOf("@media (max-width: 767px)"));
 
-    // These target widths must all be covered by the phone breakpoint.
+    // Verify the phone breakpoint and the exact target widths reported for the Redmi device.
+    expect(stylesSource).toContain("@media (max-width: 767px)");
     for (const width of [360, 390, 412]) {
+      expect(width).toBeGreaterThanOrEqual(320);
       expect(width).toBeLessThanOrEqual(767);
+      expect(phoneRules).toContain(".overview-status-card b");
+      expect(phoneRules).toContain(".dropdown-wallet small");
     }
 
     // The document/root containers constrain layout but do not hide overflow.
@@ -89,7 +93,8 @@ describe("phone-width layout guardrails", () => {
     expect(phoneRules).toContain("overflow-wrap: anywhere;");
 
     // The wallet chip is allowed to grow vertically rather than truncate its label/address.
-    expect(phoneRules).toContain(".header-wallet-chip {");
+    expect(phoneRules).toContain(".app-shell .header-wallet-chip");
+    expect(phoneRules).toContain(".app-shell .header-network-pill");
     expect(phoneRules).toContain("overflow: visible;");
     expect(phoneRules).toContain("text-overflow: clip;");
 
@@ -98,5 +103,7 @@ describe("phone-width layout guardrails", () => {
     expect(phoneRules).toContain("overflow-x: auto;");
     expect(phoneRules).toContain("width: 100%;");
     expect(phoneRules).toContain("width: min(52vw, 188px);");
+    expect(stylesSource).toContain("max-width:1280px");
+    expect(stylesSource.match(/overflow-x\\s*:\\s*auto/g) ?? []).toHaveLength(2);
   });
 });
