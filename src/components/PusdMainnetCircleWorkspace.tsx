@@ -192,6 +192,11 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
   const [maxFee, setMaxFee] = useState("20000");
   const [drafts, setDrafts] = useState<Draft[]>(readDrafts);
   const [notice, setNotice] = useState("");
+  useEffect(() => {
+    if (!notice || /unavailable|could not|couldn't|failed|error|not valid|changed/i.test(notice)) return;
+    const timer = window.setTimeout(() => setNotice(""), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const [testSignChecked, setTestSignChecked] = useState<"genesis" | "action" | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -858,7 +863,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
           )}       </div>
       )}
 
-      {error && <p className="classic-error" role="alert">{error}</p>}
+      {error && <p className="classic-error" role="alert">{error}<button type="button" aria-label="Dismiss error" onClick={() => setError("")}>×</button></p>}
       {notice && <p className="classic-notice" role="status">{notice}</p>}
 
       {isCircleOpen && activeCircle && (
