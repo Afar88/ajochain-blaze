@@ -561,6 +561,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
         if (target === "genesis") setGenesisSigningPlan(null);
         else setActionSigningPlan(null);
         const sent = (verification.message || "Transaction sent.") + " Transaction: " + (verification.txid || "unknown");
+        window.dispatchEvent(new Event("ajochain:wallet-balances-refresh"));
         setNotice(sent);
         if (target === "genesis") {
           if (typeof verification.txid !== "string" || !/^[0-9a-f]{64}$/i.test(verification.txid)) {
