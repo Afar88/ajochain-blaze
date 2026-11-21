@@ -890,10 +890,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         <div><b>PUSD Mainnet circle rules</b><small>Approve each payment in Selene. Transfers stay locked.</small>
           <details className="technical-details">
             <summary>Details</summary>
-            <details className="technical-details">
-            <summary>Details</summary>
             <p>Before sending, the app checks the payment and circle rules. It prevents duplicate payments.</p>
-          </details>
           </details></div>
       </div>
 
