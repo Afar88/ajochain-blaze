@@ -104,6 +104,7 @@ describe("phone-width layout guardrails", () => {
     expect(phoneRules).toContain("width: 100%;");
     expect(phoneRules).toContain("width: min(52vw, 188px);");
     expect(stylesSource).toContain("max-width:1280px");
-    expect(stylesSource.match(/overflow-x\\s*:\\s*auto/g) ?? []).toHaveLength(2);
+    expect(stylesSource.split("overflow-x:auto").length - 1).toBe(1);
+    expect(stylesSource.split("overflow-x: auto").length - 1).toBe(1);
   });
 });
