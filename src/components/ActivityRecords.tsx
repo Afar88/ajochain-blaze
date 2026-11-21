@@ -411,11 +411,11 @@ export default function ActivityRecords({ network, compact = false }: { network:
           <RefreshCw size={15} className={busy ? "activity-spin" : ""} /> {busy ? "Refreshing…" : "Refresh records"}
         </button>
       </div>
-      {refreshError && <p className="classic-error" role="alert">Couldn't refresh activity. <button type="button" aria-label="Dismiss error" onClick={() => setRefreshError("")}>×</button><details className="technical-details"><summary>Details</summary><span>{refreshError}</span></details></p>}
+      {refreshError && <div className="classic-error" role="alert">Couldn't refresh activity. <button type="button" aria-label="Dismiss error" onClick={() => setRefreshError("")}>×</button><details className="technical-details"><summary>Details</summary><span>{refreshError}</span></details></div>}
       {circles.length === 0 ? (
         <article className="asset-detail-card activity-empty">
           <h2>No saved circles found</h2>
-          <p>Save a circle or open an invite to see its activity.</p>
+          <p>Save a circle or open an invite to see activity.</p>
         </article>
       ) : (
         <div className="activity-circle-list">
