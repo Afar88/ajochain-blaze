@@ -619,6 +619,11 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [gatherMessage, addressMatchMessage, pusdSignatureMessage]);
 
+  useEffect(() => {
+    if (gatherResult?.status !== "success") return;
+    const timer = window.setTimeout(() => setGatherResult(null), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [gatherResult]);
   const selectedCircleRecord = menuCircles.find((circle) =>
     circle.id === selectedMenuCircle && circle.network === network,
   ) ?? null;
@@ -1619,16 +1624,16 @@ export default function App() {
       const gatherNetwork = network;
       const destinationAddress = walletClient.address(gatherNetwork);
       if (!destinationAddress) {
-        setGatherResult({ status: "error", message: "The connected Selene receive address is not available for this network." });
+        setGatherResult({ status: "error", message: "Wallet address is not available. Reconnect and try again." });
         return;
       }
       if (gatherNetwork === "mainnet" && !walletClient.isReceiveAddressConfirmed("mainnet")) {
-        setGatherResult({ status: "error", message: "Choose a Mainnet receive address in Wallet Details before gathering real BCH." });
+        setGatherResult({ status: "error", message: "Pick an address first." });
         return;
       }
       const gatherWalletIdentity = gatherNetwork === "mainnet" ? walletClient.getSessionIdentity() : null;
       if (gatherNetwork === "mainnet" && !gatherWalletIdentity) {
-        setGatherResult({ status: "error", message: "WizardConnect has not supplied a verifiable Selene wallet identity. Reconnect Selene before gathering Mainnet BCH." });
+        setGatherResult({ status: "error", message: "Reconnect Selene before combining BCH." });
         return;
       }
       setGatherBusy(true);
@@ -1748,9 +1753,11 @@ export default function App() {
           throw new Error("The Mainnet gather API returned an incomplete result. Check the transaction before trying again.");
         }
         setGatherResult({ status: "success", txid: payload.txid, network: gatherNetwork });
+        window.dispatchEvent(new Event("ajochain:wallet-balances-refresh"));
       } else {
         const txid = await prepared.provider.sendRawTransaction(signed.signedTransaction);
         setGatherResult({ status: "success", txid, network: gatherNetwork });
+        window.dispatchEvent(new Event("ajochain:wallet-balances-refresh"));
       }
       setGatherPlan(null);
       setGatherMessage("");
@@ -1893,11 +1900,11 @@ export default function App() {
             aria-label={"Wallet status: " + walletStateLabel + ". Open wallet details."}
           >
             <span className={"wallet-state-dot " + (connected ? "is-connected" : "is-idle")} />
-            {connected && walletAddress ? shortAddress(walletAddress) : walletStateLabel}
+            {connected && displayWalletAddress ? shortAddress(displayWalletAddress) : walletStateLabel}
           </button>
-          {connected && walletAddress && (
+          {connected && displayWalletAddress && (
             <button className="header-wallet-copy" type="button" aria-label="Copy wallet address"
-              onClick={() => { void navigator.clipboard.writeText(walletAddress).catch(() => undefined); }}>
+              onClick={() => { if (displayWalletAddress) void navigator.clipboard.writeText(displayWalletAddress).catch(() => undefined); }}>
               <Copy size={15} />
             </button>
           )}
@@ -1982,7 +1989,7 @@ export default function App() {
               <div className="dropdown-divider" />
               <button type="button" className="dropdown-wallet" onClick={openWallet}>
                 <span className="dropdown-wallet-icon"><Wallet size={17} /></span>
-                <span><b>{connected ? walletView.walletName ?? "Wallet connected" : "Connect wallet"}</b><small>{connected ? shortAddress(walletAddress) : walletView.state === "reconnecting" ? "Restoring Selene session…" : "WizardConnect · Selene"}</small></span>
+                <span><b>{connected ? walletView.walletName ?? "Wallet connected" : "Connect wallet"}</b><small>{connected ? shortAddress(displayWalletAddress) : walletView.state === "reconnecting" ? "Reconnecting…" : "Selene"}</small></span>
                 <ArrowRight size={16} />
               </button>
             </section>
