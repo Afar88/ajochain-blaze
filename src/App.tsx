@@ -1538,7 +1538,7 @@ export default function App() {
     }
   };
 
-  // While the wallet window is open, an old saved connection gets 8 seconds.
+  // While the wallet window is open, an old saved connection gets 3 seconds.
   // If it hasn't connected by then, show a fresh QR code and Open in Selene.
   useEffect(() => {
     if (!showWallet || !walletClient) return;
@@ -1549,7 +1549,7 @@ export default function App() {
       if ((client.state === "connecting" || client.state === "reconnecting") && !client.uri) {
         client.startFreshPairing();
       }
-    }, 8_000);
+    }, 3_000);
     return () => window.clearTimeout(timer);
   }, [showWallet, walletClient, walletView.state, walletView.uri]);
 
@@ -1558,13 +1558,12 @@ export default function App() {
     setShowWallet(true);
     const start = (client: WalletClient) => {
       setWalletClient(client);
-      if (client.state === "disconnected") {
-        if (!client.retrySavedSession()) client.startFreshPairing();
-      } else if (client.state === "idle") {
-        // A fresh page starts idle even when an encrypted WizardConnect session
-        // exists. Try that saved session before creating a new pairing.
-        if (!client.tryResume()) client.connect();
-      }
+      // Opening the wallet while not connected shows a fresh QR code and
+      // Open in Selene right away. A saved connection still resumes quietly
+      // on page load; it no longer blocks the QR when the user opens Wallet.
+      if (client.state === "connected" || client.state === "disconnecting") return;
+      if ((client.state === "connecting" || client.state === "reconnecting") && client.uri) return;
+      client.startFreshPairing();
     };
     if (walletClient) start(walletClient);
     else void import("./core/wizard-wallet").then(({ wallet: client }) => start(client))
