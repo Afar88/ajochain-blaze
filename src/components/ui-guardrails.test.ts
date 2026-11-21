@@ -207,7 +207,7 @@ describe("saved circle and homepage guardrails", () => {
       "Address not confirmed yet.",
       "Reconnect Selene first.",
       "Couldn't load your addresses. Reconnect and try again.",
-      "This address isn't in your wallet. Check Selene is on Mainnet and reconnect.",
+      // Mainnet uses the address picker; the old manual mismatch warning is no longer shown.
       "Wait 1 confirmation, then create.",
       "Combine your BCH into one coin. Tokens aren't touched.",
       "Done. Confirms in a few minutes.",
