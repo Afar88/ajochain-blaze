@@ -2135,7 +2135,7 @@ export default function App() {
                       <button type="button" className={circleWorkspace === "bch-fair-round" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-fair-round"} onClick={() => enterCreateCircleForm("bch-fair-round")}>
                         <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status testing">Chipnet · test</span></span>
                         <b>BCH savings circle</b>
-                        <span>Experimental member-credit model. Members fund the current round; a non-final recipient carries one next contribution forward in their own receipt.</span>
+                        <span>Experimental member-credit model. Members add money each round. Each winner keeps one contribution ready for the next round.</span>
                         <small>Try this option for the newer round-by-round savings experience.</small>
                       </button>
                       <button type="button" className={circleWorkspace === "bch-classic" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-classic"} onClick={() => enterCreateCircleForm("bch-classic")}>
