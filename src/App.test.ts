@@ -8,6 +8,7 @@ import {
   getWalletDiscoveryCacheKey,
   isWalletDiscoveryCacheFresh,
   readWalletDiscoveryCache,
+  totalUniquePusdWalletBalance,
   writeWalletDiscoveryCache,
 } from "./App";
 
@@ -184,5 +185,22 @@ describe("wallet circle discovery cache", () => {
       .not.toBe(getWalletDiscoveryCacheKey("bitcoincash:qsecond", "mainnet"));
     expect(getWalletDiscoveryCacheKey("bitcoincash:qfirst", "mainnet"))
       .not.toBe(getWalletDiscoveryCacheKey("bitcoincash:qfirst", "chipnet"));
+  });
+});
+
+
+describe("wallet-wide PUSD totals", () => {
+  it("adds PUSD coins across receive and change addresses without double counting", () => {
+    const total = totalUniquePusdWalletBalance([
+      { utxos: [
+        { txid: "a".repeat(64), vout: 0, token: { amount: 250n } },
+        { txid: "b".repeat(64), vout: 1, token: { amount: 500n } },
+      ] },
+      { utxos: [
+        { txid: "b".repeat(64), vout: 1, token: { amount: 500n } },
+        { txid: "c".repeat(64), vout: 2, token: { amount: 125n } },
+      ] },
+    ]);
+    expect(total).toBe(875n);
   });
 });
