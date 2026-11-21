@@ -365,7 +365,7 @@ test("Electrum failover retries one incomplete selection, then returns the 503 q
   );
   assert.equal(created.length, 4);
   assert.equal(answers.get("reachable"), 2);
-  assert.equal(answers.get("unreachable"), undefined);
+  assert.equal(answers.get("unreachable"), 2);
   assert.ok(created.every((session) => session.closed));
 });
 
