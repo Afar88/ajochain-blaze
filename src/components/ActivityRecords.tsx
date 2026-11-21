@@ -12,6 +12,8 @@ import { formatAssetAmount } from "../core/assets";
 import { formatBch } from "../core/network";
 
 const V2_STORAGE_KEY = "ajochain-blaze:v2-fee-circles:v1";
+const BCH_MAINNET_CIRCLES_KEY = "ajochain-blaze:bch-mainnet-circles-deployed:v1";
+const PUSD_MAINNET_CIRCLES_KEY = "ajochain-blaze:pusd-mainnet-circles-deployed:v1";
 const BCH_MAINNET_ACTIVE_KEY = "ajochain-blaze:bch-mainnet-circle-active:v1";
 const PUSD_ACTIVE_KEY = "ajochain-blaze:pusd-mainnet-circle-active:v1";
 
@@ -61,6 +63,67 @@ function readStoredV2Circles(): CircleRef[] {
           kind: "fee" as const,
           name: params.name,
           network: params.network,
+          params,
+        }];
+      } catch { return []; }
+    });
+  } catch { return []; }
+}
+
+function readSavedBchMainnetCircles(): CircleRef[] {
+  try {
+    const raw: unknown = JSON.parse(window.localStorage.getItem(BCH_MAINNET_CIRCLES_KEY) || "[]");
+    if (!Array.isArray(raw)) return [];
+    return raw.flatMap((encoded) => {
+      if (typeof encoded !== "string") return [];
+      try {
+        const params = decodeV2FeeCircle(encoded);
+        if (params.network !== "mainnet") return [];
+        return [{
+          id: "fee:mainnet:" + params.stateCategory,
+          kind: "fee" as const,
+          name: params.name,
+          network: "mainnet" as const,
+          params,
+        }];
+      } catch { return []; }
+    });
+  } catch { return []; }
+}
+
+function readSavedPusdCircles(): CircleRef[] {
+  try {
+    const raw: unknown = JSON.parse(window.localStorage.getItem(PUSD_MAINNET_CIRCLES_KEY) || "[]");
+    if (!Array.isArray(raw)) return [];
+    return raw.flatMap((encoded) => {
+      if (typeof encoded !== "string") return [];
+      try {
+        const value: unknown = JSON.parse(encoded);
+        if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+        const item = value as Record<string, unknown>;
+        if (item.version !== 3 || item.network !== "mainnet" ||
+            typeof item.name !== "string" || typeof item.stateCategory !== "string" ||
+            typeof item.contribution !== "string" || !/^[0-9]+$/.test(item.contribution) ||
+            typeof item.maxFee !== "string" || !/^[0-9]+$/.test(item.maxFee) ||
+            typeof item.initiator !== "string" || typeof item.treasury !== "string" ||
+            !Array.isArray(item.members) || !item.members.every((member) => typeof member === "string")) return [];
+        const params: PusdMainnetCircleParams = {
+          version: 3,
+          network: "mainnet",
+          name: item.name,
+          members: item.members as string[],
+          contribution: BigInt(item.contribution),
+          maxFee: BigInt(item.maxFee),
+          initiator: item.initiator,
+          stateCategory: item.stateCategory,
+          treasury: item.treasury,
+        };
+        validatePusdMainnetCircleParams(params);
+        return [{
+          id: "pusd:mainnet:" + params.stateCategory.toLowerCase(),
+          kind: "pusd" as const,
+          name: params.name,
+          network: "mainnet" as const,
           params,
         }];
       } catch { return []; }
@@ -129,7 +192,13 @@ function loadCircleRefs(): CircleRef[] {
       });
     } catch { /* Invalid local bookmarks are ignored; chain state is never inferred. */ }
   }
-  refs.push(...readStoredV2Circles(), ...readActiveBchMainnet(), ...readActivePusd());
+  refs.push(
+    ...readStoredV2Circles(),
+    ...readSavedBchMainnetCircles(),
+    ...readSavedPusdCircles(),
+    ...readActiveBchMainnet(),
+    ...readActivePusd(),
+  );
   const unique = new Map(refs.map((ref) => [ref.id, ref]));
   return [...unique.values()].slice(0, 30);
 }
@@ -286,6 +355,16 @@ export default function ActivityRecords({ network, compact = false }: { network:
   }, [network]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  useEffect(() => {
+    const refreshSavedRecords = () => { void refresh(); };
+    window.addEventListener("ajochain:bch-mainnet-circles-changed", refreshSavedRecords);
+    window.addEventListener("ajochain:saved-circles-changed", refreshSavedRecords);
+    return () => {
+      window.removeEventListener("ajochain:bch-mainnet-circles-changed", refreshSavedRecords);
+      window.removeEventListener("ajochain:saved-circles-changed", refreshSavedRecords);
+    };
+  }, [refresh]);
 
   const transactionCount = results.reduce((sum, item) =>
     sum + (item.history?.records.length ?? 0), 0,
