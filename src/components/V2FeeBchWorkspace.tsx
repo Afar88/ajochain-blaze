@@ -538,7 +538,7 @@ export default function V2FeeBchWorkspace({
         </div>
         <span className="classic-network">Chipnet · test coins</span>
       </div>
-      <p className="circle-education-copy">For each non-final payout, one next contribution is held for the recipient's following round. Members make later contributions as usual.</p>
+      <p className="circle-education-copy">Non-final payouts hold one next contribution for the recipient. Members pay later rounds as usual.</p>
 
       {view === "create" && (<>
       <div className="circle-workspace-grid">
@@ -546,7 +546,7 @@ export default function V2FeeBchWorkspace({
           <div className="circle-panel-heading">
             <span className="section-kicker">NEW GROUP</span>
             <h3>Create a circle</h3>
-            <p>Set the contribution and register your group members. Your connected Selene wallet is added first automatically.</p>
+            <p>Set your contribution and add members. Selene is Member 1.</p>
           </div>
           <form onSubmit={create}>
             <label>Circle name<input value={name} onChange={(event) => setName(event.target.value)} maxLength={60} required /></label>
@@ -565,7 +565,7 @@ export default function V2FeeBchWorkspace({
               {busy ? "Creating circle…" : network !== "chipnet" ? "Switch to Chipnet" : !walletConnected ? "Connect wallet first" : "Create fee circle"}
             </button>
           </form>
-          <small className="field-hint">Add 1–4 other unique Chipnet addresses in payout order (2–5 members total). Each member funds the current round; a non-final recipient carries one next contribution forward.</small>
+          <small className="field-hint">Add 1–4 other Chipnet addresses in payout order. Members fund each round; non-final recipients hold one next contribution.</small>
         </div>
       </div>
       <form className="classic-restore-form circle-restore-form" onSubmit={restore}>
@@ -592,8 +592,8 @@ export default function V2FeeBchWorkspace({
             <div><b>Member accountability ledger</b><span>What each member has paid, what is still due, and who has collected</span></div>
             <span className={snapshot.ready || snapshot.completed ? "fee-accounting-status safe" : "fee-accounting-status blocked"}>{snapshot.completed ? "Circle closed" : snapshot.ready ? "Payout unlocked" : "Payout locked"}</span>
           </div>
-          {(active.covenant === "fee-v1" || active.covenant === "fee-v1-guarded") && <p className="classic-error">Older circle rules: the circle checks one contribution at a time. If a member stops contributing after collecting, later rounds may be blocked. New circles hold aside the next contribution before a payout.</p>}
-          {(active.covenant === "fee-v2-escrow" || active.covenant === "fee-v2-escrow-guarded") && <p className="field-hint">This older circle uses its original full-cycle payment rule. New circles hold aside one next contribution before a payout. Existing circles are not changed automatically.</p>}
+          {(active.covenant === "fee-v1" || active.covenant === "fee-v1-guarded") && <p className="classic-error">Older circles use different payout rules. A missed contribution can block later rounds. New circles reserve one next contribution.</p>}
+          {(active.covenant === "fee-v2-escrow" || active.covenant === "fee-v2-escrow-guarded") && <p className="field-hint">This circle keeps its original payout rules. New circles reserve one next contribution. Existing circles stay unchanged.</p>}
           <div className="fee-accounting-table">
             <div className="fee-accounting-row fee-accounting-header"><span>Member</span><span>Paid directly</span><span>Locked now / required</span><span>Payout received</span><span>Still due</span><span>Status</span></div>
             {snapshot.memberAccounting.map((account) => (
@@ -613,13 +613,13 @@ export default function V2FeeBchWorkspace({
             ? <p className="classic-recipient"><b>Circle completed.</b> Every registered member received their scheduled payout. No further deposits or payouts are accepted.{snapshot.closedAs === "completed" ? " The circle tokens were closed and their BCH backing returned to the initiator, so nothing remains locked." : ""}</p>
             : <p className="classic-recipient">Next payout recipient: <b>Member {snapshot.round + 1}</b> · {snapshot.recipient}</p>}
           <p className="field-hint">{snapshot.closedAs ? "This circle is closed. No further actions are possible." : snapshot.hasPaid ? "The first payout has happened. Cancellation is permanently locked; remaining escrow cannot be withdrawn." : "No payout has happened yet. Only the initiator may cancel and refund recorded member credit."}</p>
-        </> : <p className="classic-empty">Reading the state NFT and all member receipts from Chipnet. Refresh if the transaction is still confirming.</p>}
+        </> : <p className="classic-empty">Checking this circle. Refresh if it hasn't updated.</p>}
         <div className="member-payment-status">
           {memberIndex >= 0
             ? <p><b>Your wallet is registered as Member {memberIndex + 1}.</b> You can pay your own share below.</p>
             : walletConnected
               ? <><p><b>This wallet is not registered in this circle.</b> Connect the Selene account that owns one of the member addresses, or create a new circle with the correct member list.</p><code>{wallet.address("chipnet") ?? "Address unavailable"}</code></>
-              : <p>Connect Selene with the BCH address registered for your member slot to pay your share.</p>}
+              : <p>Connect the wallet registered for your share.</p>}
         </div>
         <label className="classic-deposit-field">Your BCH contribution deposit<input value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} inputMode="decimal" /></label>
         {memberIndex >= 0 && snapshot?.memberAccounting[memberIndex] && <p className="field-hint">Your receipt holds {formatBch(snapshot.memberAccounting[memberIndex].currentCredit)}. Amount needed for your next contribution reserve or current round: <b>{formatBch(snapshot.memberAccounting[memberIndex].shortfallForNextPayout)}</b>. <button type="button" className="fee-exact-amount-button" onClick={() => setDepositAmount(bchInputAmount(snapshot.memberAccounting[memberIndex].shortfallForNextPayout))}>Use exact amount due</button></p>}
