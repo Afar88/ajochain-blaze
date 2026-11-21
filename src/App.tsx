@@ -1109,10 +1109,14 @@ export default function App() {
         } else {
           // Chipnet's regular provider exposes spendable UTXOs rather than the
           // Mainnet activity quorum. Read each receive/change address directly.
-          const results = await Promise.all(walletAddresses.map(async (entry) => ({
-            address: entry.address,
-            utxos: await provider.getUtxos(entry.address),
-          })));
+          const results: Array<{ address: string; utxos: Awaited<ReturnType<typeof provider.getUtxos>> }> = [];
+          for (let offset = 0; offset < walletAddresses.length; offset += 10) {
+            const batch = walletAddresses.slice(offset, offset + 10);
+            results.push(...await Promise.all(batch.map(async (entry) => ({
+              address: entry.address,
+              utxos: await provider.getUtxos(entry.address),
+            }))));
+          }
           for (const result of results) {
             const total = result.utxos.reduce((sum, utxo) => sum + (utxo.satoshis > 0n ? utxo.satoshis : 0n), 0n);
             scanned.push({
@@ -2590,9 +2594,13 @@ export default function App() {
                   <button className="primary-button" onClick={() => {
                     try {
                       const index = walletClient?.confirmReceiveAddress(seleneAddress, network, 250) ?? null;
-                      setAddressMatchMessage(index === null
-                        ? "This address isn't in your wallet. Check Selene is on Mainnet and reconnect."
-                        : "Address confirmed ✓");
+                      if (index === null) {
+                        setAddressMatchMessage("");
+                        setReceiveAddressScanError("This address isn't in your wallet. Check Selene is on Mainnet and reconnect.");
+                      } else {
+                        setReceiveAddressScanError("");
+                        setAddressMatchMessage("Address confirmed ✓");
+                      }
                     } catch (cause) {
                       setReceiveAddressScanError(cause instanceof Error ? cause.message : "Couldn't confirm this address.");
                     }
