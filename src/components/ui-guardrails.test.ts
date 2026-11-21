@@ -134,6 +134,12 @@ describe("saved circle and homepage guardrails", () => {
     expect(activitySource).toContain("ajochain:saved-circles-changed");
   });
 
+  it("never displays a BCH scan from a different selected network", () => {
+    expect(appSource).toContain("receiveAddressChoicesNetwork === network");
+    expect(appSource).toContain("receiveAddressChoices: currentNetworkAddressChoices");
+    expect(appSource).toContain("const selectedReceiveAddressChoice = currentNetworkAddressChoices.find");
+  });
+
   it("refreshes wallet balances on foreground, every minute and after circle payments", () => {
     expect(appSource).toContain("window.setInterval(refresh, 60_000)");
     expect(appSource).toContain('document.addEventListener("visibilitychange", refresh)');
