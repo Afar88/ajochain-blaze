@@ -35,3 +35,20 @@ describe("fresh wallet connection", () => {
     expect(body).toContain("this.mgr = null");
   });
 });
+
+describe("coming back from Selene", () => {
+  it("restarts a stalled saved session on a fresh relay when the page returns", () => {
+    const body = source.slice(source.indexOf("resumeAfterBackground(): boolean"), source.indexOf("retrySavedSession(): boolean"));
+    expect(body).toContain("if (this.autoResumePaused) return false;");
+    expect(body).toContain("this.state === 'reconnecting'");
+    expect(body).toContain("return this.retrySavedSession();");
+    expect(source).toContain("if (wasAway) wallet.resumeAfterBackground();");
+  });
+
+  it("retries a timed-out saved session once before asking the user", () => {
+    const body = source.slice(source.indexOf("private startConnectionWatchdog("), source.indexOf("private isCurrent("));
+    expect(body).toContain("existing && !this.autoRetryUsed && !this.autoResumePaused");
+    expect(body).toContain("this.autoRetryUsed = true;");
+    expect(source).toContain("this.autoRetryUsed = false;\n      this.state = 'connected';");
+  });
+});
