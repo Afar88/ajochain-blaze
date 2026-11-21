@@ -227,12 +227,12 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
       const stateVerified = status.stateVerified || status.completed;
       return {
         ref, status: stateVerified ? "ready" : "unavailable",
-        stateLabel: status.completed ? "Rotation complete" : stateVerified ? "Chain state verified" : "State needs review",
+        stateLabel: status.completed ? "Rotation complete" : stateVerified ? "Active" : "Needs checking",
         roundLabel: status.round === null ? "Round unavailable" : status.completed
           ? status.round + " / " + ref.params.members.length
           : (status.round + 1) + " / " + ref.params.members.length,
         recipient: status.recipient,
-        details: "Classic V1 uses an aggregate pot. The chain cannot identify which member funded an individual contribution.",
+        details: "This circle uses one shared pot.",
         aggregatePool: {
           available: status.available,
           required: status.required,
@@ -253,7 +253,7 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
         roundLabel: snapshot.completed ? snapshot.round + " / " + ref.params.members.length
           : (snapshot.round + 1) + " / " + ref.params.members.length,
         recipient: snapshot.recipient,
-        details: "Member credits and receipt state are read from the circle contract. The figures below are current on-chain credits, not browser-entered payment claims.",
+        details: "Member balances come from the blockchain.",
         memberRecords: snapshot.memberAccounting.map((member) => ({
           address: member.address,
           credit: member.currentCredit,
@@ -285,7 +285,7 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
         stateLabel: "Closed",
         roundLabel: "Closed",
         recipient: null,
-        details: "No circle state remains on-chain: the circle was closed by its final payout or by cancellation.",
+        details: "This circle is closed.",
         ...historyResult,
       };
     }
@@ -300,7 +300,7 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
       roundLabel: snapshot.completed ? snapshot.round + " / " + ref.params.members.length
         : (snapshot.round + 1) + " / " + ref.params.members.length,
       recipient: snapshot.recipient,
-      details: "PUSD credits are read from the state receipts and independently matched to each member's escrow sidecar.",
+      details: "PUSD member balances come from the blockchain.",
       memberRecords: snapshot.credits.map((credit, index) => ({
         address: ref.params.members[index],
         credit,
@@ -376,36 +376,38 @@ export default function ActivityRecords({ network, compact = false }: { network:
   return (
     <section className="page-section activity-records-page">
       {!compact && <div className="page-intro">
-        <span className="section-kicker">CHAIN-BACKED HISTORY</span>
-        <h1>Activity and records</h1>
-        <p>Transaction history comes from the circle and escrow scripts. Current member credits come from on-chain receipts, not local payment notes.</p>
+        <span className="section-kicker">YOUR ACTIVITY</span>
+        <h1>Activity</h1>
+        <p>See your circle activity and payments.</p>
       </div>}
 
       <div className="activity-summary-grid">
         <article className="overview-status-card">
           <div className="status-card-icon"><ShieldCheck size={18} /></div>
-          <div><span className="status-label">ON-CHAIN CIRCLES</span><b>{results.filter((item) => item.status === "ready").length}</b><small>Successfully read from their original networks</small></div>
+          <div><span className="status-label">SAVED CIRCLES</span><b>{results.filter((item) => item.status === "ready").length}</b><small>Found and saved on this network</small></div>
         </article>
         <article className="overview-status-card">
           <div className="status-card-icon"><RefreshCw size={18} /></div>
-          <div><span className="status-label">TRANSACTION RECORDS</span><b>{transactionCount}</b><small>{confirmedCount} confirmed by the provider's proof checks</small></div>
+          <div><span className="status-label">TRANSACTION RECORDS</span><b>{transactionCount}</b><small>{confirmedCount} confirmed payments</small></div>
         </article>
       </div>
 
       <div className="activity-toolbar">
         <div>
-          <b>Circle records</b>
-          <small>{lastRefreshed ? "Last chain refresh: " + new Date(lastRefreshed).toLocaleString() : "Checking original networks…"}</small>
+          <b>Circle activity</b>
+          <small>{lastRefreshed ? "Updated " + new Date(lastRefreshed).toLocaleString() : "Checking circle details…"}</small>
         </div>
         <button type="button" className="secondary-button" onClick={() => void refresh()} disabled={busy}>
-          <RefreshCw size={15} className={busy ? "activity-spin" : ""} /> {busy ? "Refreshing…" : "Refresh records"}
+          <RefreshCw size={15} className={busy ? "activity-spin" : ""} /> {busy ? "Refreshing…" : "Refresh"}
         </button>
       </div>
-      {refreshError && <p className="classic-error" role="alert">{refreshError}</p>}
+      {refreshError && <p className="classic-error" role="alert">{refreshError}
+        <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setRefreshError("")}>×</button>
+      </p>}
       {circles.length === 0 ? (
         <article className="asset-detail-card activity-empty">
-          <h2>No saved circles found</h2>
-          <p>Create or restore a circle first. A local saved circle is only an address bookmark; this page will read its live state and transaction history from the blockchain after it is saved.</p>
+          <h2>No circles saved yet</h2>
+          <p>Create a circle or add an invite.</p>
         </article>
       ) : (
         <div className="activity-circle-list">
@@ -418,26 +420,26 @@ export default function ActivityRecords({ network, compact = false }: { network:
                   <small>{result.ref.kind === "classic" ? "Classic BCH circle" : result.ref.kind === "fee" ? "Member-receipt BCH circle" : "PUSD member-escrow circle"}</small>
                 </div>
                 <span className={"activity-state-pill " + result.status}>
-                  {result.status === "loading" ? "Reading chain…" : result.status === "ready" ? "Chain read OK" : "Unavailable"}
+                  {result.status === "loading" ? "Checking…" : result.status === "ready" ? "Available" : "Unavailable"}
                 </span>
               </div>
               {result.status === "loading" ? (
                 <p className="classic-empty">Reading contract state and transaction history from {result.ref.network}…</p>
               ) : result.status === "unavailable" ? (
                 <div className="activity-unavailable">
-                  <b>No verified live record returned</b>
-                  <p>{result.error}</p>
-                  <small>This entry is saved locally. It is not counted as a confirmed circle or transaction.</small>
+                  <b>Couldn't confirm this circle yet</b>
+                  <details className="technical-details"><summary>Details</summary><p>{result.error}</p></details>
+                  <small>This saved circle hasn't been confirmed yet.</small>
                 </div>
               ) : (
                 <>
                   <div className="activity-state-grid">
-                    <div><span>Circle state</span><b>{result.stateLabel}</b></div>
+                    <div><span>Circle status</span><b>{result.stateLabel}</b></div>
                     <div><span>Current round</span><b>{result.roundLabel}</b></div>
-                    <div><span>Next recipient</span><b>{result.recipient ?? "None"}</b></div>
-                    <div><span>Transaction source</span><b>{!result.history ? "History unavailable" : result.history.network === "mainnet" ? "Independent Mainnet Electrum quorum" : "Single Chipnet Electrum provider"}</b></div>
+                    <div><span>Next to collect</span><b>{result.recipient ?? "None"}</b></div>
+                    <div><span>Network</span><b>{result.ref.network === "mainnet" ? "Mainnet" : "Chipnet"}</b></div>
                   </div>
-                  {result.details && <p className="activity-source-note">{result.details}</p>}
+                  {result.details && <details className="technical-details activity-source-note"><summary>Details</summary><p>{result.details}</p></details>}
                   {result.aggregatePool && (
                     <div className="activity-state-grid">
                       <div><span>On-chain aggregate pot</span><b>{formatBch(result.aggregatePool.available)}</b></div>
@@ -447,7 +449,7 @@ export default function ActivityRecords({ network, compact = false }: { network:
                   )}
                   {result.memberRecords && (
                     <div className="activity-member-records">
-                      <div className="activity-subheading"><b>Member receipts and accounting</b><small>Live values derived from on-chain receipts</small></div>
+                      <div className="activity-subheading"><b>Member balances</b><small>Current balances from the blockchain</small></div>
                       {result.memberRecords.map((member, index) => (
                         <div className="activity-member-row" key={member.address}>
                           <span><b>Member {index + 1}</b><small>{member.address}</small></span>
@@ -469,13 +471,13 @@ export default function ActivityRecords({ network, compact = false }: { network:
                   <div className="activity-history">
                     <div className="activity-subheading">
                       <b>Recent on-chain activity</b>
-                      <small>{result.historyError ? "Provider lookup failed" : result.history?.truncated ? "Showing the latest 20 records" : "All returned records for this script set"}</small>
+                      <small>{result.historyError ? "Network check failed" : result.history?.truncated ? "Latest 20 payments" : "Payment history"}</small>
                     </div>
                     {result.historyError ? (
                       <div className="activity-unavailable">
-                        <b>Transaction history could not be loaded</b>
+                        <b>Couldn't load payment history</b>
                         <p>{result.historyError}</p>
-                        <small>Circle state above was read separately. No transaction is assumed from this failed history request.</small>
+                        <small>Circle details are available, but payment history isn't.</small>
                       </div>
                     ) : result.history?.records.length ? (
                       result.history.records.map((record) => (
@@ -494,7 +496,7 @@ export default function ActivityRecords({ network, compact = false }: { network:
                         </div>
                       ))
                     ) : (
-                      <p className="classic-empty">No transaction history was returned for this contract script.</p>
+                      <p className="classic-empty">No payments found yet.</p>
                     )}
                   </div>
                   {result.history?.truncated && <small className="activity-truncation">This circle has older transactions than the latest 20 displayed.</small>}
