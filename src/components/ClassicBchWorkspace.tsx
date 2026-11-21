@@ -94,7 +94,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
       setStatus(snapshot.status);
       saveChainProgress(params, snapshot.status, selected);
       setContractAddress(snapshot.contract.address);
-      setNotice("Chain data refreshed from " + params.network + ". For Mainnet, the app checks the circle details with independent blockchain providers.");
+      setNotice("Chain data refreshed from " + params.network + ". Mainnet circle details are checked against the blockchain.");
     } catch (cause) {
       setStatus(null);
       setError(message(cause));
@@ -493,7 +493,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
               {status.recipient && <p className="classic-recipient">Next payout recipient: <b>{status.recipient}</b></p>}
             </>
           ) : (
-            <p className="classic-empty">Reading circle state from its original network. Use refresh to retry if the Electrum provider is unavailable.</p>
+            <p className="classic-empty">Checking the circle. Refresh if the network is unavailable.</p>
           )}
           <div className="classic-actions">
             <button type="button" className="secondary-button" onClick={() => void refresh()} disabled={busy}>Refresh chain state</button>
