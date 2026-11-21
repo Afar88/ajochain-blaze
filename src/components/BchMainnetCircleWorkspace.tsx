@@ -163,6 +163,12 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const [testSignChecked, setTestSignChecked] = useState<"genesis" | "action" | null>(null);
   const [preview, setPreview] = useState<{
     contractAddress: string;
@@ -562,6 +568,9 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
         else setActionSigningPlan(null);
         const sent = (verification.message || "Transaction sent.") + " Transaction: " + (verification.txid || "unknown");
         setNotice(sent);
+        if (target === "action" && (signingPlan.operation === "deposit" || signingPlan.operation === "payout")) {
+          window.dispatchEvent(new Event("ajochain:wallet-balances-refresh"));
+        }
         if (target === "genesis") {
           if (typeof verification.txid !== "string" || !/^[0-9a-f]{64}$/i.test(verification.txid)) {
             throw new Error("The Mainnet broadcast response did not include a valid transaction ID. The circle was not added to My circles.");
