@@ -670,7 +670,8 @@ async function mapConcurrent(values, concurrency, mapper) {
 
 async function getVerifiedAddressUtxos(sessions, tip, address) {
   const lockingBytecode = cashAddressToLockingBytecode(address);
-  const snapshots = await getUnspentSnapshots(sessions, [lockingBytecode]);
+  // PUSD lives in token UTXOs; Fulcrum hides them unless asked, so request them explicitly.
+  const snapshots = await getUnspentSnapshots(sessions, [lockingBytecode], { includeTokens: true });
   const all = snapshots[0];
   if (all.length > MAX_UTXOS_PER_ADDRESS) {
     throw new Error("Wallet has more than " + MAX_UTXOS_PER_ADDRESS + " UTXOs; consolidate before requesting a complete verified snapshot.");
