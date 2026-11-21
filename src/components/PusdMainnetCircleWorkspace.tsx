@@ -696,7 +696,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         <div>
           <span className="section-kicker">PARYONUSD · DOLLAR TOKEN</span>
           <h2 id="pusd-mainnet-title">Create a PUSD Mainnet circle</h2>
-          <p>PUSD stays in each member’s control, with clear payout rules, a 1% treasury fee and cancellation before payout.</p>
+          <p>Each member controls their PUSD. A 1% fee applies. Cancel before the first payout.</p>
         </div>
         <span className="classic-network mainnet">Bitcoin Cash Mainnet</span>
       </div>
@@ -707,7 +707,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       </div>
 
       {network !== "mainnet" && (
-        <p className="classic-error" role="status">Switch the app network to Bitcoin Cash Mainnet to prepare a PUSD circle. PUSD is not enabled on Chipnet.</p>
+        <p className="classic-error" role="status">Switch to Mainnet to create a PUSD circle. PUSD isn't available on Chipnet.</p>
       )}
 
       <form className="pusd-mainnet-form" onSubmit={saveDraft}>
@@ -716,7 +716,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         </label>
         <label>Contribution per member (PUSD)
           <input value={contribution} onChange={(event) => setContribution(event.target.value)} inputMode="decimal" placeholder="10.00" required />
-          <small>Enter a PUSD amount using two decimal places.</small>
+          <small>Use two decimal places.</small>
         </label>
         <div className="creator-member-preview">
           <b>Member 1 · You, the initiator</b>
@@ -733,12 +733,12 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         </div>
         <label>Other members' Mainnet BCH addresses · one per line
           <textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder={"bitcoincash:…\nbitcoincash:…"} required />
-          <small>Add 1–4 other unique token-aware Bitcoin Cash Mainnet addresses. Your selected Selene address is Member 1 and receives your circle payout when it is your turn.</small>
+          <small>Add 1–4 other Mainnet addresses. Your address receives your payout.</small>
         </label>
         {selectedAddressPendingOnly && <p className="receive-address-pending-warning" role="alert">Wait 1 confirmation, then create.</p>}
         <label>Maximum BCH miner fee per action (satoshis)
           <input value={maxFee} onChange={(event) => setMaxFee(event.target.value)} inputMode="numeric" required />
-          <small>Network fees and the small BCH amount needed to deliver PUSD are separate from PUSD contributions.</small>
+          <small>BCH fees are separate from PUSD contributions.</small>
         </label>
 
         <div className="pusd-mainnet-treasury">
@@ -768,7 +768,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       {preparedPlan && genesisSigningPlan && (
         <div ref={creationSummaryRef} className="pusd-mainnet-breakdown mainnet-create-summary" role="status">
           <b>Review your circle</b>
-          <p className="receive-address-payout-note">Payouts for this circle will go to {genesisSigningPlan.circle.initiator.slice(0, 10)}…{genesisSigningPlan.circle.initiator.slice(-6)}. It stays in your Selene wallet.</p>
+          <p className="receive-address-payout-note">Your payout goes to {genesisSigningPlan.circle.initiator.slice(0, 10)}…{genesisSigningPlan.circle.initiator.slice(-6)}.</p>
           {selectedAddressPendingOnly && <p className="receive-address-pending-warning" role="alert">Wait 1 confirmation, then create.</p>}
           <div><span>Member 1 · payout address</span><strong><code>{genesisSigningPlan.circle.members[0]}</code></strong></div>
           <button type="button" className="primary-button mainnet-create-primary" disabled={lifecycleBusy || busy || !walletConnected || selectedAddressPendingOnly}
@@ -788,14 +788,14 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
           </details>
           <TestSignControl planCreatedAt={genesisSigningPlan?.createdAt ?? null} disabled={lifecycleBusy || !walletConnected}
             checked={testSignChecked === "genesis"} onTest={() => void verifyMainnetSignature("genesis")} />
-          <small>Nothing has been created yet. The circle is saved only after the Mainnet broadcast returns a transaction ID.</small>
+          <small>Saved after Mainnet returns a transaction ID.</small>
         </div>
       )}
       </>}
       {creationResult && (
         <div className="pusd-mainnet-breakdown mainnet-create-success" role="status">
           <b>Circle created</b>
-          <p>Selene approved the transaction and the Mainnet returned a transaction ID.</p>
+          <p>Selene approved. Mainnet returned a transaction ID.</p>
           <div><span>Transaction ID</span><strong><a href={creationResult.explorerUrl} target="_blank" rel="noreferrer">{creationResult.txid}</a></strong></div>
           <div className="mainnet-create-invite">
             <span>Invite link to share</span>
@@ -858,7 +858,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
               <details className="technical-details">
                 <summary>Details</summary>
                 <p>Estimated transaction size: {actionPreview.size} bytes. Wallet items to approve: {actionPreview.walletInputCount}.</p>
-                <p>Payments are checked before they are sent. Check circle status again before each new action.</p>
+                <p>Check circle status before each action.</p>
               </details>
               <TestSignControl planCreatedAt={actionSigningPlan?.createdAt ?? null} disabled={lifecycleBusy || !walletConnected}
                 checked={testSignChecked === "action"} onTest={() => void verifyMainnetSignature("action")} />
@@ -881,13 +881,13 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
               () => setNotice("Invite link: " + link),
             );
           }}>Copy invite</button>
-          <small>Members open this link to load the circle. It contains the circle parameters, not keys.</small>
+          <small>Invite members to open this circle. It contains no keys.</small>
         </div>
       )}
 
       <div className="pusd-mainnet-build-status">
         <LockKeyhole size={16} />
-        <div><b>PUSD Mainnet circle rules</b><small>Members approve each payment in Selene. The app checks the circle details before sending. Plain PUSD wallet transfers remain locked.</small>
+        <div><b>PUSD Mainnet circle rules</b><small>Members approve each payment in Selene. PUSD wallet transfers stay locked.</small>
           <details className="technical-details">
             <summary>Details</summary>
             <details className="technical-details">
