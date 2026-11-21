@@ -2303,160 +2303,258 @@ export default function App() {
         )}
       </div>
 
-      {walletView.error && <div className="global-wallet-error" role="alert"><ShieldCheck size={17} /><span>{walletView.error}</span><div className="global-wallet-error-actions">
-        <button onClick={() => {
-          if (!walletClient) return;
-          if (walletClient.retrySavedSession()) return;
-          if (walletClient.state === "disconnected") walletClient.startFreshPairing();
-          else if (walletClient.state === "idle") walletClient.connect();
-        }}>Reconnect</button>
-        <button onClick={() => walletClient?.startFreshPairing()}>Fresh pairing</button>
-      </div></div>}
+      {walletView.error && (
+        <div className="global-wallet-error" role="alert">
+          <ShieldCheck size={17} />
+          <span>{walletView.error}</span>
+          <div className="global-wallet-error-actions">
+            <button type="button" onClick={() => {
+              if (!walletClient) return;
+              if (walletClient.retrySavedSession()) return;
+              if (walletClient.state === "disconnected") walletClient.startFreshPairing();
+              else if (walletClient.state === "idle") walletClient.connect();
+            }}>Reconnect</button>
+            <button type="button" aria-label="Close error" onClick={() => setWalletView((view) => ({ ...view, error: null }))}>×</button>
+          </div>
+        </div>
+      )}
 
       {showWallet && (
         <div className="modal-backdrop wallet-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowWallet(false); }}>
           <section className="create-modal wallet-modal" role="dialog" aria-modal="true" aria-labelledby="wallet-title">
             <div className="modal-heading">
-              <div><span className="section-kicker">WIZARDCONNECT · SELENE</span><h2 id="wallet-title">{connected ? "Wallet details" : "Connect your wallet"}</h2>
-                <p>{connected ? "Your public receive address for the selected BCH network." : "Pair with Selene. Your seed phrase and private keys stay in your wallet."}</p></div>
+              <div>
+                <h2 id="wallet-title">Wallet</h2>
+                {!connected && <p>Connect Selene. Your keys never leave your phone.</p>}
+              </div>
               <button className="modal-close" onClick={() => setShowWallet(false)} aria-label="Close"><X size={19} /></button>
             </div>
             {connected ? (
               <div className="wallet-detail-body">
-                <div className="wallet-address-card"><span>{NETWORKS[network].label}</span><code>{walletAddress ?? "Address not available yet"}</code>{walletAddress && <button type="button" className="secondary-button wallet-copy-address" onClick={() => { void navigator.clipboard.writeText(walletAddress).catch(() => undefined); }}><Copy size={14} /> Copy address</button>}{walletAddress
-                  ? <small>Derived receive address · index {walletView.receiveIndex}. Receive and change addresses are derived from this connected Selene wallet. Choose the address Selene is currently showing before creating or managing a Mainnet circle.</small>
-                  : <small className="wallet-match-message">WizardConnect is connected, but no valid live receive key is available yet. Check the Selene session and reconnect if needed.</small>}</div>
-                {network === "mainnet" && <section className="receive-address-picker" aria-labelledby="receive-address-picker-title">
+                <div className="wallet-detail-balances">
+                  <span className="wallet-detail-label">BITCOIN CASH</span>
+                  <strong className="wallet-detail-bch-total">{walletBchBalanceSummary.balanceLabel}</strong>
+                  <div className="wallet-detail-pusd">
+                    <span>ParyonUSD</span>
+                    <b>{network !== "mainnet" ? "Mainnet only" : pusdView.status === "ready"
+                      ? formatAssetAmount("PUSD", pusdView.amount) + " PUSD"
+                      : pusdView.status === "loading" ? "Checking…" : pusdView.status === "error" ? "Unavailable" : "Not checked"}</b>
+                  </div>
+                  <div className="wallet-updated-row">
+                    <small role="status">{updatedAgeLabel(walletBalancesUpdatedAt)}</small>
+                    <button type="button" className="secondary-button wallet-refresh-button"
+                      disabled={walletBalancesBusy}
+                      onClick={() => setWalletBalanceRefreshRequest((value) => value + 1)}>
+                      <RefreshCw size={14} className={walletBalancesBusy ? "activity-spin" : ""} />
+                      {walletBalancesBusy ? "Refreshing…" : "Refresh"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="wallet-address-card">
+                  <span>{NETWORKS[network].label} · {selectedWalletAddressChoice?.branch === "change" ? "Change address" : "Receive address"}</span>
+                  <button type="button" className="wallet-address-display" onClick={() => setWalletAddressRevealed((value) => !value)}>
+                    <code>{walletAddressRevealed ? displayWalletAddress ?? "Address unavailable" : shortAddress(displayWalletAddress)}</code>
+                    <small>{walletAddressRevealed ? "Hide full address" : "Show full address"}</small>
+                  </button>
+                  <div className="wallet-address-actions">
+                    <button type="button" className="secondary-button wallet-copy-address" disabled={!displayWalletAddress}
+                      onClick={() => { if (displayWalletAddress) void navigator.clipboard.writeText(displayWalletAddress).catch(() => undefined); }}>
+                      <Copy size={14} /> Copy address
+                    </button>
+                    <button type="button" className="secondary-button" disabled={!displayWalletAddress}
+                      onClick={() => setShowWalletAddressQr((value) => !value)}>
+                      <QrCode size={14} /> {showWalletAddressQr ? "Hide QR" : "Show QR"}
+                    </button>
+                  </div>
+                  {showWalletAddressQr && walletAddressQrDataUrl && <img className="wallet-qr wallet-address-qr" src={walletAddressQrDataUrl} alt="Wallet address QR code" />}
+                </div>
+
+                <section className="receive-address-picker wallet-address-picker" aria-labelledby="wallet-address-picker-title">
                   <div className="receive-address-picker-heading">
                     <div>
-                      <b id="receive-address-picker-title">Mainnet receive address</b>
-                      <small>All choices are derived from the connected Selene wallet and checked against its public key.</small>
+                      <b id="wallet-address-picker-title">Wallet addresses</b>
+                      <small>Receive and change addresses, with balances.</small>
                     </div>
-                    {receiveAddressScanLoading && <span className="receive-address-scan-state">Scanning…</span>}
+                    {receiveAddressScanLoading && <span className="receive-address-scan-state">Updating…</span>}
                   </div>
-                  {receiveAddressScanError && <p className="classic-error" role="alert">{receiveAddressScanError}</p>}
-                  {!receiveAddressScanLoading && !receiveAddressScanError && receiveAddressChoices.length === 0 && <p className="field-hint">No derived receive addresses were returned by Selene. Reconnect the wallet and scan again.</p>}
-                  {selectedMainnetReceiveAddress && !receiveAddressPickerExpanded && walletClient?.isReceiveAddressConfirmed("mainnet") ? (
-                    <div className="receive-address-selected-card">
-                      <div className="receive-address-selected-copy">
-                        <span>Selected address · index {selectedMainnetReceiveAddress.index}</span>
-                        <code>{selectedMainnetReceiveAddress.address}</code>
-                        <strong>{formatBchSatoshis(BigInt(selectedMainnetReceiveAddress.confirmedSatoshis) + BigInt(selectedMainnetReceiveAddress.unconfirmedSatoshis))}</strong>
-                        <small>{selectedMainnetReceiveAddress.status === "confirmed" ? "Confirmed balance" : selectedMainnetReceiveAddress.status === "pending" ? "Pending activity only" : "Unused receive address"}</small>
-                      </div>
-                      <button type="button" className="receive-address-change" onClick={() => setReceiveAddressPickerExpanded(true)}>Change address</button>
-                    </div>
-                  ) : (
-                    <div className="receive-address-picker-list-wrap">
-                      {selectedMainnetReceiveAddress && <p className="field-hint">Choose the receive address shown in Selene. The selection is verified against this wallet before it can be used.</p>}
-                      <div className="receive-address-choice-list">
-                        {receiveAddressChoices.map((choice) => {
-                          const total = BigInt(choice.confirmedSatoshis) + BigInt(choice.unconfirmedSatoshis);
-                          const displayTotal = total > 0n ? total : 0n;
-                          const selected = walletView.receiveIndex === choice.index && walletClient?.isReceiveAddressConfirmed("mainnet");
-                          return <button type="button" key={choice.index} className={selected ? "receive-address-choice selected" : "receive-address-choice"}
-                            aria-pressed={Boolean(selected)} onClick={() => {
-                              try {
-                                const chosen = walletClient?.selectReceiveAddressIndex(choice.index, "mainnet");
-                                if (!chosen) throw new Error("Reconnect Selene before choosing a receive address.");
-                                setGatherPlan(null); setGatherResult(null); setBchBalanceScan(null);
-                                setAddressMatchMessage("Selected Selene receive address " + shortAddress(chosen) + " (index " + choice.index + "). Gather and circle creation will use this address.");
-                                setReceiveAddressPickerExpanded(false);
-                              } catch (cause) { setAddressMatchMessage(cause instanceof Error ? cause.message : "Could not select this receive address."); }
-                            }}>
-                            <span className="receive-address-choice-copy"><b>{shortAddress(choice.address)}</b><small>{formatBchSatoshis(displayTotal)} · {choice.status === "confirmed" ? "Confirmed" : choice.status === "pending" ? "Pending" : "Unused"}</small></span>
-                            <span className="receive-address-choice-tags">{choice.newest && <small className="receive-address-newest">Newest in Selene</small>}{selected && <small className="receive-address-selected">Selected</small>}</span>
-                          </button>;
-                        })}
-                      </div>
+                  {receiveAddressScanError && (
+                    <div className="classic-error" role="alert">
+                      <span>{receiveAddressScanError}</span>
+                      <button type="button" aria-label="Close error" onClick={() => setReceiveAddressScanError("")}>×</button>
                     </div>
                   )}
-                  {selectedAddressPendingOnly && <p className="receive-address-pending-warning" role="alert">Wait for confirmation before creating a circle.</p>}
-                </section>}
-                {network === "chipnet" && <>
-                  <label className="field-label" htmlFor="selene-address">Match the address currently shown on Selene's {NETWORKS[network].label} Receive screen</label>
-                  <input id="selene-address" className="form-control" value={seleneAddress} onChange={(event) => setSeleneAddress(event.target.value)} placeholder="Paste the current Selene receive address" autoComplete="off" />
-                  <button className="primary-button" onClick={() => {
-                    try {
-                      const index = walletClient?.confirmReceiveAddress(seleneAddress, network, 250) ?? null;
-                      setAddressMatchMessage(index === null
-                        ? "No match in receive indices 0–250 of this connected receive key. Check Selene's Receive screen and network. If it still does not match, this session may expose a different receive path; do not create a circle with the stale address."
-                        : "Confirmed Selene's current receive address (index " + index + "). Circle creation will now use this exact address as Member 1.");
-                    } catch (cause) { setAddressMatchMessage(cause instanceof Error ? cause.message : "Could not match address."); }
-                  }}>Confirm Selene address</button>
-                </>}
-                {addressMatchMessage && <p className="wallet-match-message" role="status">{addressMatchMessage}</p>}
-                <small className="field-hint">
-                  {walletClient?.isReceiveAddressConfirmed(network)
-                    ? "Current Selene receive address confirmed for this wallet connection."
-                    : network === "mainnet"
-                      ? "Choose a Mainnet receive address from the verified Selene address picker."
-                      : "This connection's current receive address is not confirmed yet."}
-                </small>
-                {(network === "chipnet" || network === "mainnet") && walletAddress && <>
-                  <section className="gather-card" aria-labelledby="gather-title">
-                    <div className="gather-card-heading">
-                      <span className="section-kicker">WALLET CLEAN-UP</span>
-                      <h3 id="gather-title">Gather BCH coins</h3>
-                      <p>Bring your available BCH into one coin in your own wallet. PUSD and other tokens are left untouched.</p>
-                    </div>
-                    {!gatherPlan && (
-                      <button className="secondary-button gather-scan-button"
-                        disabled={gatherBusy || (network === "mainnet" && !walletClient?.isReceiveAddressConfirmed("mainnet"))}
-                        onClick={() => void gatherWalletCoins()}>
-                        {gatherBusy ? "Checking your coins…" : network === "mainnet" && !walletClient?.isReceiveAddressConfirmed("mainnet")
-                          ? "Choose Mainnet address before checking coins"
-                          : "Find BCH coins in my wallet"}
+                  {!walletAddressChoices.length && !receiveAddressScanLoading && (
+                    <p className="field-hint">Couldn't load your addresses. Reconnect and try again.</p>
+                  )}
+                  {walletAddressChoices.length > 0 && (
+                    <>
+                      <button type="button" className="receive-address-change"
+                        onClick={() => setWalletAddressPickerExpanded((value) => !value)}>
+                        {walletAddressPickerExpanded ? "Close address list" : "Change address"}
                       </button>
-                    )}
-                    {gatherPlan && (
-                      <div className="gather-review" aria-live="polite">
-                        <div className="gather-review-row"><span>Total BCH found</span><strong>{formatBchSatoshis(gatherPlan.plan.totalSatoshis)}</strong></div>
-                        <div className="gather-review-row gather-destination"><span>Goes to your wallet</span><code>{gatherPlan.plan.destination}</code></div>
-                        <div className="gather-review-row"><span>Network fee</span><strong>{formatBchSatoshis(gatherPlan.plan.fee)}</strong></div>
-                        <div className="gather-review-row"><span>After the fee</span><strong>{formatBchSatoshis(gatherPlan.plan.outputSatoshis)}</strong></div>
-                        <details className="technical-details">
-                          <summary>Technical details</summary>
-                          <p>{gatherPlan.plan.inputCount} BCH inputs are used. The fee is the existing estimated miner fee. Nothing has been signed or sent yet.</p>
-                        </details>
-                        <button type="button" className="primary-button gather-confirm-button" disabled={gatherBusy} onClick={() => void gatherWalletCoins()}>
-                          {gatherBusy ? "Waiting for Selene…" : "Gather to my wallet"}
+                      {walletAddressPickerExpanded && (
+                        <>
+                          <div className="receive-address-choice-list wallet-address-choice-list">
+                            {visibleWalletAddressChoices.map((choice) => {
+                              const total = BigInt(choice.confirmedSatoshis) + BigInt(choice.unconfirmedSatoshis);
+                              const selected = displayWalletAddress?.toLowerCase() === choice.address.toLowerCase();
+                              const activeReceive = choice.branch === "receive" && network === "mainnet" &&
+                                walletView.receiveIndex === choice.index && walletClient.isReceiveAddressConfirmed("mainnet");
+                              return (
+                                <button type="button" key={choice.branch + ":" + choice.index}
+                                  className={selected ? "receive-address-choice selected" : "receive-address-choice"}
+                                  aria-pressed={selected}
+                                  onClick={() => {
+                                    try {
+                                      if (choice.branch === "receive" && network === "mainnet") {
+                                        const selectedReceive = walletClient?.selectReceiveAddressIndex(choice.index, "mainnet");
+                                        if (!selectedReceive) throw new Error("Reconnect Selene first.");
+                                      }
+                                      setSelectedWalletAddress(choice.address);
+                                      setWalletAddressRevealed(false);
+                                      if (walletAddressSelectionKey) {
+                                        window.localStorage.setItem(walletAddressSelectionKey, choice.address);
+                                      }
+                                      setWalletAddressPickerExpanded(false);
+                                      setAddressMatchMessage("");
+                                      setAddressMatchError("");
+                                    } catch (cause) {
+                                      setAddressMatchError(cause instanceof Error ? cause.message : "Couldn't change this address.");
+                                    }
+                                  }}>
+                                  <span className="receive-address-choice-copy">
+                                    <b>{shortAddress(choice.address)}</b>
+                                    <small>{formatBchSatoshis(total)} · {choice.branch === "receive" ? "Receive" : "Change"}</small>
+                                  </span>
+                                  <span className="receive-address-choice-tags">
+                                    {activeReceive && <small className="receive-address-selected">Active</small>}
+                                    {selected && <small className="receive-address-selected">Selected</small>}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {!showAllWalletAddresses && sortedWalletAddressChoices.length > visibleWalletAddressChoices.length && (
+                            <button type="button" className="text-action" onClick={() => setShowAllWalletAddresses(true)}>
+                              Show all {sortedWalletAddressChoices.length} addresses
+                            </button>
+                          )}
+                          {showAllWalletAddresses && (
+                            <button type="button" className="text-action" onClick={() => setShowAllWalletAddresses(false)}>
+                              Show addresses with coins
+                            </button>
+                          )}
+                          <small className="field-hint">This changes the wallet view only.</small>
+                        </>
+                      )}
+                    </>
+                  )}
+                  {network === "mainnet" && selectedAddressPendingOnly && (
+                    <p className="receive-address-pending-warning" role="alert">Wait 1 confirmation, then create.</p>
+                  )}
+                  {network === "mainnet" && (
+                    <small className="field-hint">
+                      {walletClient?.isReceiveAddressConfirmed("mainnet") ? "Address confirmed ✓" : "Address not confirmed yet."}
+                    </small>
+                  )}
+                </section>
+
+                {network === "chipnet" && (
+                  <details className="technical-details">
+                    <summary>Details</summary>
+                    <label className="field-label" htmlFor="selene-address">Pick the address shown in Selene.</label>
+                    <input id="selene-address" className="form-control" value={seleneAddress}
+                      onChange={(event) => setSeleneAddress(event.target.value)}
+                      placeholder="Paste the address shown in Selene" autoComplete="off" />
+                    <button className="primary-button" onClick={() => {
+                      try {
+                        const index = walletClient?.confirmReceiveAddress(seleneAddress, network, 250) ?? null;
+                        if (index === null) {
+                          setAddressMatchError("This address isn't in your wallet. Check Selene is on Mainnet and reconnect.");
+                        } else {
+                          setAddressMatchMessage("Address confirmed ✓");
+                        }
+                      } catch (cause) {
+                        setAddressMatchError(cause instanceof Error ? cause.message : "Couldn't confirm this address.");
+                      }
+                    }}>Confirm address</button>
+                  </details>
+                )}
+                {addressMatchMessage && <p className="wallet-match-message" role="status">{addressMatchMessage}</p>}
+                {addressMatchError && (
+                  <div className="classic-error" role="alert"><span>{addressMatchError}</span>
+                    <button type="button" aria-label="Close error" onClick={() => setAddressMatchError("")}>×</button>
+                  </div>
+                )}
+
+                <details className="wallet-tools-disclosure">
+                  <summary>Advanced</summary>
+                  {(network === "chipnet" || network === "mainnet") && walletAddress && (
+                    <section className="gather-card" aria-labelledby="gather-title">
+                      <div className="gather-card-heading">
+                        <h3 id="gather-title">Combine BCH</h3>
+                        <p>Combine your BCH into one coin. Tokens aren't touched.</p>
+                      </div>
+                      {!gatherPlan && (
+                        <button className="secondary-button gather-scan-button"
+                          disabled={gatherBusy || (network === "mainnet" && !walletClient?.isReceiveAddressConfirmed("mainnet"))}
+                          onClick={() => void gatherWalletCoins()}>
+                          {gatherBusy ? "Checking your coins…" : network === "mainnet" && !walletClient?.isReceiveAddressConfirmed("mainnet")
+                            ? "Pick an address first." : "Find BCH in my wallet"}
                         </button>
-                        <button type="button" className="secondary-button gather-cancel-button" disabled={gatherBusy} onClick={() => { setGatherPlan(null); setGatherMessage(""); }}>
-                          Cancel
-                        </button>
-                      </div>
-                    )}
-                    {gatherBusy && gatherMessage && <p className="wallet-match-message" role="status">{gatherMessage}</p>}
-                    {gatherResult?.status === "success" && (
-                      <div className="gather-result gather-success" role="status">
-                        <b>BCH gathered successfully</b>
-                        <span>Your BCH is on its way back to your wallet. The transaction may take time to confirm.</span>
-                        <a href={gatherExplorerUrl(gatherResult.network, gatherResult.txid)} target="_blank" rel="noreferrer">View transaction <code>{gatherResult.txid}</code></a>
-                      </div>
-                    )}
-                    {gatherResult?.status === "error" && (
-                      <div className="gather-result gather-error" role="alert">
-                        <b>We couldn't gather your BCH</b>
-                        <span>{gatherResult.message}</span>
-                        <button type="button" className="secondary-button" onClick={() => { setGatherResult(null); setGatherPlan(null); }}>Try again</button>
-                      </div>
-                    )}
-                    {network === "mainnet" && <small className="field-hint">Check the total and fee before asking Selene to approve. The coins return to your wallet.</small>}
-                  </section>
-                </>}
-                <button className="secondary-button" disabled={discoveryBusy} onClick={() => setDiscoveryRun((run) => run + 1)}>{discoveryBusy ? "Checking circles…" : discoveryMessage ? "Retry discovery" : "Check for my circles"}</button>
-                {discoveryMessage && <p className="wallet-match-message" role="status">{discoveryMessage}</p>}
-                <button className="secondary-button" onClick={() => void walletClient?.disconnect()}>Disconnect wallet</button>
+                      )}
+                      {gatherPlan && (
+                        <div className="gather-review" aria-live="polite">
+                          <div className="gather-review-row"><span>Total BCH found</span><strong>{formatBchSatoshis(gatherPlan.plan.totalSatoshis)}</strong></div>
+                          <div className="gather-review-row gather-destination"><span>Goes to your wallet</span><code>{shortAddress(gatherPlan.plan.destination)}</code></div>
+                          <div className="gather-review-row"><span>Network fee</span><strong>{formatBchSatoshis(gatherPlan.plan.fee)}</strong></div>
+                          <div className="gather-review-row"><span>After the fee</span><strong>{formatBchSatoshis(gatherPlan.plan.outputSatoshis)}</strong></div>
+                          <details className="technical-details">
+                            <summary>Details</summary>
+                            <p>{gatherPlan.plan.inputCount} BCH inputs. Nothing has been signed or sent yet.</p>
+                          </details>
+                          <button type="button" className="primary-button gather-confirm-button" disabled={gatherBusy} onClick={() => void gatherWalletCoins()}>
+                            {gatherBusy ? "Waiting for Selene…" : "Combine into one coin"}
+                          </button>
+                          <button type="button" className="secondary-button gather-cancel-button" disabled={gatherBusy} onClick={() => { setGatherPlan(null); setGatherMessage(""); }}>
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                      {gatherBusy && gatherMessage && <p className="wallet-match-message" role="status">{gatherMessage}</p>}
+                      {gatherResult?.status === "success" && (
+                        <div className="gather-result gather-success" role="status">
+                          <b>Done. Confirms in a few minutes.</b>
+                          <a href={gatherExplorerUrl(gatherResult.network, gatherResult.txid)} target="_blank" rel="noreferrer">View transaction <code>{shortTxid(gatherResult.txid)}</code></a>
+                        </div>
+                      )}
+                      {gatherResult?.status === "error" && (
+                        <div className="gather-result gather-error" role="alert">
+                          <button type="button" aria-label="Close error" onClick={() => setGatherResult(null)}>×</button>
+                          <b>Couldn't combine your BCH. Try again.</b>
+                          <span>{gatherResult.message}</span>
+                        </div>
+                      )}
+                    </section>
+                  )}
+                </details>
+
+                <div className="wallet-modal-actions">
+                  <button type="button" className="secondary-button" onClick={() => void walletClient?.disconnect()}>Disconnect</button>
+                  <button type="button" className="primary-button" onClick={() => setShowWallet(false)}>Done</button>
+                </div>
               </div>
             ) : (
               <div className="wallet-detail-body">
-                {qrDataUrl && <img className="wallet-qr" src={qrDataUrl} alt="WizardConnect pairing QR code" />}
+                {qrDataUrl && <img className="wallet-qr" src={qrDataUrl} alt="Selene connection QR code" />}
                 {walletView.uri && <a className="primary-button wallet-open-link" href={walletView.uri}>Open in Selene <ArrowRight size={15} /></a>}
-                {walletView.state === "connecting" && <p className="wallet-match-message">Connecting to Selene. Approve the session in Selene, then return here.</p>}
-                {walletView.state === "reconnecting" && <p className="wallet-match-message" role="status">Reconnecting to Selene. Keep this page open while the relay recovers.</p>}
-                {walletView.state === "disconnected" && <p className="wallet-match-message" role="status">Wallet disconnected. Tap Reconnect to try again.</p>}
-                {walletView.error && <p className="wallet-match-message" role="alert">{walletView.error}</p>}
+                {walletView.state === "connecting" && <p className="wallet-match-message">Approve in Selene, then come back.</p>}
+                {walletView.state === "reconnecting" && <p className="wallet-match-message" role="status">Reconnecting…</p>}
+                {walletView.state === "disconnected" && <p className="wallet-match-message" role="status">Disconnected.</p>}
+                {walletView.error && <div className="classic-error" role="alert"><span>{walletView.error}</span>
+                  <button type="button" aria-label="Close error" onClick={() => setWalletView((view) => ({ ...view, error: null }))}>×</button>
+                </div>}
                 <div className="wallet-modal-actions">
                   <button className="primary-button" onClick={() => {
                     if (!walletClient) { openWallet(); return; }
@@ -2465,7 +2563,6 @@ export default function App() {
                       else if (walletClient.state === "disconnected") walletClient.startFreshPairing();
                     }
                   }}>Reconnect</button>
-                  <button className="secondary-button" onClick={() => walletClient?.startFreshPairing()}>Start fresh pairing</button>
                   <button className="secondary-button" onClick={() => setShowWallet(false)}>Close</button>
                 </div>
               </div>
