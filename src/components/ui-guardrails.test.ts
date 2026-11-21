@@ -9,6 +9,7 @@ const appSource = readFileSync(resolve(here, "../App.tsx"), "utf8");
 const bchSource = readFileSync(resolve(here, "BchMainnetCircleWorkspace.tsx"), "utf8");
 const controlSource = readFileSync(resolve(here, "TestSignControl.tsx"), "utf8");
 const pusdSource = readFileSync(resolve(here, "PusdMainnetCircleWorkspace.tsx"), "utf8");
+const activitySource = readFileSync(resolve(here, "ActivityRecords.tsx"), "utf8");
 
 export function isInsideAdvancedToggle(source: string, label: string, from = 0): boolean {
   const position = source.indexOf(label, from);
@@ -105,5 +106,65 @@ describe("phone-width layout guardrails", () => {
     expect(stylesSource).toContain("max-width:1280px");
     expect(stylesSource.split("overflow-x:auto").length - 1).toBe(1);
     expect(stylesSource.split("overflow-x: auto").length - 1).toBe(1);
+  });
+});
+
+
+describe("wallet, circle memory and clean homepage guardrails", () => {
+  it("counts receive and change addresses and refreshes whole-wallet balances", () => {
+    expect(appSource).toContain("client.listWalletAddresses(network, 49, 20)");
+    expect(appSource).toContain("fetchPusdWalletBalance(entry.address)");
+    expect(appSource).toContain("utxoMap.set(utxo.txid + \":\" + utxo.vout, utxo)");
+    expect(appSource).toContain("}, 60_000)");
+    expect(appSource).toContain('document.addEventListener("visibilitychange", handleVisible)');
+    expect(appSource).toContain('window.dispatchEvent(new Event("ajochain:wallet-balances-refresh"))');
+  });
+
+  it("caches discovered circles by first receive address and network", () => {
+    expect(appSource).toContain('return "ajochain:discovery-cache:v1:" + network + ":" + firstReceiveAddress.trim().toLowerCase()');
+    expect(appSource).toContain("readWalletDiscoveryCache(window.localStorage");
+    expect(appSource).toContain("writeWalletDiscoveryCache(window.localStorage");
+    expect(appSource).toContain("30 * 60 * 1000");
+    expect(appSource).toContain("restoreCachedCircles()");
+    expect(appSource).toContain("Check again");
+  });
+
+  it("loads deployed and discovered circles in Activity and responds to saved-circle changes", () => {
+    expect(activitySource).toContain('ajochain-blaze:bch-mainnet-circles-deployed:v1');
+    expect(activitySource).toContain('ajochain-blaze:pusd-mainnet-circles-deployed:v1');
+    expect(activitySource).toContain("readSavedMainnetBchCircles()");
+    expect(activitySource).toContain("readSavedMainnetPusdCircles()");
+    expect(activitySource).toContain("new Map(refs.map((ref) => [ref.id, ref]))");
+    expect(activitySource).toContain('window.addEventListener("ajochain:bch-mainnet-circles-changed"');
+    expect(activitySource).toContain('window.addEventListener("ajochain:saved-circles-changed"');
+  });
+
+  it("keeps the homepage limited to the hero after its notice", () => {
+    const start = appSource.indexOf('{page === "overview" && (');
+    const end = appSource.indexOf('{page === "create-circle" && (', start);
+    const home = appSource.slice(start, end);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(home).toContain("Your Ajo savings circle, on Bitcoin Cash.");
+    expect(home).toContain("Create a circle");
+    expect(home).toContain(">My circles</button>");
+    expect(home).not.toContain("overview-my-circles");
+    expect(home).not.toContain("overview-activity");
+    expect(home).not.toContain("SUPPORTED ASSETS");
+    expect(home).not.toContain("asset-preview");
+    expect(home).not.toContain("how-ajo-works");
+  });
+
+  it("keeps static Wallet details helper text to 15 words or fewer", () => {
+    const start = appSource.indexOf('<section className="create-modal wallet-modal"');
+    const end = appSource.indexOf('<footer className="app-footer"', start);
+    const walletModal = appSource.slice(start, end);
+    expect(start).toBeGreaterThanOrEqual(0);
+    const helperTexts = [...walletModal.matchAll(/<(?:p|small|label)\\b[^>]*>([^<{}]+)<\\/(?:p|small|label)>/g)]
+      .map((match) => match[1].replace(/\\s+/g, " ").trim())
+      .filter(Boolean);
+    for (const helper of helperTexts) {
+      expect(helper.split(/\\s+/).length, helper).toBeLessThanOrEqual(15);
+    }
   });
 });
