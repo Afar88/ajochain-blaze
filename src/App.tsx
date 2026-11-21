@@ -1754,7 +1754,7 @@ export default function App() {
         return;
       }
       if (gatherNetwork === "mainnet" && !walletClient.isReceiveAddressConfirmed("mainnet")) {
-        setGatherResult({ status: "error", message: "Choose a Mainnet receive address in Wallet Details before gathering real BCH." });
+        setGatherResult({ status: "error", message: "Pick an address first." });
         return;
       }
       const gatherWalletIdentity = gatherNetwork === "mainnet" ? walletClient.getSessionIdentity() : null;
