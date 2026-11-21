@@ -421,7 +421,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
         <div>
           <span className="section-kicker">CLASSIC BCH · OLDER SAVINGS</span>
           <h2 id="classic-workspace-title">Create and manage circles</h2>
-          <p>Create Chipnet circles, contribute, collect payouts, and restore with an invite.</p>
+          <p>Create, fund and restore Chipnet circles.</p>
         </div>
         <span className={network === "mainnet" ? "classic-network mainnet" : "classic-network"}>
           {network === "mainnet" ? "Mainnet" : "Chipnet"}
@@ -431,13 +431,13 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
       <div className="classic-account-summary">
         <div><b>{networkSavedCount}</b><span>Circles on this network</span></div>
         <div><b>{walletConnected ? "Connected" : "Not connected"}</b><span>Connected wallet</span></div>
-        <p>Local account index only. It does not create a cloud login or synchronize data across devices; keep invite links as a recovery method.</p>
+        <p>Save your invite link to restore this circle.</p><details className="technical-details"><summary>Details</summary><p>This circle is saved in this browser only. It does not sync across devices. Keep the invite link as a recovery method.</p></details>
       </div>
 
       <div className="classic-workspace-grid">
         <div className="classic-create-panel">
           <h3>Start a Classic BCH circle</h3>
-          <p>2–5 unique BCH member addresses in payout order. This older circle uses one shared BCH pot and a fixed payout order; it does not track who made each contribution.</p>
+          <p>Add 2–5 BCH addresses in payout order.</p><details className="technical-details"><summary>Details</summary><p>This older circle uses one shared BCH pot and a fixed payout order. It does not track who made each contribution.</p></details>
           <form onSubmit={startCircle}>
             <label>Circle name
               <input value={name} onChange={(event) => setName(event.target.value)} maxLength={60} required />
@@ -465,7 +465,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
             </label>
             <button type="submit" className="secondary-button">Restore circle</button>
           </form>
-          <p className="classic-empty">Your saved circles are listed in My circles, grouped by the selected network.</p>
+          <p className="classic-empty">Find saved circles on My circles.</p>
         </div>
       </div>
 
@@ -503,7 +503,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
               {status?.completed ? "Circle complete" : "Pay out next round"}
             </button>
           </div>
-          <p className="classic-disclaimer">Classic V1 does not track individual member credit or late payments. Chain state, not this browser's saved list, determines whether a payout is possible. The Mainnet transaction kill-switch remains closed in this build.</p>
+          <p className="classic-disclaimer">Classic V1 uses one shared pot, not member balances.</p><details className="technical-details"><summary>Details</summary><p>Classic V1 does not track individual member credit or late payments. Chain state, not this browser's saved list, determines whether a payout is possible. The Mainnet transaction kill-switch remains closed in this build.</p></details>
         </div>
       )}
 
