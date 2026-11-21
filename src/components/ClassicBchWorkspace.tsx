@@ -432,7 +432,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
       <div className="classic-account-summary">
         <div><b>{networkSavedCount}</b><span>Circles on this network</span></div>
         <div><b>{walletConnected ? "Connected" : "Not connected"}</b><span>Selene wallet</span></div>
-        <p>Local account index only. It does not create a cloud login or synchronize data across devices; keep invite links as a recovery method.</p>
+        <p>Circles stay on this phone. Save invite links to restore them on another device.</p>
       </div>
 
       <div className="classic-workspace-grid">
