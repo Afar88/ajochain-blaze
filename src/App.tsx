@@ -1367,24 +1367,24 @@ export default function App() {
     setPusdSignatureMessage("");
     setPusdSignatureError("");
     if (!walletClient || walletClient.state !== "connected" || !connected) {
-      setPusdSignatureMessage("Connect Selene first.");
+      setPusdSignatureError("Connect Selene first.");
       return;
     }
     if (network !== "mainnet" || pusdView.status !== "ready") {
-      setPusdSignatureMessage("Check your PUSD balance before testing the signature.");
+      setPusdSignatureError("Check your PUSD balance before testing the signature.");
       return;
     }
     if (!walletClient.isReceiveAddressConfirmed("mainnet")) {
-      setPusdSignatureMessage("Choose a Mainnet receive address in Wallet Details before testing the PUSD signature.");
+      setPusdSignatureError("Pick the address shown in Selene first.");
       return;
     }
     const senderAddress = walletClient.address("mainnet");
     if (!senderAddress || !pusdRecipient.trim()) {
-      setPusdSignatureMessage("Confirm the connected sender address and a valid recipient address.");
+      setPusdSignatureError("Check your wallet address and recipient address.");
       return;
     }
     if (!/^\d+$/.test(pusdMaxFee.trim())) {
-      setPusdSignatureMessage("Maximum miner fee must be entered as whole satoshis.");
+      setPusdSignatureError("Enter the fee in whole satoshis.");
       return;
     }
     setPusdSignatureBusy(true);
