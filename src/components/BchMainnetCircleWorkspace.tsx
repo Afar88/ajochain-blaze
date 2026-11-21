@@ -138,6 +138,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
   const [name, setName] = useState(() => "BCH Ajo circle – " + new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" }));
   const [contribution, setContribution] = useState("0.002");
   const [membersText, setMembersText] = useState("");
+  const [memberOrderErrorDismissed, setMemberOrderErrorDismissed] = useState(false);
   const [maxFee, setMaxFee] = useState("10000");
   const [drafts, setDrafts] = useState<Draft[]>(readDrafts);
   const [activeCircle, setActiveCircle] = useState<V2FeeCircleParams | null>(readActiveCircle);
@@ -797,10 +798,12 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
           )}
         </div>
         <label>Other members' Mainnet addresses · one per line
-          <textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder={"bitcoincash:…\nbitcoincash:…"} required />
+          <textarea value={membersText} onChange={(event) => { setMembersText(event.target.value); setMemberOrderErrorDismissed(false); }} rows={4} placeholder={"bitcoincash:…\nbitcoincash:…"} required />
           <small>Add 1–4 Mainnet addresses. Your wallet is Member 1.</small>
         </label>
-        {memberOrder.error && <p className="classic-error" role="alert">{memberOrder.error}</p>}
+        {memberOrder.error && !memberOrderErrorDismissed && <p className="classic-error" role="alert">{memberOrder.error}
+          <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setMemberOrderErrorDismissed(true)}>×</button>
+        </p>}
         <label>Maximum BCH miner fee per action (satoshis)
           <input value={maxFee} onChange={(event) => setMaxFee(event.target.value)} inputMode="numeric" required />
           <small>Miner fees are separate from the pot.</small>
