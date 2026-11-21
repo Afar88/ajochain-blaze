@@ -1572,7 +1572,16 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
     .overview-status-card,
     .dropdown-wallet,
     .section-heading,
-    .verification-strip
+    .verification-strip,
+    .overview-status-grid,
+    .circle-choice-grid,
+    .circle-workspace-grid,
+    .classic-workspace-grid,
+    .pusd-mainnet-breakdown-grid,
+    .workspace-grid,
+    .field-row,
+    .pusd-transfer-fields,
+    .asset-preview-rows
   ) > * {
     min-width: 0;
   }
