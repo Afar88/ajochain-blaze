@@ -1897,7 +1897,10 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
   font:850 17px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   overflow-wrap:anywhere;
   text-align:left;
+  -webkit-user-select:text;
+  user-select:text;
 }
+.creator-member-preview code { -webkit-user-select:all; user-select:all; overflow-wrap:anywhere; }
 .wallet-address-actions {
   display:flex;
   align-items:center;

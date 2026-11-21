@@ -14,6 +14,7 @@ import type { NetworkProvider } from "cashscript";
 import type { WalletConsolidationPlan } from "./core/wallet-consolidation";
 import { PUSD_MAINNET_SPENDING_ENABLED } from "./core/pusd-mainnet-guard";
 import { toCashTokenAddress } from "./core/bch-address";
+import { copyText } from "./core/copy-text";
 import {
   createWalletScanScheduler, readWalletBalanceCache, runTwoStepWalletScan, selectPusdScanAddresses,
   settleWithConcurrency, sumSettledPusd, walletBalanceCacheKey, writeWalletBalanceCache,
@@ -515,6 +516,8 @@ export default function App() {
   const [receiveAddressPickerExpanded, setReceiveAddressPickerExpanded] = useState(false);
   const [walletAddressPickerShowAll, setWalletAddressPickerShowAll] = useState(false);
   const [expandedWalletAddress, setExpandedWalletAddress] = useState(false);
+  const [addressCopied, setAddressCopied] = useState<"" | "header" | "wallet" | "failed">("");
+  const addressCopiedTimerRef = useRef<number | null>(null);
   const [showWalletAddressQr, setShowWalletAddressQr] = useState(false);
   const [walletAddressQrDataUrl, setWalletAddressQrDataUrl] = useState("");
   const walletSubscribedRef = useRef(false);
@@ -2033,6 +2036,15 @@ export default function App() {
     const body = prefix ? value.slice(prefix.length) : value;
     return prefix + body.slice(0, 4) + "…" + body.slice(-4);
   };
+  const copyWalletAddress = async (where: "header" | "wallet") => {
+    if (!walletAddress) return;
+    const ok = await copyText(toCashTokenAddress(walletAddress));
+    setAddressCopied(ok ? where : "failed");
+    if (!ok) setExpandedWalletAddress(true);
+    if (!ok && where === "header") openWallet();
+    if (addressCopiedTimerRef.current !== null) window.clearTimeout(addressCopiedTimerRef.current);
+    addressCopiedTimerRef.current = window.setTimeout(() => setAddressCopied(""), 2_000);
+  };
   const shortAddress = (raw: string | null) => {
     if (!raw) return "Address unavailable";
     // Show every wallet address in its CashTokens (z) form. Same coins.
@@ -2144,8 +2156,8 @@ export default function App() {
           </button>
           {connected && walletAddress && (
             <button className="header-wallet-copy" type="button" aria-label="Copy wallet address"
-              onClick={() => { void navigator.clipboard.writeText(toCashTokenAddress(walletAddress)).catch(() => undefined); }}>
-              <Copy size={15} />
+              onClick={() => { void copyWalletAddress("header"); }}>
+              {addressCopied === "header" ? <Check size={15} /> : <Copy size={15} />}
             </button>
           )}
           <button
@@ -2626,8 +2638,8 @@ export default function App() {
                   </small>}
                   <div className="wallet-address-actions">
                     <button type="button" className="secondary-button wallet-copy-address" disabled={!walletAddress}
-                      onClick={() => { if (walletAddress) void navigator.clipboard.writeText(toCashTokenAddress(walletAddress)).catch(() => undefined); }}>
-                      <Copy size={14} /> Copy address
+                      onClick={() => { void copyWalletAddress("wallet"); }}>
+                      {addressCopied === "wallet" ? <><Check size={14} /> Copied</> : addressCopied === "failed" ? <><Copy size={14} /> Hold address to copy</> : <><Copy size={14} /> Copy address</>}
                     </button>
                     <button type="button" className="secondary-button" disabled={!walletAddress}
                       onClick={() => setShowWalletAddressQr((value) => !value)}>
@@ -2811,7 +2823,7 @@ export default function App() {
                       {gatherPlan && (
                         <div className="gather-review" aria-live="polite">
                           <div className="gather-review-row"><span>Total BCH found</span><strong>{formatBchSatoshis(gatherPlan.plan.totalSatoshis)}</strong></div>
-                          <div className="gather-review-row gather-destination"><span>Goes to your wallet</span><code>{gatherPlan.plan.destination}</code></div>
+                          <div className="gather-review-row gather-destination"><span>Goes to your wallet</span><code>{toCashTokenAddress(gatherPlan.plan.destination)}</code>{toCashTokenAddress(gatherPlan.plan.destination) !== gatherPlan.plan.destination && <small className="wallet-classic-address">Same as {shortClassicAddress(gatherPlan.plan.destination)}</small>}</div>
                           <div className="gather-review-row"><span>Network fee</span><strong>{formatBchSatoshis(gatherPlan.plan.fee)}</strong></div>
                           <div className="gather-review-row"><span>After the fee</span><strong>{formatBchSatoshis(gatherPlan.plan.outputSatoshis)}</strong></div>
                           <details className="technical-details">

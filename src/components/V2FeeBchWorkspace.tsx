@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { plainErrorSummary } from "./error-copy";
 import { Copy, RefreshCw } from "lucide-react";
 import { parseAssetAmount } from "../core/assets";
+import { copyText } from "../core/copy-text";
 import { CashTokensGenesisUtxoMissingError, classicAddressToPkh, getClassicProvider, planClassicGenesisSetup } from "../core/classic-bch";
 import { formatBch, type NetworkId } from "../core/network";
 import { wallet } from "../core/wizard-wallet";
@@ -515,10 +516,8 @@ export default function V2FeeBchWorkspace({
   const copyInvite = async () => {
     if (!active) return;
     const route = "#/v2-fee/" + encodeCircle(active);
-    try {
-      await navigator.clipboard.writeText(window.location.origin + window.location.pathname + route);
-      setNotice("V2 fee-circle invite copied.");
-    } catch { setNotice("Clipboard is unavailable. Invite route: " + route); }
+    const url = window.location.origin + window.location.pathname + route;
+    setNotice(await copyText(url) ? "V2 fee-circle invite copied." : "Couldn't copy. Invite link: " + url);
   };
 
   const initiator = Boolean(active && walletConnected && wallet.state === "connected" &&

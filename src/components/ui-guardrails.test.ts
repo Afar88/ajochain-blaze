@@ -42,8 +42,16 @@ describe("front-end warning and advanced-action guardrails", () => {
       const end = source.indexOf("</div>", start);
       const preview = source.slice(start, end);
       expect(start).toBeGreaterThanOrEqual(0);
-      expect(preview).toContain("<code>{initiatorAddress}</code>");
+      expect(preview).toContain("<code>{toCashTokenAddress(initiatorAddress)}</code>");
+      expect(preview).toContain("Same as {shortClassic(initiatorAddress)}");
+      expect(preview).toContain("copyText(toCashTokenAddress(initiatorAddress))");
       expect(preview).toContain("Copy address");
+    }
+  });
+
+  it("routes every copy button through the fallback copy helper", () => {
+    for (const source of [bchSource, pusdSource]) {
+      expect(source).not.toContain("navigator.clipboard");
     }
   });
 

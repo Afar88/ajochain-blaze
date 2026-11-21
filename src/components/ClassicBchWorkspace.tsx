@@ -4,6 +4,7 @@ import { CashTokensGenesisUtxoMissingError, decodeClassicCircle, getClassicProvi
 import { assertBchTransactionBroadcastAllowed } from "../core/bch-mainnet-guard";
 import { buildClassicInviteRoute, loadSavedClassicCircles, restoreClassicCircleFromInvite, saveClassicCircle, type SavedClassicCircle } from "../core/circle-account";
 import { parseAssetAmount } from "../core/assets";
+import { copyText } from "../core/copy-text";
 import { formatBch, type NetworkId } from "../core/network";
 import { wallet } from "../core/wizard-wallet";
 import { updateSavedCircleChainStatus } from "../circles/saved-circle-status";
@@ -409,12 +410,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
     if (!activeCircle) return;
     const route = buildClassicInviteRoute(activeCircle);
     const url = window.location.origin + window.location.pathname + route;
-    try {
-      await navigator.clipboard.writeText(url);
-      setNotice("Invite link copied.");
-    } catch {
-      setNotice("Copy is unavailable in this browser. Invite route: " + route);
-    }
+    setNotice(await copyText(url) ? "Invite link copied." : "Couldn't copy. Invite link: " + url);
   };
 
   return (

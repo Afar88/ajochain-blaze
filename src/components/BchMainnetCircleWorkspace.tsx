@@ -6,6 +6,8 @@ import { encodeV2FeeCircleParams } from "../core/v2-fee-discovery";
 import { formatAssetAmount, parseAssetAmount } from "../core/assets";
 import { createBchMainnetCircleDraft, prepareBchMainnetCircleGenesisPreview } from "../core/bch-mainnet-circle";
 import { classicAddressToPkh } from "../core/classic-bch";
+import { shortClassic, toCashTokenAddress } from "../core/bch-address";
+import { copyText } from "../core/copy-text";
 import { BCH_MAINNET_CIRCLE_SEND_ENABLED } from "../core/bch-mainnet-guard";
 import {
   buildV2FeeMemberOrder,
@@ -679,12 +681,9 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
   const copyInvite = async () => {
     if (!activeCircle) return;
     const link = window.location.origin + window.location.pathname + INVITE_ROUTE + encodeV2FeeCircleParams(activeCircle);
-    try {
-      await navigator.clipboard.writeText(link);
-      setNotice("Invite link copied. Share it with your circle members.");
-    } catch {
-      setNotice("Clipboard is unavailable. Invite link: " + link);
-    }
+    setNotice(await copyText(link)
+      ? "Invite link copied. Share it with your circle members."
+      : "Couldn't copy. Invite link: " + link);
   };
 
   const prepareGenesisPlan = async (): Promise<MainnetSigningPlan | null> => {
@@ -800,12 +799,12 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
           <b>Member 1 · You, the initiator</b>
           {initiatorAddress
             ? <>
-                <code>{initiatorAddress}</code>
+                <code>{toCashTokenAddress(initiatorAddress)}</code>
+                {toCashTokenAddress(initiatorAddress) !== initiatorAddress && <small className="wallet-classic-address">Same as {shortClassic(initiatorAddress)}</small>}
                 <button className="secondary-button wallet-copy-address" type="button" onClick={() => {
-                  const pendingCopy = navigator.clipboard?.writeText(initiatorAddress);
-                  if (!pendingCopy) { setNotice("Copy is unavailable. Select the address and copy it manually."); return; }
-                  void pendingCopy.then(() => setNotice("Member 1 address copied."))
-                    .catch(() => setNotice("Could not copy the address. Select it and copy manually."));
+                  void copyText(toCashTokenAddress(initiatorAddress)).then((ok) => setNotice(ok
+                    ? "Member 1 address copied."
+                    : "Couldn't copy. Press and hold the address to copy it."));
                 }}><Copy size={15} /> Copy address</button>
                 <small>{initiatorAddressConfirmed ? "Address confirmed ✓" : "Pick the address shown in Selene before using it."}</small>
               </>
@@ -866,7 +865,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
           <p className="receive-address-payout-note">Your payout goes to {genesisSigningPlan.circle.initiator.slice(0, 10)}…{genesisSigningPlan.circle.initiator.slice(-6)}.</p>
           {selectedAddressPendingOnly && <p className="receive-address-pending-warning" role="alert">Wait 1 confirmation, then create.</p>}
           <div><span>Members</span><strong>{genesisSigningPlan.circle.members.length}</strong></div>
-          <div><span>Member 1 · payout address</span><strong><code>{genesisSigningPlan.circle.initiator}</code></strong></div>
+          <div><span>Member 1 · payout address</span><strong><code>{toCashTokenAddress(genesisSigningPlan.circle.initiator)}</code></strong></div>
           <div><span>Contribution per member</span><strong>{formatAssetAmount("BCH", genesisSigningPlan.circle.contribution)} BCH</strong></div>
           <div><span>Estimated network fee</span><strong>{preview.feeEstimate} sats</strong></div>
           <details className="technical-details">
@@ -891,10 +890,9 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
             <span>Invite link to share</span>
             <a href={creationResult.inviteUrl}>{creationResult.inviteUrl}</a>
             <button type="button" className="secondary-button" onClick={() => {
-              void navigator.clipboard.writeText(creationResult.inviteUrl).then(
-                () => setNotice("Invite link copied. Share it with your circle members."),
-                () => setNotice("Invite link: " + creationResult.inviteUrl),
-              );
+              void copyText(creationResult.inviteUrl).then((ok) => setNotice(ok
+                ? "Invite link copied. Share it with your circle members."
+                : "Couldn't copy. Invite link: " + creationResult.inviteUrl));
             }}>Copy invite link</button>
           </div>
         </div>
