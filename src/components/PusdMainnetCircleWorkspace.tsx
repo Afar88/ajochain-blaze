@@ -887,14 +887,14 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
 
       <div className="pusd-mainnet-build-status">
         <LockKeyhole size={16} />
-        <span><b>PUSD Mainnet circle rules</b><small>Members approve each payment in Selene. The app checks the circle details before sending. Plain PUSD wallet transfers remain locked.</small>
+        <div><b>PUSD Mainnet circle rules</b><small>Members approve each payment in Selene. The app checks the circle details before sending. Plain PUSD wallet transfers remain locked.</small>
           <details className="technical-details">
             <summary>Details</summary>
             <details className="technical-details">
             <summary>Details</summary>
             <p>Before sending, the app checks the previous payments, circle rules and wallet approval. It prevents the same payment from being sent twice.</p>
           </details>
-          </details></span>
+          </details></div>
       </div>
 
       <div className="pusd-mainnet-saved">
