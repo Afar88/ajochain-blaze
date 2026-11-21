@@ -1161,14 +1161,26 @@ export default function App() {
         setReceiveAddressChoices(choices);
         setReceiveAddressChoicesNetwork(network);
 
-        if (network === "mainnet" && !client.isReceiveAddressConfirmed("mainnet")) {
+        if (!client.isReceiveAddressConfirmed(network)) {
           let preferredIndex: number | null = null;
           try {
-            const storedIndex = window.localStorage.getItem(WALLET_SELECTED_RECEIVE_INDEX_KEY + ":mainnet");
+            const storedIndex = window.localStorage.getItem(WALLET_SELECTED_RECEIVE_INDEX_KEY + ":" + network);
             if (storedIndex !== null && /^\d+$/.test(storedIndex)) preferredIndex = Number(storedIndex);
           } catch { /* use the highest-balance receive address when storage is unavailable */ }
           const defaultIndex = getDefaultWalletReceiveIndex(choices, preferredIndex);
-          if (defaultIndex !== null) client.selectReceiveAddressIndex(defaultIndex, "mainnet");
+          const defaultChoice = choices.find((choice) =>
+            (choice.branch ?? "receive") === "receive" && choice.index === defaultIndex,
+          );
+          if (defaultChoice) {
+            if (network === "mainnet") {
+              // Mainnet's existing picker action selects and confirms together.
+              client.selectReceiveAddressIndex(defaultChoice.index, "mainnet");
+            } else {
+              // Chipnet selects the address for display, but still requires
+              // the user's explicit Selene confirmation before circle actions.
+              client.matchReceiveAddress(defaultChoice.address, "chipnet");
+            }
+          }
         }
         setReceiveAddressPickerExpanded(false);
         setBchBalanceScan({
@@ -2579,6 +2591,9 @@ export default function App() {
                             return isReceive ? (
                               <button type="button" key={choice.branch + ":" + choice.index}
                                 className="receive-address-choice" onClick={() => {
+                                  const matched = walletClient?.matchReceiveAddress(choice.address, "chipnet", 50);
+                                  if (matched === null || matched === undefined) throw new Error("This address isn't in your wallet.");
+                                  try { window.localStorage.setItem(WALLET_SELECTED_RECEIVE_INDEX_KEY + ":chipnet", String(choice.index)); } catch { /* choice remains active for this connection */ }
                                   setSeleneAddress(choice.address);
                                   setReceiveAddressPickerExpanded(false);
                                 }}>{content}</button>
@@ -2602,8 +2617,9 @@ export default function App() {
                       const index = walletClient?.confirmReceiveAddress(seleneAddress, network, 250) ?? null;
                       if (index === null) {
                         setAddressMatchMessage("");
-                        setReceiveAddressScanError("This address isn't in your wallet. Check Selene is on Mainnet and reconnect.");
+                        setReceiveAddressScanError("This address isn't in your wallet. Check Selene is on Chipnet and reconnect.");
                       } else {
+                        try { window.localStorage.setItem(WALLET_SELECTED_RECEIVE_INDEX_KEY + ":chipnet", String(index)); } catch { /* confirmation remains active for this connection */ }
                         setReceiveAddressScanError("");
                         setAddressMatchMessage("Address confirmed ✓");
                       }
