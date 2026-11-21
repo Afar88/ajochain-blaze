@@ -155,7 +155,7 @@ test("Mainnet Electrum provider manifest allows 2–6 endpoints with two or more
     "wss://node-a.example:50004,wss://node-b.example:50004",
     "provider-a,provider-b",
   );
-  assert.deepEqual(providers, [
+  assert.deepEqual(providers.slice(0, 2), [
     { endpoint: "wss://node-a.example:50004", operatorId: "provider-a" },
     { endpoint: "wss://node-b.example:50004", operatorId: "provider-b" },
   ]);
@@ -163,7 +163,8 @@ test("Mainnet Electrum provider manifest allows 2–6 endpoints with two or more
     "wss://node-a.example:50004,wss://node-b.example:50004,wss://node-c.example:50004",
     "provider-a,provider-a,provider-b",
   );
-  assert.equal(backupProviders.length, 3);
+  assert.deepEqual(backupProviders.slice(0, 3).map((provider) => provider.operatorId),
+    ["provider-a", "provider-a", "provider-b"]);
   assert.throws(() => parseMainnetElectrumProviderConfig(
     "wss://node-a.example:50004,wss://node-b.example:50004",
     "",
@@ -195,11 +196,52 @@ test("Mainnet Electrum provider manifest allows 2–6 endpoints with two or more
   ), /without embedded credentials/i);
 });
 
+test("Mainnet Electrum parser appends built-in backups after valid environment endpoints", () => {
+  const providers = parseMainnetElectrumProviderConfig(
+    "wss://env-a.example:50004,wss://env-b.example:50004",
+    "env-a,env-b",
+  );
+  assert.deepEqual(providers, [
+    { endpoint: "wss://env-a.example:50004", operatorId: "env-a" },
+    { endpoint: "wss://env-b.example:50004", operatorId: "env-b" },
+    { endpoint: "wss://fulcrum.greyh.at:50004", operatorId: "greyh-at" },
+    { endpoint: "wss://bch.soul-dev.com:50004", operatorId: "soul-dev" },
+  ]);
+});
+
+test("Mainnet Electrum parser does not duplicate a built-in backup hostname already in env", () => {
+  const providers = parseMainnetElectrumProviderConfig(
+    "wss://env-a.example:50004,wss://fulcrum.greyh.at:50004",
+    "env-a,greyh-at",
+  );
+  assert.deepEqual(providers, [
+    { endpoint: "wss://env-a.example:50004", operatorId: "env-a" },
+    { endpoint: "wss://fulcrum.greyh.at:50004", operatorId: "greyh-at" },
+    { endpoint: "wss://bch.soul-dev.com:50004", operatorId: "soul-dev" },
+  ]);
+  assert.equal(providers.filter((provider) => new URL(provider.endpoint).hostname === "fulcrum.greyh.at").length, 1);
+});
+
+test("Mainnet Electrum parser never uses built-in backups to rescue invalid environment config", () => {
+  assert.throws(
+    () => parseMainnetElectrumProviderConfig("", ""),
+    /between two and six unique ELECTRUM_SERVERS/i,
+  );
+  assert.throws(
+    () => parseMainnetElectrumProviderConfig(
+      "wss://env-a.example:50004,wss://env-b.example:50004",
+      "same-operator,same-operator",
+    ),
+    /at least two distinct operators/i,
+  );
+});
+
 function makeElectrumProviders(entries) {
+  const requestedHostnames = new Set(entries.map((entry) => new URL(entry.host).hostname));
   return parseMainnetElectrumProviderConfig(
     entries.map((entry) => entry.host).join(","),
     entries.map((entry) => entry.operator).join(","),
-  );
+  ).filter((provider) => requestedHostnames.has(new URL(provider.endpoint).hostname));
 }
 
 function makeElectrumTestTip(hash = "a".repeat(64)) {
@@ -239,6 +281,7 @@ test("Electrum failover uses two fast good servers and closes the non-answering 
     {
       providers,
       rpcTimeoutMs: 12_000,
+      firstAnswerTimeoutMs: 20,
       sessionFactory: makeElectrumTestSessionFactory(created),
       readTip: async (session) => {
         if (session.operatorId === "slow-op") return new Promise(() => {});
@@ -269,6 +312,7 @@ test("Electrum failover waits for a different operator when two faster endpoints
   }, {
     providers,
     rpcTimeoutMs: 12_000,
+    firstAnswerTimeoutMs: 100,
     sessionFactory: makeElectrumTestSessionFactory(created),
     readTip: async (session) => {
       const delay = session.operatorId === "other-operator" ? 35 : 5;
@@ -295,10 +339,11 @@ test("Electrum failover retries one incomplete selection, then returns the 503 q
     withElectrumSessions(async () => assert.fail("callback must not run without quorum"), {
       providers,
       rpcTimeoutMs: 12_000,
+      firstAnswerTimeoutMs: 10,
       sessionFactory: makeElectrumTestSessionFactory(created),
       readTip: async (session) => {
         answers.set(session.operatorId, (answers.get(session.operatorId) ?? 0) + 1);
-        if (session.operatorId === "unreachable") throw new Error("private server timeout");
+        if (session.operatorId === "unreachable") return new Promise(() => {});
         return makeElectrumTestTip();
       },
     }),
@@ -311,27 +356,86 @@ test("Electrum failover retries one incomplete selection, then returns the 503 q
   );
   assert.equal(created.length, 4);
   assert.equal(answers.get("reachable"), 2);
-  assert.equal(answers.get("unreachable"), 2);
+  assert.equal(answers.get("unreachable"), undefined);
   assert.ok(created.every((session) => session.closed));
 });
 
-test("Electrum tip disagreement fails before the action callback or any relay", async () => {
+test("Electrum tip disagreement waits for a third server that matches the first tip", async () => {
   const providers = makeElectrumProviders([
     { host: "wss://tip-a.example:50004", operator: "tip-a" },
     { host: "wss://tip-b.example:50004", operator: "tip-b" },
+    { host: "wss://tip-c.example:50004", operator: "tip-c" },
+  ]);
+  const created = [];
+  const result = await withElectrumSessions(async (sessions) => sessions, {
+    providers,
+    rpcTimeoutMs: 12_000,
+    firstAnswerTimeoutMs: 100,
+    sessionFactory: makeElectrumTestSessionFactory(created),
+    readTip: async (session) => {
+      const delay = { "tip-a": 5, "tip-b": 10, "tip-c": 20 }[session.operatorId];
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return makeElectrumTestTip(session.operatorId === "tip-b" ? "b".repeat(64) : "a".repeat(64));
+    },
+  });
+  assert.equal(result.length, 2);
+  assert.deepEqual(result.map((session) => session.operatorId), ["tip-a", "tip-c"]);
+  assert.equal(result[0].providersAnswered, 3);
+  assert.ok(created.every((session) => session.closed));
+});
+
+test("Electrum tip disagreement rechecks all first-pass responders after two seconds", async () => {
+  const providers = makeElectrumProviders([
+    { host: "wss://recheck-a.example:50004", operator: "recheck-a" },
+    { host: "wss://recheck-b.example:50004", operator: "recheck-b" },
+    { host: "wss://recheck-c.example:50004", operator: "recheck-c" },
+  ]);
+  const created = [];
+  const readCounts = new Map();
+  const sleeps = [];
+  const result = await withElectrumSessions(async (sessions) => sessions, {
+    providers,
+    rpcTimeoutMs: 12_000,
+    firstAnswerTimeoutMs: 100,
+    sessionFactory: makeElectrumTestSessionFactory(created),
+    sleep: async (milliseconds) => { sleeps.push(milliseconds); },
+    readTip: async (session) => {
+      const count = (readCounts.get(session.operatorId) ?? 0) + 1;
+      readCounts.set(session.operatorId, count);
+      if (count === 1) return makeElectrumTestTip(session.operatorId.padEnd(64, "a").slice(0, 64));
+      return makeElectrumTestTip("f".repeat(64));
+    },
+  });
+  assert.equal(result.length, 2);
+  assert.deepEqual(new Set(result.map((session) => session.operatorId)),
+    new Set(["recheck-a", "recheck-b", "recheck-c"]).size === 2
+      ? new Set(["recheck-a", "recheck-b"])
+      : new Set(["recheck-a", "recheck-b"]));
+  assert.deepEqual(sleeps, [2_000]);
+  assert.deepEqual([...readCounts.values()], [2, 2, 2]);
+  assert.equal(result[0].providersAnswered, 3);
+  assert.ok(created.every((session) => session.closed));
+});
+
+test("Electrum tip disagreement after recheck returns 503 before the callback", async () => {
+  const providers = makeElectrumProviders([
+    { host: "wss://disagree-a.example:50004", operator: "disagree-a" },
+    { host: "wss://disagree-b.example:50004", operator: "disagree-b" },
+    { host: "wss://disagree-c.example:50004", operator: "disagree-c" },
   ]);
   const created = [];
   let callbackCalled = false;
-  let relayCalls = 0;
+  const sleeps = [];
   await assert.rejects(
-    withElectrumSessions(async () => {
-      callbackCalled = true;
-      relayCalls += 1;
-    }, {
+    withElectrumSessions(async () => { callbackCalled = true; }, {
       providers,
       rpcTimeoutMs: 12_000,
+      firstAnswerTimeoutMs: 100,
       sessionFactory: makeElectrumTestSessionFactory(created),
-      readTip: async (session) => makeElectrumTestTip(session.operatorId === "tip-a" ? "a".repeat(64) : "b".repeat(64)),
+      sleep: async (milliseconds) => { sleeps.push(milliseconds); },
+      readTip: async (session) => makeElectrumTestTip(
+        (session.operatorId + "0".repeat(64)).slice(0, 64),
+      ),
     }),
     (error) => {
       assert.equal(mainnetApiErrorStatus(error.message), 503);
@@ -340,9 +444,8 @@ test("Electrum tip disagreement fails before the action callback or any relay", 
       return true;
     },
   );
+  assert.deepEqual(sleeps, [2_000]);
   assert.equal(callbackCalled, false);
-  assert.equal(relayCalls, 0);
-  assert.equal(created.length, 2);
   assert.ok(created.every((session) => session.closed));
 });
 
@@ -361,6 +464,7 @@ test("Electrum selection retry never retries the broadcast after a relay attempt
       {
         providers,
         rpcTimeoutMs: 12_000,
+        firstAnswerTimeoutMs: 100,
         sessionFactory: makeElectrumTestSessionFactory(created, async (_session, method) => {
           if (method === "blockchain.transaction.broadcast") {
             relayCalls += 1;
@@ -377,9 +481,7 @@ test("Electrum selection retry never retries the broadcast after a relay attempt
   assert.equal(relayCalls, 1);
   assert.equal(created.length, 2);
   assert.ok(created.every((session) => session.closed));
-});
-
-test("Mainnet BCH gather accepts only one token-free output back to a wallet-derived address", () => {
+});test("Mainnet BCH gather accepts only one token-free output back to a wallet-derived address", () => {
   const walletAddress = createMainnetTestAddress(21);
   const otherAddress = createMainnetTestAddress(22);
   const walletScript = cashAddressToLockingBytecode(walletAddress);
