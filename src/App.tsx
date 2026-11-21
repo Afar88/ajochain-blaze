@@ -489,6 +489,7 @@ export default function App() {
   const [walletBalancesRefreshing, setWalletBalancesRefreshing] = useState(false);
   const [walletNow, setWalletNow] = useState(Date.now());
   const walletBalanceRefreshBusyRef = useRef(false);
+  const walletBalanceKeyRef = useRef<string | null>(null);
   const discoveryRunHandledRef = useRef(0);
   const [walletErrorDismissed, setWalletErrorDismissed] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState("");
@@ -631,7 +632,20 @@ export default function App() {
 
   useEffect(() => {
     setWalletErrorDismissed(false);
-    if (walletView.state !== "connected") setAddressMatchMessage("");
+    if (walletView.state !== "connected") {
+      setAddressMatchMessage("");
+      if (walletView.state === "idle" || walletView.state === "disconnected") {
+        walletBalanceKeyRef.current = null;
+        setReceiveAddressChoices([]);
+        setBchBalanceScan(null);
+        setWalletDisplayAddressKey(null);
+        setLastWalletBalanceUpdatedAt(null);
+        setPusdView({
+          status: "idle", amount: 0n, detail: "Connect your wallet to check PUSD.",
+          utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
+        });
+      }
+    }
   }, [walletView.state, walletView.error]);
 
   const circleStatusSignature = menuCircles.map((circle) =>
@@ -1051,6 +1065,19 @@ export default function App() {
     const client = walletClient;
     const identity = client.getSessionIdentity();
     const revision = client.addressSetRevision;
+    const balanceKey = JSON.stringify([identity, network, revision]);
+    if (walletBalanceKeyRef.current !== balanceKey) {
+      walletBalanceKeyRef.current = balanceKey;
+      setReceiveAddressChoices([]);
+      setBchBalanceScan(null);
+      setWalletDisplayAddressKey(null);
+      setLastWalletBalanceUpdatedAt(null);
+      setPusdView({
+        status: "idle", amount: 0n, detail: network === "mainnet"
+          ? "Connect your wallet to check PUSD." : "PUSD is available on Mainnet.",
+        utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
+      });
+    }
     const refreshBalances = async () => {
       if (document.visibilityState !== "visible" || walletBalanceRefreshBusyRef.current) return;
       walletBalanceRefreshBusyRef.current = true;
