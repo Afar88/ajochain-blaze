@@ -289,7 +289,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         throw new Error("Enter a circle name between 1 and 60 characters.");
       }
       if (!initiatorAddress || !initiatorMemberAddress || !walletConnected || wallet.state !== "connected" || !wallet.isReceiveAddressConfirmed("mainnet")) {
-        throw new Error("Choose a receive address derived from your connected Selene wallet in Wallet Details before saving this draft.");
+        throw new Error("Pick a receive address in Wallet details first.");
       }
       if (selectedAddressPendingOnly) throw new Error("Wait for confirmation before creating a circle.");
       if (memberAddresses.length < 1 || memberAddresses.length > 4) {
@@ -340,12 +340,12 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       return null;
     }
     if (!walletConnected || wallet.state !== "connected") {
-      setError("Connect Selene through WizardConnect before preparing a Mainnet creation plan.");
+      setError("Connect Selene before preparing the circle.");
       return null;
     }
     const initiatorAddress = wallet.address("mainnet");
     if (!initiatorAddress || !wallet.isReceiveAddressConfirmed("mainnet")) {
-      setError("Choose a receive address derived from your connected Selene wallet in Wallet Details before preparing a PUSD circle.");
+      setError("Pick a receive address in Wallet details first.");
       return null;
     }
     if (selectedAddressPendingOnly) {
@@ -428,7 +428,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     setTestSignChecked(null);
     try {
       const walletAddress = wallet.address("mainnet");
-      if (!walletAddress) throw new Error("The connected Selene session does not expose a Mainnet P2PKH signing address.");
+      if (!walletAddress) throw new Error("Selene hasn't shown a Mainnet address yet. Reconnect and try again.");
       if (signingPlan.operation === "genesis" &&
           (!wallet.isReceiveAddressConfirmed("mainnet") || walletAddress !== signingPlan.circle.initiator ||
            addressKey(signingPlan.circle.members[0]) !== addressKey(walletAddress))) {
@@ -437,7 +437,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       const locallyVerified = await wallet.signAndVerify(
         signingPlan.wc,
         signingPlan.walletInputs,
-        signingPlan.prompt + (send ? " (verify and relay on BCH Mainnet)" : " (independent server verification only; never broadcast)"),
+        signingPlan.prompt + (send ? " (check and send on BCH Mainnet)" : " (check only; do not send)"),
       );
       if (signingPlan.operation === "genesis" &&
           (!wallet.isReceiveAddressConfirmed("mainnet") || wallet.address("mainnet") !== signingPlan.circle.initiator)) {
@@ -548,7 +548,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     if (!activeCircle) return;
     const address = wallet.address("mainnet");
     if (!walletConnected || wallet.state !== "connected" || !address) {
-      setError("Connect the Mainnet member wallet through WizardConnect first.");
+      setError("Connect the member's Selene wallet first.");
       return;
     }
     setLifecycleBusy(true);
@@ -590,7 +590,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     if (!activeCircle) return;
     const address = wallet.address("mainnet");
     if (!walletConnected || wallet.state !== "connected" || !address) {
-      setError("Connect a wallet to sponsor the payout miner fee through WizardConnect first.");
+      setError("Connect Selene to cover the payout fee.");
       return;
     }
     setLifecycleBusy(true);
@@ -626,7 +626,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     if (!activeCircle) return;
     const address = wallet.address("mainnet");
     if (!walletConnected || wallet.state !== "connected" || !address) {
-      setError("Connect the registered circle initiator wallet through WizardConnect first.");
+      setError("Reconnect the wallet that created this circle.");
       return;
     }
     setLifecycleBusy(true);
