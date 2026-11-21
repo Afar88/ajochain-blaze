@@ -1200,7 +1200,7 @@ export default function App() {
       setPusdView({
         status: "idle", amount: 0n,
         detail: network !== "mainnet"
-          ? "PUSD is available on Bitcoin Cash Mainnet. Switch networks to check your balance."
+          ? "PUSD is available on Mainnet. Switch networks to check it."
           : "Connect your wallet to check PUSD.",
         utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
       });
@@ -1310,7 +1310,7 @@ export default function App() {
   const verifyPusdTransferSignature = async () => {
     setPusdSignatureMessage("");
     if (!walletClient || walletClient.state !== "connected" || !connected) {
-      setPusdSignatureMessage("Connect Selene through WizardConnect before testing the PUSD signature path.");
+      setPusdSignatureMessage("Connect Selene first.");
       return;
     }
     if (network !== "mainnet" || pusdView.status !== "ready") {
@@ -1677,7 +1677,7 @@ export default function App() {
       }
       const gatherWalletIdentity = gatherNetwork === "mainnet" ? walletClient.getSessionIdentity() : null;
       if (gatherNetwork === "mainnet" && !gatherWalletIdentity) {
-        setGatherResult({ status: "error", message: "WizardConnect has not supplied a verifiable Selene wallet identity. Reconnect Selene before gathering Mainnet BCH." });
+        setGatherResult({ status: "error", message: "Reconnect Selene before combining Mainnet BCH." });
         return;
       }
       setGatherBusy(true);
@@ -1790,7 +1790,7 @@ export default function App() {
           broadcast?: boolean;
         };
         if (!response.ok) {
-          throw new Error(typeof payload.error === "string" ? payload.error : "Mainnet BCH gather could not be verified or relayed.");
+          throw new Error(typeof payload.error === "string" ? payload.error : "Couldn't send your BCH. Check its status before trying again.");
         }
         if (payload.network !== "mainnet" || payload.broadcast !== true ||
             typeof payload.txid !== "string" || !/^[0-9a-f]{64}$/i.test(payload.txid)) {
