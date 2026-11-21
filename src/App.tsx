@@ -584,8 +584,8 @@ export default function App() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setGatherMessage("");
+      if (!/connect|failed|could not|couldn't|not valid|must |changed|invalid|unavailable/i.test(pusdSignatureMessage)) setPusdSignatureMessage("");
       setAddressMatchMessage("");
-      setPusdSignatureMessage("");
       setMainnetInviteNotice("");
     }, 4_000);
     return () => window.clearTimeout(timer);
@@ -1038,6 +1038,12 @@ export default function App() {
   }, [walletView.qrUri]);
 
   useEffect(() => {
+    if (gatherResult?.status !== "success") return;
+    const timer = window.setTimeout(() => setGatherResult(null), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [gatherResult]);
+
+  useEffect(() => {
     const walletSurfaceOpen = showWallet || page === "assets";
     if (!walletSurfaceOpen || !walletClient || walletClient.state !== "connected" || walletView.state !== "connected") return;
 
@@ -1050,7 +1056,7 @@ export default function App() {
       walletBalanceRefreshBusyRef.current = true;
       setWalletBalancesRefreshing(true);
       setReceiveAddressScanLoading(true);
-      setReceiveAddressScanError("");
+
       try {
         const [{ getClassicProvider }, { fetchPusdWalletBalance }] = await Promise.all([
           import("./core/classic-bch"), import("./core/pusd-api"),
@@ -1086,6 +1092,7 @@ export default function App() {
           };
         });
         setReceiveAddressChoices(choices);
+        setReceiveAddressScanError("");
 
         const networkFirstReceive = entries.find((entry) => entry.branch === "receive" && entry.index === 0);
         if (networkFirstReceive) {
@@ -2053,7 +2060,7 @@ export default function App() {
                 </label>
                 <button type="button" className="secondary-button" disabled={!mainnetInviteInput.trim()}
                   onClick={joinMainnetCircleWithInvite}>Join with invite</button>
-                {mainnetInviteError && <p className="classic-error" role="alert">{mainnetInviteError}</p>}
+                {mainnetInviteError && <p className="classic-error" role="alert">{mainnetInviteError}<button type="button" aria-label="Dismiss error" onClick={() => setMainnetInviteError("")}><X size={14} /></button></p>}
                 {mainnetInviteNotice && <p className="classic-notice" role="status">{mainnetInviteNotice}</p>}
               </section>
             )}
@@ -2196,7 +2203,7 @@ export default function App() {
                 <button type="button" className="secondary-button" onClick={() => void preparePusdTransfer()} disabled={pusdPlanBusy || pusdView.status !== "ready" || network !== "mainnet"}>
                   {pusdPlanBusy ? "Preparing preview…" : "Prepare transfer preview"}
                 </button>
-                {pusdPlanError && <p className="classic-error" role="alert">{pusdPlanError}</p>}
+                {pusdPlanError && <p className="classic-error" role="alert">{pusdPlanError}<button type="button" aria-label="Dismiss error" onClick={() => setPusdPlanError("")}><X size={14} /></button></p>}
                 {pusdTransferPlan && (
                   <div className="pusd-plan-summary" role="status">
                     <b>Transfer plan ready · review only</b>
@@ -2212,7 +2219,7 @@ export default function App() {
                   onClick={() => void verifyPusdTransferSignature()}>
                   {pusdSignatureBusy ? "Test signing…" : "Test sign · no money sent"}
                 </button>
-                {pusdSignatureMessage && <p className="classic-notice" role="status">{pusdSignatureMessage}</p>}
+                {pusdSignatureMessage && <p className={/connect|failed|could not|couldn't|not valid|must |changed|invalid|unavailable/i.test(pusdSignatureMessage) ? "classic-error" : "classic-notice"} role={/connect|failed|could not|couldn't|not valid|must |changed|invalid|unavailable/i.test(pusdSignatureMessage) ? "alert" : "status"}>{pusdSignatureMessage}<button type="button" aria-label="Dismiss message" onClick={() => setPusdSignatureMessage("")}><X size={14} /></button></p>}
                 <button type="button" className="primary-button" disabled={!PUSD_MAINNET_SPENDING_ENABLED || !pusdTransferPlan}
                   title="PUSD Mainnet spending is not yet approved by the security release gate">
                   Send PUSD · Mainnet locked
@@ -2271,7 +2278,7 @@ export default function App() {
                 </div>
                 {receiveAddressPickerExpanded && <section className="receive-address-picker" aria-labelledby="receive-address-picker-title">
                   <div className="receive-address-picker-heading"><div><b id="receive-address-picker-title">Wallet addresses</b><small>Addresses with BCH appear first.</small></div>{receiveAddressScanLoading && <span className="receive-address-scan-state">Checking…</span>}</div>
-                  {receiveAddressScanError && <p className="classic-error" role="alert">{receiveAddressScanError}</p>}
+                  {receiveAddressScanError && <p className="classic-error" role="alert">{receiveAddressScanError}<button type="button" aria-label="Dismiss error" onClick={() => setReceiveAddressScanError("")}><X size={14} /></button></p>}
                   {!receiveAddressScanLoading && receiveAddressChoices.length === 0 && <p className="field-hint">Couldn't load your addresses. Reconnect and try again.</p>}
                   <div className="receive-address-choice-list">
                     {visibleWalletAddressChoices.map((choice) => {
@@ -2312,7 +2319,7 @@ export default function App() {
                     <div className="gather-card-heading">
                       <span className="section-kicker">WALLET CLEAN-UP</span>
                       <h3 id="gather-title">Gather BCH coins</h3>
-                      <p>Bring your available BCH into one coin in your own wallet. PUSD and other tokens are left untouched.</p>
+                      <p>Combine your BCH into one coin. Tokens aren't touched.</p>
                     </div>
                     {!gatherPlan && (
                       <button className="secondary-button gather-scan-button"
@@ -2345,23 +2352,23 @@ export default function App() {
                     {gatherResult?.status === "success" && (
                       <div className="gather-result gather-success" role="status">
                         <b>BCH gathered successfully</b>
-                        <span>Your BCH is on its way back to your wallet. The transaction may take time to confirm.</span>
+                        <span>Done. Confirms in a few minutes.</span>
                         <a href={gatherExplorerUrl(gatherResult.network, gatherResult.txid)} target="_blank" rel="noreferrer">View transaction <code>{gatherResult.txid}</code></a>
                       </div>
                     )}
                     {gatherResult?.status === "error" && (
                       <div className="gather-result gather-error" role="alert">
-                        <b>We couldn't gather your BCH</b>
+                        <b>Couldn't combine your BCH. Try again.</b>
                         <span>{gatherResult.message}</span>
-                        <button type="button" className="secondary-button" onClick={() => { setGatherResult(null); setGatherPlan(null); }}>Try again</button>
+                        <div className="gather-error-actions"><button type="button" className="secondary-button" onClick={() => { setGatherResult(null); setGatherPlan(null); }}>Try again</button><button type="button" aria-label="Dismiss error" onClick={() => setGatherResult(null)}><X size={14} /></button></div>
                       </div>
                     )}
-                    {network === "mainnet" && }
+
                   </section>
                 </>}
                 <button className="secondary-button" disabled={discoveryBusy} onClick={() => setDiscoveryRun((run) => run + 1)}>{discoveryBusy ? "Checking…" : "Check again"}</button>
                 {discoveryMessage && <p className="wallet-match-message" role="status">{discoveryMessage}</p>}
-                <button className="secondary-button" onClick={() => void walletClient?.disconnect()}>Disconnect wallet</button>
+                <button className="secondary-button" onClick={() => void walletClient?.disconnect()}>Disconnect</button>
               </div>
             ) : (
               <div className="wallet-detail-body">
@@ -2379,8 +2386,7 @@ export default function App() {
                       else if (walletClient.state === "disconnected") walletClient.startFreshPairing();
                     }
                   }}>Reconnect</button>
-                  <button className="secondary-button" onClick={() => walletClient?.startFreshPairing()}>Start fresh pairing</button>
-                  <button className="secondary-button" onClick={() => setShowWallet(false)}>Close</button>
+                    <button className="secondary-button" onClick={() => setShowWallet(false)}>Close</button>
                 </div>
               </div>
             )}
