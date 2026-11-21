@@ -506,6 +506,7 @@ export default function App() {
   const [pusdPlanBusy, setPusdPlanBusy] = useState(false);
   const [pusdSignatureBusy, setPusdSignatureBusy] = useState(false);
   const [pusdSignatureMessage, setPusdSignatureMessage] = useState("");
+  const [pusdSignatureError, setPusdSignatureError] = useState("");
 
   const walletAddress = walletClient?.address(network) ?? null;
   const connected = walletView.state === "connected";
@@ -1148,23 +1149,28 @@ export default function App() {
         });
 
         if (network === "mainnet") {
-          const allMainnetAddresses = client.listWalletAddresses("mainnet", 49, 20);
-          const balances: Awaited<ReturnType<typeof fetchPusdWalletBalance>>[] = [];
-          for (let offset = 0; offset < allMainnetAddresses.length; offset += 4) {
-            const batch = allMainnetAddresses.slice(offset, offset + 4);
-            const batchResults = await Promise.all(batch.map((entry) => fetchPusdWalletBalance(entry.address)));
-            balances.push(...batchResults);
-            if (cancelled || client.state !== "connected" ||
-                client.getSessionIdentity() !== identity || client.addressSetRevision !== revision) return;
-          }
-          const uniqueUtxos = new Map<string, bigint>();
-          for (const result of balances) {
-            for (const utxo of result.utxos) {
-              uniqueUtxos.set(utxo.txid + ":" + utxo.vout, utxo.token?.amount ?? 0n);
+          try {
+            const allMainnetAddresses = client.listWalletAddresses("mainnet", 49, 20);
+            const balances: Awaited<ReturnType<typeof fetchPusdWalletBalance>>[] = [];
+            for (let offset = 0; offset < allMainnetAddresses.length; offset += 4) {
+              const batch = allMainnetAddresses.slice(offset, offset + 4);
+              const batchResults = await Promise.all(batch.map((entry) => fetchPusdWalletBalance(entry.address)));
+              balances.push(...batchResults);
+              if (cancelled || client.state !== "connected" ||
+                  client.getSessionIdentity() !== identity || client.addressSetRevision !== revision) return;
             }
+            const uniqueUtxos = new Map<string, bigint>();
+            for (const result of balances) {
+              for (const utxo of result.utxos) {
+                uniqueUtxos.set(utxo.txid + ":" + utxo.vout, utxo.token?.amount ?? 0n);
+              }
+            }
+            setWalletPusdTotal([...uniqueUtxos.values()].reduce((sum, amount) => sum + amount, 0n));
+            setWalletPusdError("");
+          } catch (cause) {
+            if (cancelled) return;
+            setWalletPusdError(cause instanceof Error ? cause.message : "PUSD balance unavailable.");
           }
-          setWalletPusdTotal([...uniqueUtxos.values()].reduce((sum, amount) => sum + amount, 0n));
-          setWalletPusdError("");
         } else {
           setWalletPusdTotal(null);
           setWalletPusdError("");
@@ -1337,6 +1343,7 @@ export default function App() {
 
   const verifyPusdTransferSignature = async () => {
     setPusdSignatureMessage("");
+    setPusdSignatureError("");
     if (!walletClient || walletClient.state !== "connected" || !connected) {
       setPusdSignatureMessage("Connect Selene first.");
       return;
@@ -1411,7 +1418,7 @@ export default function App() {
         detail: "Refreshed " + freshBalance.providerConfidence + " wallet coins immediately before checking the signature.",
       }));
     } catch (cause) {
-      setPusdSignatureMessage(cause instanceof Error ? cause.message : "PUSD signature verification failed. Nothing was broadcast.");
+      setPusdSignatureError(cause instanceof Error ? cause.message : "PUSD signature verification failed. Nothing was broadcast.");
     } finally {
       setPusdSignatureBusy(false);
     }
@@ -2340,6 +2347,9 @@ export default function App() {
                   {pusdSignatureBusy ? "Test signing…" : "Test sign · no money sent"}
                 </button>
                 {pusdSignatureMessage && <p className="classic-notice" role="status">{pusdSignatureMessage}</p>}
+                {pusdSignatureError && <p className="classic-error" role="alert">{pusdSignatureError}
+                  <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setPusdSignatureError("")}>×</button>
+                </p>}
                 <button type="button" className="primary-button" disabled={!PUSD_MAINNET_SPENDING_ENABLED || !pusdTransferPlan}
                   title="PUSD Mainnet spending is not yet approved by the security release gate">
                   Send PUSD · Mainnet locked
@@ -2378,6 +2388,26 @@ export default function App() {
             </div>
             {connected ? (
               <div className="wallet-detail-body">
+                <section className="wallet-modal-balance" aria-label="Wallet balances">
+                  <div>
+                    <span className="section-kicker">{NETWORKS[network].label.toUpperCase()}</span>
+                    <strong>{walletBchBalanceSummary.balanceLabel}</strong>
+                    <small>Bitcoin Cash</small>
+                  </div>
+                  <div>
+                    <strong>{network === "mainnet" && walletPusdTotal !== null
+                      ? formatAssetAmount("PUSD", walletPusdTotal) + " PUSD"
+                      : network !== "mainnet" ? "Mainnet only" : "Checking…"}</strong>
+                    <small>ParyonUSD</small>
+                  </div>
+                  <div className="wallet-modal-balance-footer">
+                    <small>{walletBalanceUpdatedAt ? "Updated " + formatUpdatedAgo(walletBalanceUpdatedAt) : "Not checked yet"}</small>
+                    <button type="button" className="text-action" disabled={walletBalanceRefreshing}
+                      onClick={() => setWalletBalanceRefreshRun((value) => value + 1)}>
+                      <RefreshCw size={14} /> {walletBalanceRefreshing ? "Refreshing…" : "Refresh"}
+                    </button>
+                  </div>
+                </section>
                 <div className="wallet-address-card">
                   <span>{NETWORKS[network].label}</span>
                   {walletAddress ? (
