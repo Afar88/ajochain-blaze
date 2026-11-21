@@ -192,6 +192,12 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
   const [maxFee, setMaxFee] = useState("20000");
   const [drafts, setDrafts] = useState<Draft[]>(readDrafts);
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const [testSignChecked, setTestSignChecked] = useState<"genesis" | "action" | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -464,6 +470,9 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
           "PUSD Mainnet " + signingPlan.operation + " transaction sent. Transaction: " +
           relayed.txid + " (relay: " + relayed.relayStatus + "). It is not confirmed yet; refresh the circle state after it confirms.";
         setNotice(sent);
+        if (signingPlan.operation === "deposit" || signingPlan.operation === "payout") {
+          window.dispatchEvent(new Event("ajochain:wallet-balances-refresh"));
+        }
         if (target === "genesis") {
           if (!/^[0-9a-f]{64}$/i.test(relayed.txid)) {
             throw new Error("Selene approved the transaction, but the broadcast response did not include a valid transaction ID. The circle was not added to My circles.");
