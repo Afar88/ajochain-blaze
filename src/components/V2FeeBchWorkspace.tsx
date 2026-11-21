@@ -102,6 +102,12 @@ export default function V2FeeBchWorkspace({
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  useEffect(() => {
     onBusyChange?.(busy);
     return () => onBusyChange?.(false);
   }, [busy, onBusyChange]);
@@ -628,7 +634,9 @@ export default function V2FeeBchWorkspace({
       </div>}
       {busy && <p className="classic-feedback" role="status">Preparing or verifying a Chipnet transaction…</p>}
       {notice && <p className="classic-feedback" role="status">{notice}</p>}
-      {error && <p className="classic-error" role="alert">{error}</p>}
+      {error && <p className="classic-error" role="alert">{error}
+        <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setError("")}>×</button>
+      </p>}
     </section>
   );
 }
