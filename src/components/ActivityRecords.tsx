@@ -14,6 +14,9 @@ import { formatBch } from "../core/network";
 const V2_STORAGE_KEY = "ajochain-blaze:v2-fee-circles:v1";
 const BCH_MAINNET_ACTIVE_KEY = "ajochain-blaze:bch-mainnet-circle-active:v1";
 const PUSD_ACTIVE_KEY = "ajochain-blaze:pusd-mainnet-circle-active:v1";
+const BCH_MAINNET_CIRCLES_STORAGE_KEY = "ajochain-blaze:bch-mainnet-circles-deployed:v1";
+const PUSD_MAINNET_CIRCLES_STORAGE_KEY = "ajochain-blaze:pusd-mainnet-circles-deployed:v1";
+type CircleStorage = Pick<Storage, "getItem">;
 
 type CircleRef =
   | { id: string; kind: "classic"; name: string; network: "chipnet" | "mainnet"; params: ReturnType<typeof decodeClassicCircle> }
@@ -48,9 +51,9 @@ function errorText(cause: unknown) {
   return cause instanceof Error ? cause.message : "The chain record could not be read.";
 }
 
-function readStoredV2Circles(): CircleRef[] {
+function readStoredV2Circles(storage: CircleStorage = window.localStorage): CircleRef[] {
   try {
-    const raw: unknown = JSON.parse(window.localStorage.getItem(V2_STORAGE_KEY) || "[]");
+    const raw: unknown = JSON.parse(storage.getItem(V2_STORAGE_KEY) || "[]");
     if (!Array.isArray(raw)) return [];
     return raw.flatMap((item) => {
       if (!item || typeof item !== "object" || typeof item.encoded !== "string") return [];
@@ -68,9 +71,9 @@ function readStoredV2Circles(): CircleRef[] {
   } catch { return []; }
 }
 
-function readActiveBchMainnet(): CircleRef[] {
+function readActiveBchMainnet(storage: CircleStorage = window.localStorage): CircleRef[] {
   try {
-    const raw: unknown = JSON.parse(window.localStorage.getItem(BCH_MAINNET_ACTIVE_KEY) || "null");
+    const raw: unknown = JSON.parse(storage.getItem(BCH_MAINNET_ACTIVE_KEY) || "null");
     if (!raw || typeof raw !== "object") return [];
     const item = raw as Record<string, unknown>;
     if (typeof item.contribution !== "string" || !/^[0-9]+$/.test(item.contribution) ||
@@ -92,9 +95,9 @@ function readActiveBchMainnet(): CircleRef[] {
   } catch { return []; }
 }
 
-function readActivePusd(): CircleRef[] {
+function readActivePusd(storage: CircleStorage = window.localStorage): CircleRef[] {
   try {
-    const raw: unknown = JSON.parse(window.localStorage.getItem(PUSD_ACTIVE_KEY) || "null");
+    const raw: unknown = JSON.parse(storage.getItem(PUSD_ACTIVE_KEY) || "null");
     if (!raw || typeof raw !== "object") return [];
     const item = raw as Record<string, unknown>;
     if (typeof item.contribution !== "string" || !/^[0-9]+$/.test(item.contribution) ||
@@ -115,9 +118,73 @@ function readActivePusd(): CircleRef[] {
   } catch { return []; }
 }
 
-function loadCircleRefs(): CircleRef[] {
+
+
+function readStoredMainnetBchCircles(storage: CircleStorage): CircleRef[] {
+  try {
+    const raw: unknown = JSON.parse(storage.getItem(BCH_MAINNET_CIRCLES_STORAGE_KEY) || "[]");
+    if (!Array.isArray(raw)) return [];
+    return raw.flatMap((encoded) => {
+      if (typeof encoded !== "string") return [];
+      try {
+        const params = decodeV2FeeCircle(encoded);
+        if (params.network !== "mainnet") return [];
+        return [{
+          id: "fee:mainnet:" + params.stateCategory,
+          kind: "fee" as const,
+          name: params.name,
+          network: "mainnet" as const,
+          params,
+        }];
+      } catch { return []; }
+    });
+  } catch { return []; }
+}
+
+function readStoredMainnetPusdCircles(storage: CircleStorage): CircleRef[] {
+  try {
+    const raw: unknown = JSON.parse(storage.getItem(PUSD_MAINNET_CIRCLES_STORAGE_KEY) || "[]");
+    if (!Array.isArray(raw)) return [];
+    return raw.flatMap((encoded) => {
+      if (typeof encoded !== "string") return [];
+      try {
+        const item: unknown = JSON.parse(encoded);
+        if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+        const value = item as Record<string, unknown>;
+        if (value.version !== 3 || value.network !== "mainnet" ||
+            typeof value.name !== "string" || !Array.isArray(value.members) ||
+            !value.members.every((member) => typeof member === "string") ||
+            typeof value.contribution !== "string" || !/^\\d+$/.test(value.contribution) ||
+            typeof value.maxFee !== "string" || !/^\\d+$/.test(value.maxFee) ||
+            typeof value.stateCategory !== "string" || typeof value.initiator !== "string" ||
+            typeof value.treasury !== "string") return [];
+        const params: PusdMainnetCircleParams = {
+          version: 3,
+          network: "mainnet",
+          name: value.name,
+          members: value.members as string[],
+          contribution: BigInt(value.contribution),
+          maxFee: BigInt(value.maxFee),
+          stateCategory: value.stateCategory,
+          initiator: value.initiator,
+          treasury: value.treasury,
+        };
+        validatePusdMainnetCircleParams(params);
+        return [{
+          id: "pusd:mainnet:" + params.stateCategory.toLowerCase(),
+          kind: "pusd" as const,
+          name: params.name,
+          network: "mainnet" as const,
+          params,
+        }];
+      } catch { return []; }
+    });
+  } catch { return []; }
+}
+
+export function loadCircleRefs(storage: CircleStorage = window.localStorage): CircleRef[] {
   const refs: CircleRef[] = [];
-  for (const saved of loadSavedClassicCircles(window.localStorage)) {
+  for (const saved of loadSavedClassicCircles(storage)) {
     try {
       const params = decodeClassicCircle(saved.encoded);
       refs.push({
@@ -129,7 +196,13 @@ function loadCircleRefs(): CircleRef[] {
       });
     } catch { /* Invalid local bookmarks are ignored; chain state is never inferred. */ }
   }
-  refs.push(...readStoredV2Circles(), ...readActiveBchMainnet(), ...readActivePusd());
+  refs.push(
+    ...readStoredV2Circles(storage),
+    ...readStoredMainnetBchCircles(storage),
+    ...readStoredMainnetPusdCircles(storage),
+    ...readActiveBchMainnet(storage),
+    ...readActivePusd(storage),
+  );
   const unique = new Map(refs.map((ref) => [ref.id, ref]));
   return [...unique.values()].slice(0, 30);
 }
@@ -273,7 +346,10 @@ export default function ActivityRecords({ network, compact = false }: { network:
     setRefreshError("");
     const current = loadCircleRefs().filter((ref) => ref.network === network);
     setCircles(current);
-    setResults(current.map((ref) => ({ ref, status: "loading" })));
+    // Keep previously found state visible while updated chain reads are running.
+    setResults((previous) => current.map((ref) =>
+      previous.find((entry) => entry.ref.id === ref.id) ?? { ref, status: "loading" },
+    ));
     try {
       const latest = await Promise.all(current.map(readOneCircle));
       setResults(latest);
@@ -286,6 +362,16 @@ export default function ActivityRecords({ network, compact = false }: { network:
   }, [network]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  useEffect(() => {
+    const refreshDiscoveredCircles = () => { void refresh(); };
+    window.addEventListener("ajochain:bch-mainnet-circles-changed", refreshDiscoveredCircles);
+    window.addEventListener("ajochain:saved-circles-changed", refreshDiscoveredCircles);
+    return () => {
+      window.removeEventListener("ajochain:bch-mainnet-circles-changed", refreshDiscoveredCircles);
+      window.removeEventListener("ajochain:saved-circles-changed", refreshDiscoveredCircles);
+    };
+  }, [refresh]);
 
   const transactionCount = results.reduce((sum, item) =>
     sum + (item.history?.records.length ?? 0), 0,
