@@ -59,6 +59,7 @@ const BCH_MAINNET_CIRCLES_STORAGE_KEY = "ajochain-blaze:bch-mainnet-circles-depl
 const PUSD_MAINNET_CIRCLES_STORAGE_KEY = "ajochain-blaze:pusd-mainnet-circles-deployed:v1";
 const CLASSIC_CIRCLES_STORAGE_KEY = "ajochain-blaze:classic-circles:v1";
 const V2_MENU_STORAGE_KEY = "ajochain-blaze:v2-fee-circles:v1";
+const WALLET_SELECTED_RECEIVE_INDEX_KEY = "ajochain:wallet-selected-receive-index:v1";
 
 function decodeMenuCirclePayload(encoded: string): Record<string, unknown> | null {
   try {
@@ -425,7 +426,7 @@ const pageLabels: Record<Page, string> = {
   "create-circle": "Create a circle",
   "my-circles": "My circles",
   "circle-detail": "Circle details",
-  assets: "Wallet",
+  assets: "Wallet & assets",
   activity: "Activity",
 };
 
@@ -1100,7 +1101,12 @@ export default function App() {
         setReceiveAddressChoices(choices);
 
         if (network === "mainnet" && !client.isReceiveAddressConfirmed("mainnet")) {
-          const defaultIndex = getDefaultWalletReceiveIndex(choices);
+          let preferredIndex: number | null = null;
+          try {
+            const storedIndex = window.localStorage.getItem(WALLET_SELECTED_RECEIVE_INDEX_KEY + ":mainnet");
+            if (storedIndex !== null && /^\d+$/.test(storedIndex)) preferredIndex = Number(storedIndex);
+          } catch { /* use the highest-balance receive address when storage is unavailable */ }
+          const defaultIndex = getDefaultWalletReceiveIndex(choices, preferredIndex);
           if (defaultIndex !== null) client.selectReceiveAddressIndex(defaultIndex, "mainnet");
         }
         setReceiveAddressPickerExpanded(false);
@@ -1954,7 +1960,7 @@ export default function App() {
                   <Users size={17} /><span>My circles</span>{(page === "my-circles" || page === "circle-detail") && <Check size={15} />}
                 </button>
                 <button className={page === "assets" ? "dropdown-item active" : "dropdown-item"} onClick={() => navigate("assets")}>
-                  <Wallet size={17} /><span>Wallet</span>{page === "assets" && <Check size={15} />}
+                  <Wallet size={17} /><span>Wallet &amp; assets</span>{page === "assets" && <Check size={15} />}
                 </button>
                 <button className={page === "activity" ? "dropdown-item active" : "dropdown-item"} onClick={() => navigate("activity")}>
                   <Activity size={17} /><span>Activity & records</span>{page === "activity" && <Check size={15} />}
@@ -2002,7 +2008,7 @@ export default function App() {
               <div className="dropdown-divider" />
               <button type="button" className="dropdown-wallet" onClick={openWallet}>
                 <span className="dropdown-wallet-icon"><Wallet size={17} /></span>
-                <span><b>{connected ? walletView.walletName ?? "Wallet connected" : "Connect wallet"}</b><small>{connected ? shortAddress(walletAddress) : walletView.state === "reconnecting" ? "Restoring Selene session…" : "WizardConnect · Selene"}</small></span>
+                <span><b>{connected ? walletView.walletName ?? "Wallet connected" : "Connect wallet"}</b><small>{connected ? shortAddress(walletAddress) : walletView.state === "reconnecting" ? "Reconnecting…" : "Selene wallet"}</small></span>
                 <ArrowRight size={16} />
               </button>
             </section>
@@ -2330,6 +2336,7 @@ export default function App() {
           else if (walletClient.state === "idle") walletClient.connect();
         }}>Reconnect</button>
         <button onClick={() => walletClient?.startFreshPairing()}>Fresh pairing</button>
+        <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setWalletView((view) => ({ ...view, error: null }))}>×</button>
       </div></div>}
 
       {showWallet && (
@@ -2367,12 +2374,12 @@ export default function App() {
                     <img className="wallet-qr" src={walletAddressQrDataUrl} alt="Wallet address QR code" />}
                   {network === "mainnet" && <small>{walletClient?.isReceiveAddressConfirmed("mainnet")
                     ? "Address confirmed ✓"
-                    : "Pick the address shown in Selene."}</small>}
+                    : "Address not confirmed yet."}</small>}
                 </div>
 
                 {network === "mainnet" && <section className="receive-address-picker" aria-labelledby="receive-address-picker-title">
                   <div className="receive-address-picker-heading">
-                    <div><b id="receive-address-picker-title">Wallet addresses</b></div>
+                    <div><b id="receive-address-picker-title">Wallet addresses</b><small>Pick the address shown in Selene.</small></div>
                     {receiveAddressScanLoading && <span className="receive-address-scan-state">Updating…</span>}
                   </div>
                   {receiveAddressScanError && <p className="classic-error" role="alert">
@@ -2410,6 +2417,7 @@ export default function App() {
                                   try {
                                     const chosen = walletClient?.selectReceiveAddressIndex(choice.index, "mainnet");
                                     if (!chosen) throw new Error("Reconnect Selene first.");
+                                    try { window.localStorage.setItem(WALLET_SELECTED_RECEIVE_INDEX_KEY + ":mainnet", String(choice.index)); } catch { /* choice remains active for this connection */ }
                                     setGatherPlan(null);
                                     setGatherResult(null);
                                     setBchBalanceScan(null);
