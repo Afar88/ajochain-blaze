@@ -692,7 +692,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         <div>
           <span className="section-kicker">PARYONUSD · DOLLAR TOKEN</span>
           <h2 id="pusd-mainnet-title">Create a PUSD Mainnet circle</h2>
-          <p>PUSD stays in each member’s control, with clear payout rules, a 1% treasury fee and cancellation before payout.</p>
+          <p>PUSD stays in each member's control. Fees show before sending.</p>
         </div>
         <span className="classic-network mainnet">Bitcoin Cash Mainnet</span>
       </div>
@@ -703,7 +703,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       </div>
 
       {network !== "mainnet" && (
-        <p className="classic-error" role="status">Switch the app network to Bitcoin Cash Mainnet to prepare a PUSD circle. PUSD is not enabled on Chipnet.</p>
+        <p className="classic-error" role="status">Switch to Mainnet to create a PUSD circle.</p>
       )}
 
       <form className="pusd-mainnet-form" onSubmit={saveDraft}>
@@ -724,17 +724,17 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
               void pendingCopy.then(() => setNotice("Member 1 address copied."))
                 .catch(() => setNotice("Could not copy the address. Select it and copy manually."));
             }}><Copy size={15} /> Copy address</button>
-            <small>{wallet.isReceiveAddressConfirmed("mainnet") ? "Selected from your connected Selene receive addresses" : "Pick an address first."}</small>
+            <small>{wallet.isReceiveAddressConfirmed("mainnet") ? "Address confirmed ✓" : "Pick an address first."}</small>
           </> : "Connect Selene and choose your receive address. It will be Member 1 automatically."}
         </div>
         <label>Other members' Mainnet BCH addresses · one per line
           <textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder={"bitcoincash:…\nbitcoincash:…"} required />
-          <small>Add 1–4 other unique token-aware Bitcoin Cash Mainnet addresses. Your selected Selene address is Member 1 and receives your circle payout when it is your turn.</small>
+          <small>Add 1–4 PUSD member addresses. Your wallet is Member 1.</small>
         </label>
         {selectedAddressPendingOnly && <p className="receive-address-pending-warning" role="alert">Wait for confirmation before creating a circle.</p>}
         <label>Maximum BCH miner fee per action (satoshis)
           <input value={maxFee} onChange={(event) => setMaxFee(event.target.value)} inputMode="numeric" required />
-          <small>Network fees and the small BCH amount needed to deliver PUSD are separate from PUSD contributions.</small>
+          <small>Use BCH separately to pay PUSD network fees.</small>
         </label>
 
         <div className="pusd-mainnet-treasury">
@@ -764,7 +764,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       {preparedPlan && genesisSigningPlan && (
         <div ref={creationSummaryRef} className="pusd-mainnet-breakdown mainnet-create-summary" role="status">
           <b>Review your circle</b>
-          <p className="receive-address-payout-note">Payouts for this circle will go to {genesisSigningPlan.circle.initiator.slice(0, 10)}…{genesisSigningPlan.circle.initiator.slice(-6)}. It stays in your Selene wallet.</p>
+          <p className="receive-address-payout-note">Payouts go to the address shown below.</p>
           {selectedAddressPendingOnly && <p className="receive-address-pending-warning" role="alert">Wait for confirmation before creating a circle.</p>}
           <div><span>Member 1 · payout address</span><strong><code>{genesisSigningPlan.circle.members[0]}</code></strong></div>
           <button type="button" className="primary-button mainnet-create-primary" disabled={lifecycleBusy || busy || !walletConnected || selectedAddressPendingOnly}
@@ -784,7 +784,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
           </details>
           <TestSignControl planCreatedAt={genesisSigningPlan?.createdAt ?? null} disabled={lifecycleBusy || !walletConnected}
             checked={testSignChecked === "genesis"} onTest={() => void verifyMainnetSignature("genesis")} />
-          <small>Nothing has been created yet. The circle is saved only after the Mainnet broadcast returns a transaction ID.</small>
+          <small>Not created yet. Saved after Mainnet sends successfully.</small>
         </div>
       )}
       </>}
@@ -853,8 +853,8 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
               <div><span>Estimated BCH network fee</span><strong>{actionPreview.feeEstimate} sats</strong></div>
               <details className="technical-details">
                 <summary>Technical details</summary>
-                <p>Estimated transaction size: {actionPreview.size} bytes. Wallet items to approve: {actionPreview.walletInputCount}.</p>
-                <p>Payments are checked before they are sent. Check circle status again before each new action.</p>
+                <details className="technical-details"><summary>Details</summary><p>Estimated size: {actionPreview.size} bytes. Approvals needed: {actionPreview.walletInputCount}.</p></details>
+                <p>Payments are checked before sending. Refresh status after.</p>
               </details>
               <TestSignControl planCreatedAt={actionSigningPlan?.createdAt ?? null} disabled={lifecycleBusy || !walletConnected}
                 checked={testSignChecked === "action"} onTest={() => void verifyMainnetSignature("action")} />
@@ -875,7 +875,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
               () => setNotice("Invite link: " + link),
             );
           }}>Copy invite</button>
-          <small>Members open this link to load the circle. It contains the circle parameters, not keys.</small>
+          <small>Share this link with members to join.</small>
         </div>
       )}
 
