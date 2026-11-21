@@ -78,7 +78,7 @@ describe("phone-width layout guardrails", () => {
     // The document/root containers constrain layout but do not hide overflow.
     expect(phoneRules).toContain("html,");
     expect(phoneRules).toContain("min-width: 0;");
-    expect(phoneRules).not.toMatch(/(?:html|body|#root|\\.app-shell|\\.compact-app)[^}]*overflow-x:\\s*(?:clip|hidden)/s);
+    expect(stylesSource).not.toMatch(/(?:html|body|#root|\\.app-shell|\\.compact-app)[^{}]*\\{[^{}]*overflow-x\\s*:\\s*(?:clip|hidden)/s);
 
     // Text previously ellipsized in status cards and the wallet dropdown is allowed to wrap.
     for (const selector of [".overview-status-card b", ".overview-status-card small", ".dropdown-wallet small"]) {
