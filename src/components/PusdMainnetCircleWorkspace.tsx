@@ -289,7 +289,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     setError("");
     try {
       if (network !== "mainnet") {
-        throw new Error("PUSD circles use the real ParyonUSD Mainnet category only. Switch the app to Mainnet.");
+        throw new Error("PUSD circles are Mainnet-only. Switch to Mainnet.");
       }
       if (!name.trim() || name.trim().length > 60) {
         throw new Error("Enter a circle name between 1 and 60 characters.");
@@ -346,7 +346,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       return null;
     }
     if (!walletConnected || wallet.state !== "connected") {
-      setError("Connect Selene in Selene before preparing a Mainnet creation plan.");
+      setError("Connect Selene to continue.");
       return null;
     }
     const initiatorAddress = wallet.address("mainnet");
@@ -405,13 +405,13 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     const signingPlan = signingPlanOverride ?? (target === "genesis" ? genesisSigningPlan : actionSigningPlan);
     if (!signingPlan) return;
     if (network !== "mainnet" || !walletConnected || wallet.state !== "connected") {
-      setError("Reconnect Selene on BCH Mainnet before starting PUSD signature verification.");
+      setError("Reconnect Selene on Mainnet first.");
       return;
     }
     if (Date.now() - signingPlan.createdAt > 60_000) {
       if (target === "genesis") setGenesisSigningPlan(null);
       else setActionSigningPlan(null);
-      setError("This signed-transaction review plan is older than 60 seconds. Refresh the circle state and prepare a new plan before asking Selene to sign.");
+      setError("This preview expired. Refresh it before signing.");
       return;
     }
     if (signingPlan.operation === "genesis") {
@@ -424,7 +424,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
           selectedAddress !== signingPlan.circle.initiator || addressKey(signingPlan.circle.members[0]) !== addressKey(selectedAddress)) {
         setGenesisSigningPlan(null);
         setPreparedPlan(null);
-        setError("The selected Selene receive address changed after the PUSD preview. Choose it again and prepare a fresh circle.");
+        setError("Your wallet address changed. Pick it again and review your circle.");
         return;
       }
     }
