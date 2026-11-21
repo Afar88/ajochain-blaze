@@ -560,12 +560,15 @@ export default function V2FeeBchWorkspace({
                 : "Connect your Selene wallet and it will be registered automatically."}
             </div>
             <label>Other members' Chipnet BCH addresses · one per line<textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder="bchtest:…\nbchtest:…" required /></label>
-            <p className="field-hint">The circle setup permanently links each member BCH address to this circle on the public Chipnet blockchain. Each member receives a small marker; the settings are public, but the circle name is not. Only add addresses whose owners agree to this public association.</p>
+            <details className="technical-details">
+              <summary>Details</summary>
+              <p>The circle setup links each member's BCH address to this circle on the public Chipnet blockchain. Each member receives a small marker. The settings and addresses are public, but the circle name is not. Only add addresses with their owners' agreement.</p>
+            </details>
             <button className="primary-button" type="submit" disabled={busy || network !== "chipnet" || !walletConnected}>
               {busy ? "Creating circle…" : network !== "chipnet" ? "Switch to Chipnet" : !walletConnected ? "Connect wallet first" : "Create fee circle"}
             </button>
           </form>
-          <small className="field-hint">Add 1–4 other Chipnet addresses in payout order. Members fund each round; non-final recipients hold one next contribution.</small>
+          <small className="field-hint">Add 1–4 other Chipnet addresses in payout order.</small>
         </div>
       </div>
       <form className="classic-restore-form circle-restore-form" onSubmit={restore}>
@@ -616,13 +619,13 @@ export default function V2FeeBchWorkspace({
         </> : <p className="classic-empty">Checking this circle. Refresh if it hasn't updated.</p>}
         <div className="member-payment-status">
           {memberIndex >= 0
-            ? <p><b>Your wallet is registered as Member {memberIndex + 1}.</b> You can pay your own share below.</p>
+            ? <p><b>You're Member {memberIndex + 1}.</b> Pay your share below.</p>
             : walletConnected
-              ? <><p><b>This wallet is not registered in this circle.</b> Connect the Selene account that owns one of the member addresses, or create a new circle with the correct member list.</p><code>{wallet.address("chipnet") ?? "Address unavailable"}</code></>
+              ? <><p><b>This wallet isn't a member.</b> Connect the registered wallet.</p><code>{wallet.address("chipnet") ?? "Address unavailable"}</code></>
               : <p>Connect the wallet registered for your share.</p>}
         </div>
         <label className="classic-deposit-field">Your BCH contribution deposit<input value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} inputMode="decimal" /></label>
-        {memberIndex >= 0 && snapshot?.memberAccounting[memberIndex] && <p className="field-hint">Your receipt holds {formatBch(snapshot.memberAccounting[memberIndex].currentCredit)}. Amount needed for your next contribution reserve or current round: <b>{formatBch(snapshot.memberAccounting[memberIndex].shortfallForNextPayout)}</b>. <button type="button" className="fee-exact-amount-button" onClick={() => setDepositAmount(bchInputAmount(snapshot.memberAccounting[memberIndex].shortfallForNextPayout))}>Use exact amount due</button></p>}
+        {memberIndex >= 0 && snapshot?.memberAccounting[memberIndex] && <p className="field-hint">Your balance: {formatBch(snapshot.memberAccounting[memberIndex].currentCredit)}. Amount due: <b>{formatBch(snapshot.memberAccounting[memberIndex].shortfallForNextPayout)}</b>. <button type="button" className="fee-exact-amount-button" onClick={() => setDepositAmount(bchInputAmount(snapshot.memberAccounting[memberIndex].shortfallForNextPayout))}>Use exact amount due</button></p>}
         <div className="classic-actions">
           <button type="button" className="secondary-button" disabled={busy} onClick={() => void refresh()}><RefreshCw size={14} /> Refresh</button>
           <button type="button" className="secondary-button" disabled={busy || memberIndex < 0 || network !== "chipnet" || Boolean(snapshot?.completed)} onClick={() => void deposit()}>
