@@ -1198,7 +1198,6 @@ export default function App() {
           setWalletPusdError("");
         }
         setWalletBalanceUpdatedAt(Date.now());
-        if (page === "assets") setPusdRefresh((value) => value + 1);
       } catch (cause) {
         if (!cancelled) {
           setReceiveAddressScanError(cause instanceof Error ? cause.message : "Your wallet balances couldn't be loaded.");
@@ -2305,6 +2304,7 @@ export default function App() {
                 <button type="button" className="secondary-button" onClick={() => {
                   if (!connected) { openWallet(); return; }
                   setWalletBalanceRefreshRun((value) => value + 1);
+                  if (network === "mainnet") setPusdRefresh((value) => value + 1);
                 }} disabled={!connected || walletBalanceRefreshing}>
                   <RefreshCw size={15} className={walletBalanceRefreshing ? "activity-spin" : ""} />
                   {walletBalanceRefreshing ? "Refreshing…" : "Refresh balances"}
@@ -2429,7 +2429,10 @@ export default function App() {
                   <div className="wallet-modal-balance-footer">
                     <small>{walletBalanceUpdatedAt ? "Updated " + formatUpdatedAgo(walletBalanceUpdatedAt) : "Not checked yet"}</small>
                     <button type="button" className="text-action" disabled={walletBalanceRefreshing}
-                      onClick={() => setWalletBalanceRefreshRun((value) => value + 1)}>
+                      onClick={() => {
+                        setWalletBalanceRefreshRun((value) => value + 1);
+                        if (network === "mainnet") setPusdRefresh((value) => value + 1);
+                      }}>
                       <RefreshCw size={14} /> {walletBalanceRefreshing ? "Refreshing…" : "Refresh"}
                     </button>
                   </div>
