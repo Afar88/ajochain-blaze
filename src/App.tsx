@@ -1410,6 +1410,57 @@ export default function App() {
     if (!walletClient || walletView.state !== "connected" || walletClient.state !== "connected") {
       return;
     }
+
+    const firstReceive = (targetNetwork: NetworkId) => {
+      const entries = walletClient.listWalletAddresses(targetNetwork, 49, 20);
+      return entries.find((entry) => entry.branch === "receive" && entry.index === 0)?.address
+        ?? entries.find((entry) => entry.branch === "receive")?.address
+        ?? "";
+    };
+    const chipnetCacheAddress = firstReceive("chipnet");
+    const mainnetCacheAddress = firstReceive("mainnet");
+    const chipnetCacheKey = chipnetCacheAddress ? getWalletDiscoveryCacheKey(chipnetCacheAddress, "chipnet") : "";
+    const mainnetCacheKey = mainnetCacheAddress ? getWalletDiscoveryCacheKey(mainnetCacheAddress, "mainnet") : "";
+    const chipnetCache = chipnetCacheKey ? readWalletDiscoveryCache(window.localStorage, chipnetCacheKey) : null;
+    const mainnetCache = mainnetCacheKey ? readWalletDiscoveryCache(window.localStorage, mainnetCacheKey) : null;
+    const forceDiscoveryRefresh = discoveryRun !== lastManualDiscoveryRunRef.current;
+    if (forceDiscoveryRefresh) lastManualDiscoveryRunRef.current = discoveryRun;
+
+    const restoreCachedCircles = (targetNetwork: NetworkId, encodedCircles: readonly string[]) => {
+      if (encodedCircles.length === 0) return;
+      if (targetNetwork === "chipnet") {
+        const stored: unknown = JSON.parse(window.localStorage.getItem(V2_MENU_STORAGE_KEY) || "[]");
+        const existing = Array.isArray(stored)
+          ? stored.filter((item): item is { encoded: string; savedAt?: number } =>
+              Boolean(item) && typeof item === "object" && typeof (item as { encoded?: unknown }).encoded === "string")
+          : [];
+        const seen = new Set(existing.map((item) => item.encoded));
+        const additions = encodedCircles.filter((encoded) => !seen.has(encoded))
+          .map((encoded) => ({ encoded, savedAt: 0 }));
+        if (additions.length) window.localStorage.setItem(V2_MENU_STORAGE_KEY, JSON.stringify([...existing, ...additions]));
+      } else {
+        const stored: unknown = JSON.parse(window.localStorage.getItem(BCH_MAINNET_CIRCLES_STORAGE_KEY) || "[]");
+        const existing = Array.isArray(stored) ? stored.filter((item): item is string => typeof item === "string") : [];
+        const seen = new Set(existing);
+        const additions = encodedCircles.filter((encoded) => !seen.has(encoded));
+        if (additions.length) window.localStorage.setItem(BCH_MAINNET_CIRCLES_STORAGE_KEY, JSON.stringify([...existing, ...additions]));
+      }
+    };
+    if (chipnetCache) restoreCachedCircles("chipnet", chipnetCache.circles);
+    if (mainnetCache) restoreCachedCircles("mainnet", mainnetCache.circles);
+    if (chipnetCache || mainnetCache) {
+      setMenuCircles(readSavedCircleMenuRecords());
+      window.dispatchEvent(new Event("ajochain:bch-mainnet-circles-changed"));
+      window.dispatchEvent(new Event("ajochain:saved-circles-changed"));
+    }
+
+    const skipChipnetScan = !forceDiscoveryRefresh && isWalletDiscoveryCacheFresh(chipnetCache);
+    const skipMainnetScan = !forceDiscoveryRefresh && isWalletDiscoveryCacheFresh(mainnetCache);
+    if (skipChipnetScan && skipMainnetScan) {
+      setDiscoveryMessage("");
+      return;
+    }
+
     if (discoveryMessageTimerRef.current !== null) {
       window.clearTimeout(discoveryMessageTimerRef.current);
       discoveryMessageTimerRef.current = null;
@@ -1473,8 +1524,9 @@ export default function App() {
 
         await settleIndependentTasks(
           async () => {
+            if (skipChipnetScan) return { foundCount: chipnetCache?.circles.length ?? 0 };
             const provider = await getClassicProvider("chipnet");
-            const addresses = walletClient.listWalletAddresses("chipnet").map((entry) => entry.address);
+            const addresses = walletClient.listWalletAddresses("chipnet", 49, 20).map((entry) => entry.address);
             if (addresses.length === 0) throw new Error("No Chipnet receive/change addresses are available from this wallet.");
             const found = await discoverV2FeeCircles(provider, addresses, undefined, "chipnet", {
               requestTimeoutMs: 10_000,
@@ -1482,6 +1534,8 @@ export default function App() {
               onTimeout: () => { chipnetTimedOut = true; },
             });
             if (run.cancelled) return { foundCount: 0 };
+            const encodedFound = found.map(encodeV2FeeCircleParams);
+            if (chipnetCacheKey) writeWalletDiscoveryCache(window.localStorage, chipnetCacheKey, encodedFound);
 
             const stored: unknown = JSON.parse(window.localStorage.getItem(V2_MENU_STORAGE_KEY) || "[]");
             const existing = dedupeSavedV2FeeCircleRecords(stored);
@@ -1499,7 +1553,8 @@ export default function App() {
             return { foundCount: found.length };
           },
           async () => {
-            const mainnetEntries = walletClient.listWalletAddresses("mainnet");
+            if (skipMainnetScan) return { foundCount: mainnetCache?.circles.length ?? 0 };
+            const mainnetEntries = walletClient.listWalletAddresses("mainnet", 49, 20);
             if (mainnetEntries.length === 0) throw new Error("No Mainnet receive/change addresses are available from this wallet.");
             // Prioritize Selene's selected address, then active addresses from the
             // captured activity snapshot. Other receive/change addresses remain eligible.
@@ -1535,6 +1590,9 @@ export default function App() {
               },
             );
             if (run.cancelled) return { foundCount: 0 };
+            if (mainnetCacheKey) {
+              writeWalletDiscoveryCache(window.localStorage, mainnetCacheKey, mainnetFound.map(encodeV2FeeCircleParams));
+            }
 
             const savedMainnet: unknown = JSON.parse(window.localStorage.getItem(BCH_MAINNET_CIRCLES_STORAGE_KEY) || "[]");
             const savedList = Array.isArray(savedMainnet) ? savedMainnet.filter((entry): entry is string => typeof entry === "string") : [];
