@@ -1294,7 +1294,7 @@ export default function App() {
         if (!active) return;
         setPusdView({
           status: "error", amount: 0n,
-          detail: cause instanceof Error ? cause.message : "PUSD balance verification failed.",
+          detail: cause instanceof Error ? cause.message : "PUSD balance check failed.",
           utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
         });
       });
