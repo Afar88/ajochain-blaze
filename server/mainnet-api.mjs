@@ -1374,7 +1374,7 @@ const allowedOrigins = new Set(
 );
 const rateLimit = new Map();
 const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX = 60;
+const RATE_LIMIT_MAX = 600;
 const BCH_MAINNET_PROJECT_TREASURY_ADDRESS = "bitcoincash:zqtu3577x0swy2gsra6km3033xcj8swg8s4rld9w7q";
 const BCH_MAINNET_PROJECT_TREASURY_SCRIPT = "76a91417c8d3de33e0e229101f756dc5f189b123c1c83c88ac";
 const BCH_MAINNET_CIRCLE_STATE_DUST = 1_000n;
