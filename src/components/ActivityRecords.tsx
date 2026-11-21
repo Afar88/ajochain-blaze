@@ -109,7 +109,7 @@ function readActivePusd(storage: CircleStorage = window.localStorage): CircleRef
     } as unknown as PusdMainnetCircleParams;
     validatePusdMainnetCircleParams(params);
     return [{
-      id: "pusd:mainnet:" + params.stateCategory,
+      id: "pusd:mainnet:" + params.stateCategory.toLowerCase(),
       kind: "pusd",
       name: params.name,
       network: "mainnet",
@@ -154,8 +154,8 @@ function readStoredMainnetPusdCircles(storage: CircleStorage): CircleRef[] {
         if (value.version !== 3 || value.network !== "mainnet" ||
             typeof value.name !== "string" || !Array.isArray(value.members) ||
             !value.members.every((member) => typeof member === "string") ||
-            typeof value.contribution !== "string" || !/^\\d+$/.test(value.contribution) ||
-            typeof value.maxFee !== "string" || !/^\\d+$/.test(value.maxFee) ||
+            typeof value.contribution !== "string" || !/^\d+$/.test(value.contribution) ||
+            typeof value.maxFee !== "string" || !/^\d+$/.test(value.maxFee) ||
             typeof value.stateCategory !== "string" || typeof value.initiator !== "string" ||
             typeof value.treasury !== "string") return [];
         const params: PusdMainnetCircleParams = {
