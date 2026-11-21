@@ -271,6 +271,20 @@ export function getDefaultWalletReceiveIndex(
   });
   return ranked[0]?.index ?? null;
 }
+
+export function totalUniquePusdWalletBalance(
+  addressBalances: readonly {
+    utxos: readonly { txid: string; vout: number; token?: { amount: bigint } | null }[];
+  }[],
+): bigint {
+  const unique = new Map<string, bigint>();
+  for (const balance of addressBalances) {
+    for (const utxo of balance.utxos) {
+      unique.set(utxo.txid.toLowerCase() + ":" + utxo.vout, utxo.token?.amount ?? 0n);
+    }
+  }
+  return [...unique.values()].reduce((total, amount) => total + amount, 0n);
+}
 type PreparedGather = {
   network: NetworkId;
   destinationAddress: string;
@@ -415,7 +429,7 @@ export function getWalletBchBalanceSummary(input: {
   return {
     balanceLabel: "Not checked yet",
     detailLabel: "BCH coins found in your connected wallet",
-    sourceLabel: "No wallet scan in this session",
+    sourceLabel: "No balance check yet",
   };
 }
 
@@ -1159,13 +1173,7 @@ export default function App() {
               if (cancelled || client.state !== "connected" ||
                   client.getSessionIdentity() !== identity || client.addressSetRevision !== revision) return;
             }
-            const uniqueUtxos = new Map<string, bigint>();
-            for (const result of balances) {
-              for (const utxo of result.utxos) {
-                uniqueUtxos.set(utxo.txid + ":" + utxo.vout, utxo.token?.amount ?? 0n);
-              }
-            }
-            setWalletPusdTotal([...uniqueUtxos.values()].reduce((sum, amount) => sum + amount, 0n));
+            setWalletPusdTotal(totalUniquePusdWalletBalance(balances));
             setWalletPusdError("");
           } catch (cause) {
             if (cancelled) return;
@@ -1254,7 +1262,7 @@ export default function App() {
     const address = walletClient.address("mainnet");
     if (!address) {
       setPusdView({
-        status: "idle", amount: 0n, detail: "Mainnet receive address is still being derived.",
+        status: "idle", amount: 0n, detail: "Mainnet address is still loading.",
         utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
       });
       return () => { active = false; };
@@ -1310,12 +1318,12 @@ export default function App() {
       return;
     }
     if (pusdView.status !== "ready") {
-      setPusdPlanError("A verified PUSD balance is required before planning a transfer.");
+      setPusdPlanError("Check your PUSD balance before planning a transfer.");
       return;
     }
     const senderAddress = walletClient?.address("mainnet");
     if (!senderAddress) {
-      setPusdPlanError("The connected wallet does not currently expose a verified Mainnet receive address.");
+      setPusdPlanError("The Mainnet wallet address isn't available right now.");
       return;
     }
     setPusdPlanBusy(true);
@@ -1349,7 +1357,7 @@ export default function App() {
       return;
     }
     if (network !== "mainnet" || pusdView.status !== "ready") {
-      setPusdSignatureMessage("A verified Mainnet PUSD balance is required before signature verification.");
+      setPusdSignatureMessage("Check your PUSD balance before testing the signature.");
       return;
     }
     if (!walletClient.isReceiveAddressConfirmed("mainnet")) {
@@ -1403,9 +1411,9 @@ export default function App() {
       }
       setPusdTransferPlan(freshPlan);
       setPusdSignatureMessage(
-        "Selene signed the freshly rebuilt PUSD transfer and AjoChain passed exact input/output comparison, CashTokens output comparison, 0x61 sighash checks and BCH 2026 VM verification (" +
+        "Signature checked (" +
         verified.decoded.inputs.length + " inputs, " + verified.decoded.outputs.length +
-        " outputs). The signed bytes were discarded. Nothing was broadcast and no PUSD payment occurred.",
+        " outputs). Nothing was sent and no PUSD payment occurred.",
       );
       setPusdView((current) => ({
         ...current,
@@ -2298,12 +2306,12 @@ export default function App() {
             </article>
             <p className="wallet-balance-explainer">Circle balances are shown on each circle page.</p>
             <details className="technical-details wallet-technical-details">
-              <summary>Technical details</summary>
+              <summary>Details</summary>
               <div className="asset-detail-row"><span>Selected network</span><b>{NETWORKS[network].label}</b></div>
               <div className="asset-detail-row"><span>Selene receive address</span><b>{connected && walletClient?.isReceiveAddressConfirmed(network) ? "Confirmed" : connected ? "Choose address" : "Wallet not connected"}</b></div>
               <div className="asset-detail-row"><span>BCH balance source</span><b>{walletBchBalanceSummary.sourceLabel}</b></div>
               <div className="asset-detail-row"><span>PUSD balance check</span><b>{pusdView.status === "ready" ? "Checked" : pusdView.status === "loading" ? "Checking" : pusdView.status === "error" ? "Unavailable" : "Not checked"}</b></div>
-              {pusdView.status === "ready" && <p>{pusdView.providerConfidence} providers · block {pusdView.tipHeight.toLocaleString()} · {pusdView.utxoCount} PUSD coins.</p>}
+              {pusdView.status === "ready" && <p>Latest check: block {pusdView.tipHeight.toLocaleString()} · {pusdView.utxoCount} PUSD coins.</p>}
               {pusdView.status !== "ready" && <p>{pusdView.detail}</p>}
               <div className="asset-detail-row"><span>PUSD transfer</span><b>{PUSD_MAINNET_SPENDING_ENABLED ? "Available after wallet checks" : "Locked pending release approval"}</b></div>
               <div className="asset-detail-row"><span>PUSD asset identifier</span><code>{PUSD_ASSET.categoryId}</code></div>
@@ -2339,7 +2347,7 @@ export default function App() {
                     <div><span>Estimated BCH miner fee</span><strong>{pusdTransferPlan.minerFeeSatoshis.toString()} sats</strong></div>
                     <div><span>BCH needed for delivery</span><strong>{pusdTransferPlan.recipientCarrierSatoshis.toString()} sats</strong></div>
                     <div><span>Coins selected</span><strong>{pusdTransferPlan.selectedUtxos.length}</strong></div>
-                    <details className="technical-details"><summary>Technical details</summary><p>Estimated size {pusdTransferPlan.estimatedSizeBytes} bytes · fee rate {pusdTransferPlan.feeRateSatoshisPerKb.toString()} sats/kB. The plan must be rebuilt from fresh chain data before any signature.</p></details>
+                    <details className="technical-details"><summary>Details</summary><p>Estimated size {pusdTransferPlan.estimatedSizeBytes} bytes · fee rate {pusdTransferPlan.feeRateSatoshisPerKb.toString()} sats/kB. The plan must be rebuilt from fresh chain data before any signature.</p></details>
                   </div>
                 )}
                 <button type="button" className="secondary-button" disabled={!pusdTransferPlan || pusdSignatureBusy || !connected || network !== "mainnet"}
