@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { plainErrorSummary } from "./error-copy";
 import { CashTokensGenesisUtxoMissingError, decodeClassicCircle, getClassicProvider, planClassicContribution, planClassicGenesis, planClassicGenesisSetup, planClassicPayout, readClassicCircle, type ClassicCircleParams, type ClassicCircleStatus } from "../core/classic-bch";
 import { assertBchTransactionBroadcastAllowed } from "../core/bch-mainnet-guard";
 import { buildClassicInviteRoute, loadSavedClassicCircles, restoreClassicCircleFromInvite, saveClassicCircle, type SavedClassicCircle } from "../core/circle-account";
@@ -511,9 +512,11 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
 
       {busy && <p className="classic-feedback" role="status">Working with the selected BCH network…</p>}
       {notice && <p className="classic-feedback" role="status">{notice}</p>}
-      {error && <p className="classic-error" role="alert">{error}
+      {error && <div className="classic-error" role="alert">
+        <span>{plainErrorSummary(error)}</span>
+        <details className="technical-details"><summary>Details</summary><p>{error}</p></details>
         <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setError("")}>×</button>
-      </p>}
+      </div>}
     </section>
   );
 }
