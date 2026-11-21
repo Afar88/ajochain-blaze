@@ -2812,6 +2812,15 @@ export default function App() {
                   <details className="technical-details"><summary>Details</summary><p>{walletView.error}</p></details>
                   <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setWalletView((view) => ({ ...view, error: null }))}>×</button>
                 </div>}
+                {(walletView.state === "connecting" || walletView.state === "reconnecting") && walletClient &&
+                  <div className="wallet-modal-actions wallet-attempt-actions">
+                    <button type="button" className="secondary-button" onClick={() => { walletClient.cancelConnectionAttempt(); }}>
+                      Cancel
+                    </button>
+                    <button type="button" className="secondary-button" onClick={() => { void walletClient.disconnect(); }}>
+                      Disconnect
+                    </button>
+                  </div>}
                 <div className="wallet-modal-actions">
                   <button className="primary-button" onClick={() => {
                     if (!walletClient) { openWallet(); return; }
