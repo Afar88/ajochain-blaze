@@ -1974,40 +1974,40 @@ export default function App() {
                 <div className="page-intro">
                   <span className="section-kicker">YOUR SAVINGS GROUPS</span>
                   <h1>Create a circle</h1>
-                  <p>Choose what your group wants to save in, set the amount and members, then review the circle setup before taking action.</p>
+                  <p>Choose a currency, amount and members. Review before sending.</p>
                 </div>
                 <section className="circle-choice-guide" aria-label="Choose a circle type">
                   <div className="circle-choice-heading">
                     <div><span className="section-kicker">CHOOSE YOUR CIRCLE</span><h2>What kind of circle do you want?</h2>
-                      <p>{network === "mainnet" ? "Choose BCH or PUSD. These are separate circles with their own member lists and payments." : "Try the circle options on Chipnet first."}</p></div>
+                      <p>{network === "mainnet" ? "Choose BCH or PUSD. Each has its own members." : "Try creating a circle on Chipnet first."}</p></div>
                   </div>
                   <div className="circle-choice-grid">
                     {network === "mainnet" && <>
                       <button type="button" className={circleWorkspace === "bch-mainnet" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-mainnet"} onClick={() => enterCreateCircleForm("bch-mainnet")}>
                         <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status">Mainnet</span></span>
                         <b>BCH savings circle</b>
-                        <span>For groups saving in Bitcoin Cash. Tracks member contributions and reserves the next installment for each non-final payout.</span>
-                        <small>Best when your group wants native BCH and individual member accounting.</small>
+                        <span>Save together in BCH. Each member's balance is tracked.</span>
+                        <small>For groups that want BCH contributions and member records.</small>
                       </button>
                       <button type="button" className={circleWorkspace === "pusd-mainnet" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "pusd-mainnet"} onClick={() => enterCreateCircleForm("pusd-mainnet")}>
                         <span className="circle-choice-top"><span className="circle-choice-symbol pusd">PUSD</span><span className="circle-choice-status">Mainnet</span></span>
                         <b>PUSD savings circle</b>
-                        <span>For groups that prefer ParyonUSD instead of BCH. Contributions and payouts are denominated in PUSD, with BCH needed separately for network fees.</span>
-                        <small>Choose this if your group wants a stable-value token rather than BCH price exposure.</small>
+                        <span>Save in ParyonUSD. Use BCH for network fees.</span>
+                        <small>Choose this for savings in steady dollars.</small>
                       </button>
                     </>}
                     {network === "chipnet" && <>
                       <button type="button" className={circleWorkspace === "bch-fair-round" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-fair-round"} onClick={() => enterCreateCircleForm("bch-fair-round")}>
                         <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status testing">Chipnet · test</span></span>
                         <b>BCH savings circle</b>
-                        <span>Experimental member-credit model. Members fund the current round; a non-final recipient carries one next contribution forward in their own receipt.</span>
-                        <small>Try this option for the newer round-by-round savings experience.</small>
+                        <span>Members fund each round. The next recipient reserves one contribution.</span>
+                        <small>Try the newer round-by-round savings setup.</small>
                       </button>
                       <button type="button" className={circleWorkspace === "bch-classic" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-classic"} onClick={() => enterCreateCircleForm("bch-classic")}>
                         <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status testing">Chipnet · legacy</span></span>
                         <b>Classic BCH savings circle</b>
-                        <span>A simple rotating savings group with a shared BCH pot and a set order for payouts.</span>
-                        <small>Use this option for older circles or simple compatibility testing.</small>
+                        <span>A rotating savings group with a shared BCH pot.</span>
+                        <small>Use this for older circles or simple testing.</small>
                       </button>
                     </>}
                   </div>
@@ -2052,7 +2052,7 @@ export default function App() {
             <div className="page-intro">
               <span className="section-kicker">YOUR SAVINGS CIRCLES</span>
               <h1>{network === "mainnet" ? "Mainnet circles" : "Chipnet test circles"}</h1>
-              <p>Circles are shown only for the network selected in the navigation menu. Status is read from the selected network's blockchain.</p>
+              <p>Only circles saved on this network appear here.</p>
             </div>
             <div className="circle-scan-summary-row">
               <span className="circle-scan-summary" role="status">✓ {NETWORKS[network].label}: {networkCircleCounts.active} active, {networkCircleCounts.completed} completed</span>
@@ -2105,7 +2105,7 @@ export default function App() {
             <div className="page-intro">
               <span className="section-kicker">YOUR SAVINGS CIRCLE</span>
               <h1>{selectedCircleRecord?.name ?? "Circle details"}</h1>
-              <p>Review contributions, member progress and the next payout for this circle.</p>
+              <p>See contributions, members and the next payout.</p>
             </div>
             <Suspense fallback={<div className="workspace-loading"><span className="loading-orb" />Loading your circle…</div>}>
               {selectedCircleRecord?.kind === "v2-fee" && (
@@ -2131,7 +2131,7 @@ export default function App() {
             <div className="page-intro">
               <span className="section-kicker">YOUR WALLET</span>
               <h1>Wallet</h1>
-              <p>Balances held in the wallet connected to Selene.</p>
+              <p>Your BCH and PUSD balances.</p>
             </div>
             <article className="asset-detail-card wallet-balance-card">
               <div className="wallet-balance-heading">
@@ -2192,7 +2192,7 @@ export default function App() {
               <summary>Advanced · PUSD transfer</summary>
               <div className="pusd-transfer-box">
                 <div><span className="section-kicker">TRANSFER PREVIEW</span><h3>Prepare a PUSD transfer</h3>
-                  <p>Review a transfer using the PUSD coins in your wallet and the latest network fee estimate. Nothing is sent from this preview.</p></div>
+                  <p>Preview a PUSD transfer. Nothing is sent yet.</p></div>
                 <label>Recipient Bitcoin Cash address
                   <input value={pusdRecipient} onChange={(event) => { setPusdRecipient(event.target.value); setPusdTransferPlan(null); setPusdSignatureMessage(""); setPusdPlanError(""); }} placeholder="bitcoincash:…" autoComplete="off" />
                 </label>
