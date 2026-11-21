@@ -3037,6 +3037,9 @@ export function mainnetApiErrorStatus(message) {
   if (/Origin is not allowed/.test(text)) return 403;
   // A competing transaction cannot reserve an already-locked input.
   if (/input outpoint .*already reserved|input reservation exists/i.test(text)) return 409;
+  // A coin that is still unconfirmed (or already spent) is a user-timing issue,
+  // not a service outage. Checked before the generic Electrum 503 rule below.
+  if (/is not confirmed and unspent/i.test(text)) return 409;
   // Provider, network and durable-ledger failures are service errors, not
   // client validation errors. Do not expose their raw messages to API callers.
   if (/ELECTRUM_QUORUM_UNAVAILABLE|ELECTRUM_TIP_DISAGREEMENT|result is UNKNOWN|durable broadcast ledger|UPSTASH_REDIS_REST|input reservation|Electrum|WebSocket|fetch failed|ECONN[A-Z]*|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|Unable to connect|Timed out connecting/i.test(text)) return 503;
@@ -3047,6 +3050,9 @@ export function mainnetApiErrorStatus(message) {
 export function mainnetApiPublicError(message) {
   const text = String(message ?? "Unknown service error.");
   const status = mainnetApiErrorStatus(text);
+  if (/is not confirmed and unspent/i.test(text)) {
+    return "Not confirmed yet. Wait for 1 confirmation (about 10 minutes), refresh, then try again. Nothing was sent.";
+  }
   if (status < 500) return text;
   const unknownSubmission = text.match(/broadcast result is UNKNOWN for ([0-9a-f]{64})/i);
   if (unknownSubmission) {

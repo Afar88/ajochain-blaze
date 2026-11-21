@@ -517,6 +517,8 @@ export default function App() {
   const [expandedWalletAddress, setExpandedWalletAddress] = useState(false);
   const [showWalletAddressQr, setShowWalletAddressQr] = useState(false);
   const [walletAddressQrDataUrl, setWalletAddressQrDataUrl] = useState("");
+  const walletSubscribedRef = useRef(false);
+  const walletUnsubscribeRef = useRef<(() => void) | null>(null);
   const [walletBalanceRefreshRun, setWalletBalanceRefreshRun] = useState(0);
   const [walletBalanceUpdatedAt, setWalletBalanceUpdatedAt] = useState<number | null>(null);
   const [walletBalanceRefreshing, setWalletBalanceRefreshing] = useState(false);
@@ -1026,6 +1028,10 @@ export default function App() {
       void import("./core/wizard-wallet").then(({ wallet: client }) => {
         if (!active) return;
         setWalletClient(client);
+        // Warm the QR code library now so the QR shows at once when Wallet opens.
+        void import("qrcode").catch(() => undefined);
+        if (walletSubscribedRef.current) { client.tryResume(); return; }
+        walletSubscribedRef.current = true;
         const sync = () => setWalletView({
           state: client.state,
           uri: client.uri,
@@ -1037,6 +1043,7 @@ export default function App() {
           addressSetRevision: client.addressSetRevision,
         });
         unsubscribe = client.onChange(sync);
+        walletUnsubscribeRef.current = unsubscribe;
         sync();
         client.tryResume();
       }).catch((cause: unknown) => {
@@ -1045,11 +1052,14 @@ export default function App() {
           error: cause instanceof Error ? cause.message : "Wallet module could not be loaded.",
         }));
       });
-    }, 900);
+    }, 300);
     return () => {
       active = false;
       window.clearTimeout(timer);
       unsubscribe?.();
+      walletUnsubscribeRef.current?.();
+      walletUnsubscribeRef.current = null;
+      walletSubscribedRef.current = false;
     };
   }, []);
 
@@ -1567,7 +1577,26 @@ export default function App() {
       client.startFreshPairing();
     };
     if (walletClient) start(walletClient);
-    else void import("./core/wizard-wallet").then(({ wallet: client }) => start(client))
+    else void import("./core/wizard-wallet").then(({ wallet: client }) => {
+      // Wallet tapped before the page finished loading the wallet module:
+      // subscribe here so the QR code appears as soon as it exists.
+      if (!walletSubscribedRef.current) {
+        walletSubscribedRef.current = true;
+        const sync = () => setWalletView({
+          state: client.state,
+          uri: client.uri,
+          qrUri: client.qrUri,
+          walletName: client.walletName,
+          error: client.error,
+          receiveIndex: client.receiveIndex,
+          mainnetAddressConfirmed: client.isReceiveAddressConfirmed("mainnet"),
+          addressSetRevision: client.addressSetRevision,
+        });
+        walletUnsubscribeRef.current = client.onChange(sync);
+        sync();
+      }
+      start(client);
+    })
       .catch((cause: unknown) => setWalletView((view) => ({
         ...view, error: cause instanceof Error ? cause.message : "Wallet module could not be loaded.",
       })));

@@ -143,6 +143,8 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
   const [maxFee, setMaxFee] = useState("10000");
   const [drafts, setDrafts] = useState<Draft[]>(readDrafts);
   const [activeCircle, setActiveCircle] = useState<V2FeeCircleParams | null>(readActiveCircle);
+  const activeCircleRef = useRef<V2FeeCircleParams | null>(activeCircle);
+  activeCircleRef.current = activeCircle;
   const [, setDeployedCircles] = useState<V2FeeCircleParams[]>(readDeployedCircles);
   useEffect(() => {
     const refresh = () => setDeployedCircles(readDeployedCircles());
@@ -342,6 +344,16 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
       memberCount: circle.members.length,
     }, snapshot.closedAs === "cancelled" ? "cancelled" : snapshot.completed ? "completed" : "active",
     snapshot.round, snapshot.completedAt ?? null);
+  };
+
+  const refreshCircleStatusQuietly = async (circle: V2FeeCircleParams) => {
+    try {
+      const snapshot = await readV2FeeCircle(circle);
+      persistChainProgress(circle, encodeV2FeeCircleParams(circle), snapshot);
+      setCircleSnapshot((current) => current && activeCircleRef.current === circle ? snapshot : current);
+    } catch {
+      // Best effort only; the manual Refresh button still works.
+    }
   };
 
   const readActiveOnChainState = async () => {
@@ -566,8 +578,14 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
           : "The Mainnet server did not return a valid verification-only result. No transaction was broadcast.");
       }
       if (send) {
-        if (signingPlan.operation === "deposit" || signingPlan.operation === "payout") {
+        if (signingPlan.operation === "deposit" || signingPlan.operation === "payout" || signingPlan.operation === "cancel") {
           window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
+        }
+        if (signingPlan.operation !== "genesis") {
+          // Re-read the circle quietly so My circles moves it to Completed
+          // (or Cancelled) without waiting for the next manual refresh.
+          const sentCircle = signingPlan.circle;
+          window.setTimeout(() => { void refreshCircleStatusQuietly(sentCircle); }, 3_000);
         }
         if (target === "genesis") setGenesisSigningPlan(null);
         else setActionSigningPlan(null);

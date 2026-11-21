@@ -1704,3 +1704,10 @@ test("Plain PUSD Mainnet send route stays disabled before request parsing or Ele
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test("Unconfirmed circle inputs return a plain wait message, not a service outage", () => {
+  const raw = "BCH Mainnet input " + "ab".repeat(32) + ":0 is not confirmed and unspent in every configured Electrum provider.";
+  assert.equal(mainnetApiErrorStatus(raw), 409);
+  assert.equal(mainnetApiPublicError(raw),
+    "Not confirmed yet. Wait for 1 confirmation (about 10 minutes), refresh, then try again. Nothing was sent.");
+});
