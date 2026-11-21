@@ -302,7 +302,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
       )].slice(0, 20);
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       setDrafts(next);
-      setNotice("BCH Mainnet draft saved on this browser only. It is not an on-chain circle.");
+      setNotice("Draft saved on this device. It is not a live circle.");
     } catch (cause) {
       setError(errorMessage(cause));
     }
