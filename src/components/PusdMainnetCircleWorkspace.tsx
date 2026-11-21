@@ -462,8 +462,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         if (target === "genesis") setGenesisSigningPlan(null);
         else setActionSigningPlan(null);
         const sent =
-          "PUSD Mainnet " + signingPlan.operation + " transaction sent. Transaction: " +
-          relayed.txid + " (relay: " + relayed.relayStatus + "). It is not confirmed yet; refresh the circle state after it confirms.";
+          "PUSD transaction sent. Transaction: " + relayed.txid + ". Waiting for confirmation.";
         setNotice(sent);
         if (target === "genesis") {
           if (!/^[0-9a-f]{64}$/i.test(relayed.txid)) {
