@@ -4,6 +4,7 @@ import {
   Monitor, MoreVertical, Moon, RefreshCw, ShieldCheck, Sun, Users, Wallet, X,
 } from "lucide-react";
 import { getDefaultNetwork, NETWORKS, type NetworkId } from "./core/network-config";
+import { plainErrorSummary } from "./components/error-copy";
 import { settleIndependentTasks } from "./core/independent-network-tasks";
 import { getDefaultCircleWorkspace, resolveCircleWorkspaceForNetwork, type CircleWorkspaceId } from "./core/circle-network-options";
 import { formatAssetAmount, parseAssetAmount, PUSD_ASSET } from "./core/assets";
@@ -326,7 +327,7 @@ export function walletErrorSummary(error: string): string {
   if (/signature|signed transaction/.test(normalized)) {
     return "Couldn't check this payment. Nothing was sent.";
   }
-  return error;
+  return plainErrorSummary(error);
 }
 
 export function formatUpdatedAgo(timestamp: number, now = Date.now()): string {
@@ -2227,9 +2228,11 @@ export default function App() {
                 </label>
                 <button type="button" className="secondary-button" disabled={!mainnetInviteInput.trim()}
                   onClick={joinMainnetCircleWithInvite}>Join with invite</button>
-                {mainnetInviteError && <p className="classic-error" role="alert">{mainnetInviteError}
+                {mainnetInviteError && <div className="classic-error" role="alert">
+                  <span>{plainErrorSummary(mainnetInviteError)}</span>
+                  <details className="technical-details"><summary>Details</summary><p>{mainnetInviteError}</p></details>
                   <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setMainnetInviteError("")}>×</button>
-                </p>}
+                </div>}
                 {mainnetInviteNotice && <p className="classic-notice" role="status">{mainnetInviteNotice}</p>}
               </section>
             )}
@@ -2381,9 +2384,11 @@ export default function App() {
                 <button type="button" className="secondary-button" onClick={() => void preparePusdTransfer()} disabled={pusdPlanBusy || pusdView.status !== "ready" || network !== "mainnet"}>
                   {pusdPlanBusy ? "Preparing preview…" : "Prepare transfer preview"}
                 </button>
-                {pusdPlanError && <p className="classic-error" role="alert">{pusdPlanError}
+                {pusdPlanError && <div className="classic-error" role="alert">
+                  <span>{plainErrorSummary(pusdPlanError)}</span>
+                  <details className="technical-details"><summary>Details</summary><p>{pusdPlanError}</p></details>
                   <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setPusdPlanError("")}>×</button>
-                </p>}
+                </div>}
                 {pusdTransferPlan && (
                   <div className="pusd-plan-summary" role="status">
                     <b>Transfer plan ready · review only</b>
@@ -2400,9 +2405,11 @@ export default function App() {
                   {pusdSignatureBusy ? "Test signing…" : "Test sign · no money sent"}
                 </button>
                 {pusdSignatureMessage && <p className="classic-notice" role="status">{pusdSignatureMessage}</p>}
-                {pusdSignatureError && <p className="classic-error" role="alert">{pusdSignatureError}
+                {pusdSignatureError && <div className="classic-error" role="alert">
+                  <span>{plainErrorSummary(pusdSignatureError)}</span>
+                  <details className="technical-details"><summary>Details</summary><p>{pusdSignatureError}</p></details>
                   <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setPusdSignatureError("")}>×</button>
-                </p>}
+                </div>}
                 <button type="button" className="primary-button" disabled={!PUSD_MAINNET_SPENDING_ENABLED || !pusdTransferPlan}
                   title="PUSD Mainnet spending is not yet approved by the security release gate">
                   Send PUSD · Mainnet locked
@@ -2503,10 +2510,11 @@ export default function App() {
                     <div><b id="receive-address-picker-title">Wallet addresses</b><small>Pick the address shown in Selene.</small></div>
                     {receiveAddressScanLoading && <span className="receive-address-scan-state">Updating…</span>}
                   </div>
-                  {receiveAddressScanError && <p className="classic-error" role="alert">
-                    {receiveAddressScanError}
+                  {receiveAddressScanError && <div className="classic-error" role="alert">
+                    <span>{plainErrorSummary(receiveAddressScanError)}</span>
+                    <details className="technical-details"><summary>Details</summary><p>{receiveAddressScanError}</p></details>
                     <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setReceiveAddressScanError("")}>×</button>
-                  </p>}
+                  </div>}
                   {currentNetworkAddressChoices.length === 0 && !receiveAddressScanLoading && !receiveAddressScanError &&
                     <p className="field-hint">Couldn't load your addresses. Reconnect and try again.</p>}
                   {receiveAddressPickerExpanded && (
@@ -2628,10 +2636,11 @@ export default function App() {
                     }
                   }}>Confirm address</button>
                   {addressMatchMessage && <p className="wallet-match-message" role="status">{addressMatchMessage}</p>}
-                  {receiveAddressScanError && <p className="classic-error" role="alert">
-                    {receiveAddressScanError}
+                  {receiveAddressScanError && <div className="classic-error" role="alert">
+                    <span>{plainErrorSummary(receiveAddressScanError)}</span>
+                    <details className="technical-details"><summary>Details</summary><p>{receiveAddressScanError}</p></details>
                     <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setReceiveAddressScanError("")}>×</button>
-                  </p>}
+                  </div>}
                 </>}
  
                 <section className="wallet-discovery-actions" aria-label="Find saved circles">
@@ -2688,7 +2697,8 @@ export default function App() {
                       {gatherResult?.status === "error" && (
                         <div className="gather-result gather-error" role="alert">
                           <b>Couldn't combine your BCH. Try again.</b>
-                          <span>{gatherResult.message}</span>
+                          <span>{plainErrorSummary(gatherResult.message)}</span>
+                          <details className="technical-details"><summary>Details</summary><p>{gatherResult.message}</p></details>
                           <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setGatherResult(null)}>×</button>
                         </div>
                       )}
