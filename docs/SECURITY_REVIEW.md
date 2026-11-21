@@ -39,12 +39,12 @@ This is **not an independent security audit**, formal verification, a review by 
 - **Fix:** provider/network/durable-ledger failures are classified as service errors and returned with a generic public message. Ambiguous broadcast outcomes retain only the transaction ID and a clear instruction not to retry until status is checked. Client validation errors remain actionable.
 - **Regression coverage:** tests prove a private Electrum URL and provider detail do not appear in public responses, while an ambiguous transaction ID remains visible.
 
-### SEC-04 — High — API rate limiting is process-local, not deployment-wide
+### SEC-04 — High — Process-local API rate limiting required a deployment-wide control
 
 - **File/lines:** `server/mainnet-api.mjs:2814` (the `rateLimit` Map is defined immediately above).
-- **Finding:** the current limiter is an in-memory Map. Serverless instances do not share that state and may be created or recycled independently, so this is not a reliable global rate limit. The source comment already notes this limitation.
-- **Fix:** no code-only change can safely create a deployment-wide guarantee without selecting and configuring a shared limiter or Vercel edge/WAF policy. The Mainnet broadcast lock added in this PR reduces the immediate real-value exposure, but it does not solve API resource-abuse protection.
-- **Still open:** configure and verify shared edge or durable-store rate limits for each API route, establish route-specific quotas, and add monitoring. Do not treat the current Map as a production security boundary.
+- **Finding:** the application limiter is an in-memory Map. Serverless instances do not share that state and may be created or recycled independently, so it is not a reliable global rate limit.
+- **Fix applied in Vercel:** added and verified the project-level custom WAF rule **AjoChain API rate limit** (`rule_ajo_chain_api_rate_limit_dV7mTH`). The active configuration matches request paths beginning `/api` and enforces a fixed window of **60 requests per 60 seconds per client IP**; excess requests are denied. The live config reports `firewallEnabled: true`, `valid: true`, `active: true`, and no pending changes. This is platform configuration and is not part of the repository commit.
+- **Residual:** keep the in-process limiter as defence in depth, but do not describe it as deployment-wide. Monitor legitimate high-volume wallets and adjust the threshold only from measured traffic. Vercel's current public pricing lists the first 1 million WAF rate-limit allowed requests as included and additional allowed requests at a regional starting rate of $0.50 per million; WAF-denied/rate-limited traffic is excluded from CDN request and transfer charges under its May 18, 2026 billing change. The live account's actual plan/usage remains subject to its Vercel billing page.
 
 ### SEC-05 — High — V3 circle funds can remain locked after the first payout if a member defaults
 
