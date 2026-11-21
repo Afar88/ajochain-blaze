@@ -1424,9 +1424,7 @@ export default function App() {
       }
       setPusdTransferPlan(freshPlan);
       setPusdSignatureMessage(
-        "Signature checked (" +
-        verified.decoded.inputs.length + " inputs, " + verified.decoded.outputs.length +
-        " outputs). Nothing was sent and no PUSD payment occurred.",
+        "Signature checked. Nothing was sent and no PUSD payment occurred.",
       );
       setPusdView((current) => ({
         ...current,
