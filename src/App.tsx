@@ -398,6 +398,16 @@ export function getDefaultReceiveAddressIndex(choices: readonly ReceiveAddressCh
     ? left.index - right.index : left.total > right.total ? -1 : 1);
   return funded[0]?.index ?? null;
 }
+export function getDefaultWalletDisplayAddressKey(choices: readonly ReceiveAddressChoice[]): string | null {
+  const sorted = [...choices].sort((left, right) => {
+    const l = BigInt(left.confirmedSatoshis) + BigInt(left.unconfirmedSatoshis);
+    const r = BigInt(right.confirmedSatoshis) + BigInt(right.unconfirmedSatoshis);
+    if (l !== r) return l > r ? -1 : 1;
+    if (left.branch !== right.branch) return left.branch === "receive" ? -1 : 1;
+    return left.index - right.index;
+  });
+  return sorted[0] ? getWalletAddressChoiceKey(sorted[0]) : null;
+}
 export function formatUpdatedAgo(updatedAt: number | null, now = Date.now()): string {
   if (updatedAt === null) return "Not updated yet";
   const seconds = Math.max(0, Math.floor((now - updatedAt) / 1000));
@@ -1090,13 +1100,8 @@ export default function App() {
           const savedDisplayKey = window.localStorage.getItem(displayStorageKey);
           const savedDisplayExists = savedDisplayKey !== null &&
             choices.some((choice) => getWalletAddressChoiceKey(choice) === savedDisplayKey);
-          const defaultDisplay = [...choices].sort((left, right) => {
-            const l = BigInt(left.confirmedSatoshis) + BigInt(left.unconfirmedSatoshis);
-            const r = BigInt(right.confirmedSatoshis) + BigInt(right.unconfirmedSatoshis);
-            return l === r ? 0 : l > r ? -1 : 1;
-          })[0];
           setWalletDisplayAddressKey(savedDisplayExists ? savedDisplayKey :
-            defaultDisplay ? getWalletAddressChoiceKey(defaultDisplay) : getWalletAddressChoiceKey({ branch: "receive", index: client.receiveIndex }));
+            getDefaultWalletDisplayAddressKey(choices) ?? getWalletAddressChoiceKey({ branch: "receive", index: client.receiveIndex }));
         }
         const totalSatoshis = choices.reduce((total, choice) =>
           total + BigInt(choice.confirmedSatoshis) + BigInt(choice.unconfirmedSatoshis), 0n);
@@ -1339,6 +1344,7 @@ export default function App() {
     const manualDiscovery = discoveryRun > discoveryRunHandledRef.current;
     if (manualDiscovery) discoveryRunHandledRef.current = discoveryRun;
     if (!showWallet && !manualDiscovery) return;
+    if (!walletClient || walletView.state !== "connected" || walletClient.state !== "connected") return;
     let firstReceiveAddress = "";
     let chipnetFirstReceiveAddress = "";
     try {
@@ -1397,9 +1403,6 @@ export default function App() {
       setDiscoveryBusy(false);
     }
 
-    if (!walletClient || walletView.state !== "connected" || walletClient.state !== "connected") {
-      return;
-    }
     if (discoveryMessageTimerRef.current !== null) {
       window.clearTimeout(discoveryMessageTimerRef.current);
       discoveryMessageTimerRef.current = null;
