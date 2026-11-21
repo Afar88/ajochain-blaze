@@ -504,7 +504,8 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
               {status?.completed ? "Circle complete" : "Pay out next round"}
             </button>
           </div>
-          <p className="classic-disclaimer">Classic V1 uses one shared pot and does not track each member's deposits. Mainnet payments are disabled in this build.</p>
+          <p className="classic-disclaimer">Classic V1 uses one shared pot. Member deposits aren't tracked.</p>
+          <p className="classic-disclaimer">Mainnet payments are disabled in this build.</p>
         </div>
       )}
 
