@@ -305,6 +305,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .classic-feedback, .classic-error { margin:10px 0 0; padding:11px 12px; border-radius:10px; font-size:13px; line-height:1.5; overflow-wrap:anywhere; }
 .classic-feedback { color:var(--ink); background:var(--surface); }
 .classic-error { color:var(--danger); background:var(--danger-soft); }
+/* Workspace messages that stay on screen carry a close button. */
+.workspace-notice { display:flex; align-items:flex-start; gap:8px; }
+.workspace-notice > span { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
+.workspace-notice .notice-dismiss { color:inherit; }
+.refresh-stale-note { display:block; margin-top:6px; font-size:12px; color:var(--warning); }
+.refresh-stale-note.checking { color:var(--muted); }
+.classic-members .wallet-classic-address, .activity-member-row .wallet-classic-address,
+.activity-state-grid .wallet-classic-address, .creator-member-preview .wallet-classic-address,
+.classic-recipient .wallet-classic-address { display:block; font-size:12px; color:var(--muted); overflow-wrap:anywhere; }
+.find-my-circles-button { display:inline-flex; align-items:center; justify-content:center; gap:6px; }
+.my-circles-find { display:grid; justify-items:start; gap:8px; margin:0 0 16px; }
+.find-circles-hint { margin-top:10px; }
 .classic-disclaimer { margin:12px 0 0; }
 .classic-deposit-field { display:grid; gap:6px; max-width:280px; margin-top:12px; color:var(--ink); font-size:13px; font-weight:750; }
 .field-hint { display:block; margin-top:6px; color:var(--muted); font-size:13px; line-height:1.5; overflow-wrap:anywhere; }

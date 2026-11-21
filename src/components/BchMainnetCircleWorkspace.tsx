@@ -30,6 +30,9 @@ import {
   getPayoutDisabledReason,
   shouldRenderCircleCreation,
 } from "./mainnet-circle-lifecycle-ui";
+import { useNoticeFade } from "./notice-display";
+import { WorkspaceNotice } from "./WorkspaceNotice";
+import { recallSnapshot, rememberSnapshot } from "./remembered-snapshots";
 
 type Props = {
   network: NetworkId;
@@ -154,6 +157,8 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
     return () => window.removeEventListener(BCH_MAINNET_CIRCLES_CHANGED_EVENT, refresh);
   }, []);
   const [circleSnapshot, setCircleSnapshot] = useState<Awaited<ReturnType<typeof readV2FeeCircle>> | null>(null);
+  // True when the last status check failed; any details shown are from an earlier check.
+  const [snapshotStale, setSnapshotStale] = useState(false);
   const [depositAmount, setDepositAmount] = useState("0.002");
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
   const [actionPreview, setActionPreview] = useState<{
@@ -170,11 +175,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(""), 4_000);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
+  useNoticeFade(notice, () => setNotice(""));
   const [testSignChecked, setTestSignChecked] = useState<"genesis" | "action" | null>(null);
   const [preview, setPreview] = useState<{
     contractAddress: string;
@@ -307,7 +308,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
       )].slice(0, 20);
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       setDrafts(next);
-      setNotice("Draft saved on this device. It is not a live circle.");
+      setNotice("Saved on this phone. Not a live circle yet.");
     } catch (cause) {
       setError(errorMessage(cause));
     }
@@ -352,9 +353,15 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
     try {
       const snapshot = await readV2FeeCircle(circle);
       persistChainProgress(circle, encodeV2FeeCircleParams(circle), snapshot);
-      setCircleSnapshot((current) => current && activeCircleRef.current === circle ? snapshot : current);
+      rememberSnapshot(encodeV2FeeCircleParams(circle), snapshot);
+      if (activeCircleRef.current === circle) {
+        setCircleSnapshot((current) => current ? snapshot : current);
+        setSnapshotStale(false);
+      }
     } catch {
-      // Best effort only; the manual Refresh button still works.
+      // Best effort only; the manual Refresh button still works. Keep the
+      // details on screen but say they may be out of date.
+      if (activeCircleRef.current === circle) setSnapshotStale(true);
     }
   };
 
@@ -368,10 +375,13 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
     try {
       const snapshot = await readV2FeeCircle(activeCircle);
       setCircleSnapshot(snapshot);
+      setSnapshotStale(false);
+      rememberSnapshot(encodeV2FeeCircleParams(activeCircle), snapshot);
       persistChainProgress(activeCircle, encodeV2FeeCircleParams(activeCircle), snapshot);
-      setNotice("BCH Mainnet circle status refreshed from the blockchain.");
+      setNotice("Circle status updated.");
     } catch (cause) {
-      setCircleSnapshot(null);
+      // Keep the last good details (if any) and mark them as maybe out of date.
+      setSnapshotStale(true);
       setError(errorMessage(cause));
     } finally {
       setLifecycleBusy(false);
@@ -639,7 +649,9 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
   const selectCircle = (circle: V2FeeCircleParams) => {
     setActiveCircle(circle);
     persistActiveCircle(circle);
-    setCircleSnapshot(null);
+    // Show what we read last time right away; the automatic check replaces it.
+    setCircleSnapshot(recallSnapshot<Awaited<ReturnType<typeof readV2FeeCircle>>>(encodeV2FeeCircleParams(circle)));
+    setSnapshotStale(false);
     setActionPreview(null);
     setActionSigningPlan(null);
     setGenesisSigningPlan(null);
@@ -669,6 +681,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
     setOpenCircleKey(null);
     setActiveCircle(null);
     setCircleSnapshot(null);
+    setSnapshotStale(false);
     setActionPreview(null);
     setActionSigningPlan(null);
     setGenesisSigningPlan(null);
@@ -746,6 +759,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
       };
       setGenesisSigningPlan(signingPlan);
       setCircleSnapshot(null);
+    setSnapshotStale(false);
       setPreview({
         contractAddress: plan.contractAddress,
         stateCategory: plan.stateCategory,
@@ -910,8 +924,14 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
               <button type="button" className="secondary-button circle-lifecycle-new" onClick={closeCircleAndCreateNew}>Create a new circle</button>
             </div>
           </div>
-          {!circleSnapshot && <p className="classic-empty">Checking circle status…</p>}
-          {circleSnapshot && <p className="classic-empty">Latest BCH Mainnet circle details are up to date.</p>}
+          {!circleSnapshot && (snapshotStale && !lifecycleBusy
+            ? <p className="classic-empty">Couldn't check this circle's status. Tap Refresh status to try again.</p>
+            : <p className="classic-empty">Checking circle status…</p>)}
+          {circleSnapshot && (snapshotStale
+            ? <p className="field-hint refresh-stale-note" role="status">These details may be out of date. The latest check didn't finish, so this is the last result we have.</p>
+            : lifecycleBusy
+              ? <p className="field-hint refresh-stale-note checking" role="status">Showing the last details we read. Checking for updates…</p>
+              : <p className="classic-empty">Circle details are up to date.</p>)}
           <button type="button" className="secondary-button" onClick={() => void copyInvite()}><Copy size={14} /> Copy invite</button>
           {circleSnapshot && (
             <div className="pusd-mainnet-breakdown">
@@ -962,11 +982,11 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
         <details className="technical-details"><summary>Details</summary><p>{error}</p></details>
         <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setError("")}>×</button>
       </div>}
-      {notice && <p className="classic-notice" role="status">{notice}</p>}
+      <WorkspaceNotice notice={notice} className="classic-notice" onClose={() => setNotice("")} />
 
       <div className="pusd-mainnet-saved">
-        <div className="section-heading"><div><span className="section-kicker">LOCAL DRAFTS</span><h3>Saved BCH Mainnet circles</h3></div><small>{drafts.length} saved</small></div>
-        {drafts.length === 0 ? <p className="classic-empty">No BCH Mainnet drafts saved on this browser.</p> : (
+        <div className="section-heading"><div><span className="section-kicker">NOT LIVE YET</span><h3>Saved for later</h3></div><small>{drafts.length} saved</small></div>
+        {drafts.length === 0 ? <p className="classic-empty">Nothing saved for later on this phone.</p> : (
           <div className="classic-saved-list">
             {drafts.map((draft, index) => (
               <button type="button" className="classic-saved-item" key={draft.savedAt + ":" + index} onClick={() => restoreDraft(draft)}>

@@ -125,10 +125,11 @@ describe("saved circle and homepage guardrails", () => {
     const scanIndex = appSource.indexOf('const provider = await getClassicProvider("chipnet");', restoreIndex);
     expect(restoreIndex).toBeGreaterThanOrEqual(0);
     expect(scanIndex).toBeGreaterThan(restoreIndex);
-    expect(appSource).toContain("isWalletDiscoveryCacheFresh(chipnetCache)");
-    expect(appSource).toContain("isWalletDiscoveryCacheFresh(mainnetCache)");
-    expect(appSource).toContain("skipChipnetScan");
-    expect(appSource).toContain("skipMainnetScan");
+    // Cached circles show instantly, but a fresh background scan always follows.
+    expect(appSource).not.toContain("isWalletDiscoveryCacheFresh(chipnetCache)");
+    expect(appSource).not.toContain("isWalletDiscoveryCacheFresh(mainnetCache)");
+    expect(appSource).toContain("const skipChipnetScan = false;");
+    expect(appSource).toContain("const skipMainnetScan = false;");
   });
 
   it("loads saved BCH and PUSD Mainnet circles into Activity", () => {

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ACTIVITY_READ_CONCURRENCY, ACTIVITY_REFRESH_DEBOUNCE_MS, mapWithConcurrency } from "./activity-refresh";
 import { plainErrorSummary } from "./error-copy";
 import { RefreshCw, ShieldCheck } from "lucide-react";
 import { decodeClassicCircle, getClassicProvider, readClassicCircle } from "../core/classic-bch";
@@ -11,6 +12,7 @@ import {
 } from "../core/pusd-mainnet-circle";
 import { formatAssetAmount } from "../core/assets";
 import { formatBch } from "../core/network";
+import { shortClassic, toCashTokenAddress } from "../core/bch-address";
 
 const V2_STORAGE_KEY = "ajochain-blaze:v2-fee-circles:v1";
 const BCH_MAINNET_CIRCLES_KEY = "ajochain-blaze:bch-mainnet-circles-deployed:v1";
@@ -338,30 +340,44 @@ export default function ActivityRecords({ network, compact = false }: { network:
   const [lastRefreshed, setLastRefreshed] = useState<number | null>(null);
   const [refreshError, setRefreshError] = useState("");
 
+  // Each refresh gets a number; a slower, older refresh never overwrites a newer one.
+  const refreshRequestRef = useRef(0);
   const refresh = useCallback(async () => {
+    const request = ++refreshRequestRef.current;
     setBusy(true);
     setRefreshError("");
     const current = loadCircleRefs().filter((ref) => ref.network === network);
     setCircles(current);
-    setResults(current.map((ref) => ({ ref, status: "loading" })));
+    // Keep circles already on screen while they are re-read; only new ones show as loading.
+    setResults((previous) => current.map((ref) =>
+      previous.find((item) => item.ref.id === ref.id && item.status !== "loading") ?? { ref, status: "loading" }));
     try {
-      const latest = await Promise.all(current.map(readOneCircle));
+      const latest = await mapWithConcurrency(current, ACTIVITY_READ_CONCURRENCY, readOneCircle);
+      if (request !== refreshRequestRef.current) return;
       setResults(latest);
       setLastRefreshed(Date.now());
     } catch (cause) {
+      if (request !== refreshRequestRef.current) return;
       setRefreshError(errorText(cause));
     } finally {
-      setBusy(false);
+      if (request === refreshRequestRef.current) setBusy(false);
     }
   }, [network]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
   useEffect(() => {
-    const refreshSavedRecords = () => { void refresh(); };
+    // A status sweep saves circles one at a time and fires an event for each.
+    // Wait until the events stop for a moment, then refresh once.
+    let timer: number | null = null;
+    const refreshSavedRecords = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(() => { timer = null; void refresh(); }, ACTIVITY_REFRESH_DEBOUNCE_MS);
+    };
     window.addEventListener("ajochain:bch-mainnet-circles-changed", refreshSavedRecords);
     window.addEventListener("ajochain:saved-circles-changed", refreshSavedRecords);
     return () => {
+      if (timer !== null) window.clearTimeout(timer);
       window.removeEventListener("ajochain:bch-mainnet-circles-changed", refreshSavedRecords);
       window.removeEventListener("ajochain:saved-circles-changed", refreshSavedRecords);
     };
@@ -439,7 +455,8 @@ export default function ActivityRecords({ network, compact = false }: { network:
                   <div className="activity-state-grid">
                     <div><span>Circle status</span><b>{result.stateLabel}</b></div>
                     <div><span>Current round</span><b>{result.roundLabel}</b></div>
-                    <div><span>Next to collect</span><b>{result.recipient ?? "None"}</b></div>
+                    <div><span>Next to collect</span><b>{result.recipient ? toCashTokenAddress(result.recipient) : "None"}</b>
+                      {result.recipient && toCashTokenAddress(result.recipient) !== result.recipient && <small className="wallet-classic-address">Same as {shortClassic(result.recipient)}</small>}</div>
                     <div><span>Network</span><b>{result.ref.network === "mainnet" ? "Mainnet" : "Chipnet"}</b></div>
                   </div>
                   {result.details && <details className="technical-details activity-source-note"><summary>Details</summary><p>{result.details}</p></details>}
@@ -455,7 +472,8 @@ export default function ActivityRecords({ network, compact = false }: { network:
                       <div className="activity-subheading"><b>Member balances</b><small>Current member balances</small></div>
                       {result.memberRecords.map((member, index) => (
                         <div className="activity-member-row" key={member.address}>
-                          <span><b>Member {index + 1}</b><small>{member.address}</small></span>
+                          <span><b>Member {index + 1}</b><small>{toCashTokenAddress(member.address)}</small>
+                            {toCashTokenAddress(member.address) !== member.address && <small className="wallet-classic-address">Same as {shortClassic(member.address)}</small>}</span>
                           <span>
                             <b>Member balance: {result.ref.kind === "pusd" ? formatAssetAmount("PUSD", member.credit) + " PUSD" : formatBch(member.credit)}</b>
                             <small>{member.due > 0n ? "Still due: " + (result.ref.kind === "pusd" ? formatAssetAmount("PUSD", member.due) + " PUSD" : formatBch(member.due)) : member.status}</small>

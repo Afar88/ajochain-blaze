@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { binToHex, cashAddressToLockingBytecode, encodeTransaction, hashTransactionUiOrder, hexToBin, sha256, type Transaction } from "@bitauth/libauth";
 import { MockNetworkProvider, type NetworkProvider } from "cashscript";
 import { pkhToAddress } from "./bch-address";
 import { createV2FeeCircleContract, v2FeeReceiptCommitment, v2FeeStateCommitment, type V2FeeCircleParams } from "./v2-fee-bch";
 import { decodeV2FeeDiscoveryNote, encodeV2FeeDiscoveryNote, v2FeeDiscoveryOutputs } from "./v2-fee-discovery-note";
-import { discoverV2FeeCircles, parseV2FeeDiscoveryTransaction } from "./v2-fee-discovery";
+import { clearV2FeeDiscoveryCache, discoverV2FeeCircles, discoverV2FeeCirclesWithStatus, parseV2FeeDiscoveryTransaction } from "./v2-fee-discovery";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "./project-treasury";
 import { MainnetQuorumNetworkProvider } from "./mainnet-quorum-provider";
 
@@ -61,6 +61,8 @@ function genesisTx(
 const discovered = { ...params, treasury: "bchtest:qpn8rsua556gewluc0gf5mq4v343w8vc9vwjq7yvnf" };
 
 describe("on-chain circle discovery", () => {
+  beforeEach(() => { clearV2FeeDiscoveryCache(); });
+
   it("round-trips the settings note", () => {
     const script = encodeV2FeeDiscoveryNote({
       covenant: "fee-v3-auto-reserve-closing", memberCount: 3, contribution: 200_000n, maxFee: 10_000n,
@@ -167,22 +169,79 @@ describe("on-chain circle discovery", () => {
     } as unknown as NetworkProvider;
     expect(await discoverV2FeeCircles(provider, [params.members[2]])).toEqual([discovered]);
     expect(await discoverV2FeeCircles(provider, [pkhToAddress(pkh(7), "chipnet")])).toEqual([]);
-  });  it("ignores unconfirmed genesis transactions until they have a block height", async () => {
+  });  it("finds a circle whose setup is still waiting for its first confirmation", async () => {
     const tx = genesisTx();
     const raw = binToHex(encodeTransaction(tx));
     const txid = binToHex(hashTransactionUiOrder(encodeTransaction(tx))).toLowerCase();
     const address = params.members[2];
+    for (const height of [0, -1]) {
+      const provider = {
+        performRequest: async (name: string) => {
+          if (name === "blockchain.block.header") return CHIPNET_GENESIS_HEADER;
+          if (name === "blockchain.scripthash.get_history") return [{ tx_hash: txid, height }];
+          return null;
+        },
+        getRawTransaction: async () => raw,
+      } as unknown as NetworkProvider;
+      expect(await discoverV2FeeCircles(provider, [address])).toEqual([discovered]);
+      expect(await discoverV2FeeCirclesWithStatus(provider, [address]))
+        .toEqual([{ params: discovered, confirmed: false }]);
+    }
+  });
+
+  it("reuses a mined transaction from an earlier scan but always re-reads mempool ones", async () => {
+    const tx = genesisTx();
+    const raw = binToHex(encodeTransaction(tx));
+    const txid = binToHex(hashTransactionUiOrder(encodeTransaction(tx))).toLowerCase();
+    let height = 0;
     let rawReads = 0;
+    const provider = {
+      performRequest: async (name: string) => {
+        if (name === "blockchain.block.header") return CHIPNET_GENESIS_HEADER;
+        if (name === "blockchain.scripthash.get_history") return [{ tx_hash: txid, height }];
+        return null;
+      },
+      getRawTransaction: async () => { rawReads += 1; return raw; },
+    } as unknown as NetworkProvider;
+    await discoverV2FeeCircles(provider, [params.members[2]]);
+    await discoverV2FeeCircles(provider, [params.members[2]]);
+    expect(rawReads).toBe(2);
+    height = 15;
+    expect(await discoverV2FeeCircles(provider, [params.members[2]])).toEqual([discovered]);
+    expect(await discoverV2FeeCircles(provider, [params.members[2]])).toEqual([discovered]);
+    expect(rawReads).toBe(3);
+  });
+
+  it("reports a mined circle as confirmed", async () => {
+    const tx = genesisTx();
+    const raw = binToHex(encodeTransaction(tx));
+    const txid = binToHex(hashTransactionUiOrder(encodeTransaction(tx))).toLowerCase();
+    const provider = {
+      performRequest: async (name: string) => {
+        if (name === "blockchain.block.header") return CHIPNET_GENESIS_HEADER;
+        if (name === "blockchain.scripthash.get_history") return [{ tx_hash: txid, height: 12 }];
+        return null;
+      },
+      getRawTransaction: async () => raw,
+    } as unknown as NetworkProvider;
+    expect(await discoverV2FeeCirclesWithStatus(provider, [params.members[2]]))
+      .toEqual([{ params: discovered, confirmed: true }]);
+  });
+
+  it("still rejects an unconfirmed transaction that is not a valid circle setup", async () => {
+    const tx = genesisTx();
+    tx.outputs[4] = { ...tx.outputs[4], valueSatoshis: 600n };
+    const raw = binToHex(encodeTransaction(tx));
+    const txid = binToHex(hashTransactionUiOrder(encodeTransaction(tx))).toLowerCase();
     const provider = {
       performRequest: async (name: string) => {
         if (name === "blockchain.block.header") return CHIPNET_GENESIS_HEADER;
         if (name === "blockchain.scripthash.get_history") return [{ tx_hash: txid, height: 0 }];
         return null;
       },
-      getRawTransaction: async () => { rawReads += 1; return raw; },
+      getRawTransaction: async () => raw,
     } as unknown as NetworkProvider;
-    expect(await discoverV2FeeCircles(provider, [address])).toEqual([]);
-    expect(rawReads).toBe(0);
+    expect(await discoverV2FeeCircles(provider, [params.members[2]])).toEqual([]);
   });
 
   it("rejects raw transaction bytes that do not match the confirmed history txid", async () => {

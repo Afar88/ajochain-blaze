@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   Activity, ArrowRight, Check, Copy, Home,
-  Monitor, MoreVertical, Moon, RefreshCw, ShieldCheck, Sun, Users, Wallet, X,
+  Monitor, MoreVertical, Moon, RefreshCw, Search, ShieldCheck, Sun, Users, Wallet, X,
 } from "lucide-react";
 import { getDefaultNetwork, NETWORKS, type NetworkId } from "./core/network-config";
 import { plainErrorSummary } from "./components/error-copy";
@@ -23,6 +23,7 @@ import {
   dedupeSavedV2FeeCircleRecords,
   getV2FeeCircleRecordIdentity,
 } from "./core/v2-fee-circle-records";
+import { readUnconfirmedCircleCategories, recordDiscoveredCircleConfirmations } from "./circles/unconfirmed-circles";
 import {
   ensureSavedCircleMetadata,
   filterSavedCirclesByNetwork,
@@ -229,7 +230,37 @@ export type ReceiveAddressChoice = {
 
 export type WalletDiscoveryCache = { checkedAt: number; circles: string[] };
 const DISCOVERY_CACHE_PREFIX = "ajochain:wallet-discovery:v1:";
+// Cached discovery results are shown instantly on connect, but they never stop
+// a fresh background scan (see the discovery effect).
 const DISCOVERY_CACHE_MAX_AGE_MS = 30 * 60 * 1000;
+const WALLET_ACTIVITY_FINGERPRINT_PREFIX = "ajochain:wallet-activity-fingerprint:v1:";
+
+/**
+ * A short summary of the wallet's address activity (history and balances).
+ * When it changes, something new happened in the wallet, such as a circle
+ * setup paying a member, so circle discovery should look again.
+ */
+export function getWalletActivityFingerprint(
+  choices: readonly Pick<ReceiveAddressChoice, "address" | "confirmedSatoshis" | "unconfirmedSatoshis" | "hasHistory" | "hasPendingHistory">[],
+): string {
+  return choices
+    .map((choice) => [
+      choice.address.trim().toLowerCase(),
+      choice.confirmedSatoshis,
+      choice.unconfirmedSatoshis,
+      choice.hasHistory ? "h" : "-",
+      choice.hasPendingHistory ? "p" : "-",
+    ].join("~"))
+    .sort()
+    .join("|");
+}
+
+/** True only when a saved fingerprint exists for the same addresses and the activity differs. */
+export function walletActivityChanged(previous: string | null, next: string): boolean {
+  if (!previous || !next || previous === next) return false;
+  const addresses = (value: string) => value.split("|").map((entry) => entry.split("~")[0]).join("|");
+  return addresses(previous) === addresses(next);
+}
 
 export function getWalletDiscoveryCacheKey(firstReceiveAddress: string, network: NetworkId): string {
   return DISCOVERY_CACHE_PREFIX + network + ":" + firstReceiveAddress.trim().toLowerCase();
@@ -378,13 +409,13 @@ export function getDiscoveryNetworkStatus(
   timedOut: boolean,
 ): string {
   if (result.status === "rejected") {
-    return networkName + ": " + (timedOut ? "timed out" : "unavailable") + ", tap Retry to check again.";
+    return networkName + ": " + (timedOut ? "timed out" : "unavailable") + ", tap Find my circles to try again.";
   }
   const count = result.value.foundCount;
   if (timedOut) {
     return networkName + ": timed out" + (count > 0
       ? "; found " + count + " circle" + (count === 1 ? "" : "s")
-      : "") + ", tap Retry to check again.";
+      : "") + ", tap Find my circles to try again.";
   }
   return count > 0
     ? networkName + ": found " + count + " circle" + (count === 1 ? "" : "s") + "."
@@ -392,7 +423,7 @@ export function getDiscoveryNetworkStatus(
 }
 
 export function getCancelledDiscoveryStatus(networkName: string): string {
-  return networkName + ": scan cancelled, tap Retry to check again.";
+  return networkName + ": scan cancelled, tap Find my circles to try again.";
 }
 
 export function getWalletBchBalanceSummary(input: {
@@ -579,6 +610,11 @@ export default function App() {
     choices: receiveAddressChoices,
   };
   const discoveryBusyRef = useRef(false);
+  const [unconfirmedCircleCategories, setUnconfirmedCircleCategories] = useState<Set<string>>(() => {
+    try { return readUnconfirmedCircleCategories(window.localStorage); } catch { return new Set<string>(); }
+  });
+  // A "Find my circles" press that arrived while another scan was running.
+  const queuedForcedDiscoveryRef = useRef(false);
   const discoveryMessageTimerRef = useRef<number | null>(null);
   const circleStatusScannedKeysRef = useRef(new Set<string>());
   const circleStatusSessionRef = useRef<string | null | undefined>(undefined);
@@ -636,6 +672,13 @@ export default function App() {
   const visibleStatusCircles = filterSavedCirclesByStatus(visibleNetworkCircles, circleStatusTab);
   const networkCircleCounts = countCircleStatuses(visibleNetworkCircles);
   const menuLabel = pageLabels[page];
+  const renderFindMyCirclesButton = (extraClass = "") => (
+    <button type="button" className={("secondary-button find-my-circles-button " + extraClass).trim()} disabled={discoveryBusy}
+      onClick={findMyCircles}>
+      <Search size={16} /> {discoveryBusy ? "Looking for your circles…" : "Find my circles"}
+    </button>
+  );
+
   const renderCircleRiskNotice = () => (
     <details
       className="circle-risk-notice"
@@ -689,11 +732,11 @@ export default function App() {
       return retrySet.has(circle.id) || !circleStatusScannedKeysRef.current.has(key);
     });
     if (targets.length === 0) return;
-    for (const circle of targets) {
-      circleStatusScannedKeysRef.current.add(circle.id + ":" + circle.encoded);
-    }
-
+    // Mark circles as checked only once their result is saved. If this run is
+    // cancelled first (the list changed or the wallet reconnected), the next run
+    // picks the same circles up again instead of silently skipping them.
     let current = true;
+    let saved = false;
     const readStatus = async (circle: MenuCircle): Promise<ChainCircleSnapshot> => {
       if (circle.kind === "v2-fee" || circle.kind === "bch-mainnet") {
         const [{ decodeV2FeeCircle, readV2FeeCircle }] = await Promise.all([
@@ -773,6 +816,7 @@ export default function App() {
       if (!current) return;
       for (const outcome of outcomes) {
         const circle = outcome.item;
+        circleStatusScannedKeysRef.current.add(circle.id + ":" + circle.encoded);
         updateSavedCircleChainStatus(window.localStorage, {
           id: circle.id,
           encoded: circle.encoded,
@@ -784,10 +828,17 @@ export default function App() {
           memberCount: circle.memberCount,
         }, outcome.result.status, outcome.result.round, outcome.result.completedAt);
       }
+      saved = true;
       setMenuCircles(readSavedCircleMenuRecords());
     })();
 
-    return () => { current = false; };
+    return () => {
+      current = false;
+      // A cancelled retry is queued again so the user's "Check again" isn't lost.
+      if (!saved && retryIds.length > 0) {
+        circleStatusRetryIdsRef.current = [...new Set([...circleStatusRetryIdsRef.current, ...retryIds])];
+      }
+    };
   }, [circleStatusSignature, walletSessionIdentity, circleStatusRetryRun]);
 
   const retryCircleStatus = (circle: MenuCircle) => {
@@ -1567,6 +1618,40 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [showWallet, walletClient, walletView.state, walletView.uri]);
 
+  // "Find my circles": always a fresh scan of the connected wallet's addresses,
+  // skipping the saved result. Without a wallet, open Wallet first and scan
+  // as soon as it connects.
+  const findCirclesAfterConnectRef = useRef(false);
+  const findMyCircles = () => {
+    if (walletView.state === "connected" && walletClient?.state === "connected") {
+      setDiscoveryRun((run) => run + 1);
+      return;
+    }
+    findCirclesAfterConnectRef.current = true;
+    openWallet();
+  };
+
+  useEffect(() => {
+    if (walletView.state !== "connected" || !findCirclesAfterConnectRef.current) return;
+    findCirclesAfterConnectRef.current = false;
+    setDiscoveryRun((run) => run + 1);
+  }, [walletView.state]);
+
+  // New wallet activity (a payment in or out, or a pending payment confirming)
+  // can mean someone added this wallet to a new circle, so look again.
+  useEffect(() => {
+    if (walletView.state !== "connected" || receiveAddressChoices.length === 0) return;
+    const firstReceive = receiveAddressChoices.find((choice) => choice.branch === "receive" && choice.index === 0)?.address
+      ?? receiveAddressChoices.find((choice) => choice.branch === "receive")?.address;
+    if (!firstReceive) return;
+    const key = WALLET_ACTIVITY_FINGERPRINT_PREFIX + network + ":" + firstReceive.trim().toLowerCase();
+    const next = getWalletActivityFingerprint(receiveAddressChoices);
+    let previous: string | null = null;
+    try { previous = window.localStorage.getItem(key); } catch { /* storage unavailable */ }
+    try { window.localStorage.setItem(key, next); } catch { /* storage unavailable */ }
+    if (walletActivityChanged(previous, next)) setDiscoveryRun((run) => run + 1);
+  }, [receiveAddressChoices, network, walletView.state]);
+
   const openWallet = () => {
     setMenuOpen(false);
     setShowWallet(true);
@@ -1616,6 +1701,8 @@ export default function App() {
     const previousRun = activeDiscoveryRunRef.current;
     if (previousRun && previousRun.sessionKey === sessionKey) {
       // Repeated trigger for the same session: leave the in-flight scan alone.
+      // A forced run ("Find my circles") is queued and starts when it finishes.
+      if (discoveryRun !== lastManualDiscoveryRunRef.current) queuedForcedDiscoveryRef.current = true;
       return;
     }
     if (previousRun && previousRun.sessionKey !== sessionKey) {
@@ -1678,12 +1765,11 @@ export default function App() {
       window.dispatchEvent(new Event("ajochain:saved-circles-changed"));
     }
 
-    const skipChipnetScan = !forceDiscoveryRefresh && isWalletDiscoveryCacheFresh(chipnetCache);
-    const skipMainnetScan = !forceDiscoveryRefresh && isWalletDiscoveryCacheFresh(mainnetCache);
-    if (skipChipnetScan && skipMainnetScan) {
-      setDiscoveryMessage("");
-      return;
-    }
+    // Cached circles are already on screen; always look again in the
+    // background on connect/resume so new circles (even unconfirmed ones)
+    // appear without waiting for the cache to expire.
+    const skipChipnetScan = false;
+    const skipMainnetScan = false;
 
     if (discoveryMessageTimerRef.current !== null) {
       window.clearTimeout(discoveryMessageTimerRef.current);
@@ -1739,7 +1825,7 @@ export default function App() {
 
     void (async () => {
       try {
-        const [{ getClassicProvider }, { discoverV2FeeCircles, encodeV2FeeCircleParams }, { dedupeSavedV2FeeCircleRecords, getV2FeeCircleRecordIdentity }] = await Promise.all([
+        const [{ getClassicProvider }, { discoverV2FeeCirclesWithStatus, encodeV2FeeCircleParams }, { dedupeSavedV2FeeCircleRecords, getV2FeeCircleRecordIdentity }] = await Promise.all([
           import("./core/classic-bch"),
           import("./core/v2-fee-discovery"),
           import("./core/v2-fee-circle-records"),
@@ -1752,12 +1838,15 @@ export default function App() {
             const provider = await getClassicProvider("chipnet");
             const addresses = walletClient.listWalletAddresses("chipnet", 49, 20).map((entry) => entry.address);
             if (addresses.length === 0) throw new Error("No Chipnet receive/change addresses are available from this wallet.");
-            const found = await discoverV2FeeCircles(provider, addresses, undefined, "chipnet", {
+            const foundWithStatus = await discoverV2FeeCirclesWithStatus(provider, addresses, undefined, "chipnet", {
               requestTimeoutMs: 10_000,
               overallTimeoutMs: 45_000,
               onTimeout: () => { chipnetTimedOut = true; },
             });
             if (run.cancelled) return { foundCount: 0 };
+            const found = foundWithStatus.map((entry) => entry.params);
+            setUnconfirmedCircleCategories(recordDiscoveredCircleConfirmations(window.localStorage,
+              foundWithStatus.map((entry) => ({ stateCategory: entry.params.stateCategory, confirmed: entry.confirmed }))));
             const encodedFound = found.map(encodeV2FeeCircleParams);
             if (chipnetCacheKey) writeWalletDiscoveryCache(window.localStorage, chipnetCacheKey, encodedFound);
 
@@ -1802,7 +1891,7 @@ export default function App() {
             // Mainnet discovery stays on the independently verified, read-only
             // quorum. No provider or transaction flow is changed here.
             const provider = await getClassicProvider("mainnet");
-            const mainnetFound = await discoverV2FeeCircles(
+            const mainnetFoundWithStatus = await discoverV2FeeCirclesWithStatus(
               provider,
               mainnetEntries.map((entry) => entry.address),
               undefined,
@@ -1815,6 +1904,9 @@ export default function App() {
               },
             );
             if (run.cancelled) return { foundCount: 0 };
+            const mainnetFound = mainnetFoundWithStatus.map((entry) => entry.params);
+            setUnconfirmedCircleCategories(recordDiscoveredCircleConfirmations(window.localStorage,
+              mainnetFoundWithStatus.map((entry) => ({ stateCategory: entry.params.stateCategory, confirmed: entry.confirmed }))));
             if (mainnetCacheKey) {
               writeWalletDiscoveryCache(window.localStorage, mainnetCacheKey, mainnetFound.map(encodeV2FeeCircleParams));
             }
@@ -1847,8 +1939,8 @@ export default function App() {
         );
       } catch {
         if (!run.cancelled) {
-          chipnetStatus = "Chipnet: unavailable, tap Retry to check again.";
-          mainnetStatus = "Mainnet: unavailable, tap Retry to check again.";
+          chipnetStatus = "Chipnet: unavailable, tap Find my circles to try again.";
+          mainnetStatus = "Mainnet: unavailable, tap Find my circles to try again.";
           publishStatus();
         }
       } finally {
@@ -1856,6 +1948,10 @@ export default function App() {
           activeDiscoveryRunRef.current = null;
           discoveryBusyRef.current = false;
           setDiscoveryBusy(false);
+          if (queuedForcedDiscoveryRef.current) {
+            queuedForcedDiscoveryRef.current = false;
+            setDiscoveryRun((value) => value + 1);
+          }
         }
       }
     })();
@@ -2086,15 +2182,28 @@ export default function App() {
     (BigInt(selectedReceiveAddressChoice.unconfirmedSatoshis) > 0n || selectedReceiveAddressChoice.hasPendingHistory));
 
 
+  // A circle found by wallet discovery whose setup hasn't been mined yet.
+  const isAwaitingFirstConfirmation = (circle: MenuCircle) => {
+    if (circle.status === "completed" || circle.status === "cancelled") return false;
+    if (circle.kind !== "v2-fee" && circle.kind !== "bch-mainnet") return false;
+    if (unconfirmedCircleCategories.size === 0) return false;
+    const category = getV2FeeCircleRecordIdentity(circle.encoded)?.stateCategory.toLowerCase();
+    return Boolean(category && unconfirmedCircleCategories.has(category));
+  };
+
   const renderCircleRows = (circles: MenuCircle[], compact = false) => (
     <div className={compact ? "my-circles-list compact-list" : "my-circles-list"}>
-      {circles.map((circle) => (
+      {circles.map((circle) => {
+        const waiting = isAwaitingFirstConfirmation(circle);
+        return (
         <div className="my-circle-entry" key={circle.id}>
           <button type="button" className="my-circle-row" onClick={() => openMenuCircle(circle)}>
             <span className="my-circle-copy">
               <b>{circle.name}</b>
               <span>{circle.asset} · {circle.contributionLabel} · {circle.memberCount} members</span>
-              <small>{circle.status === "completed" || circle.status === "cancelled"
+              <small>{waiting
+                ? "Waiting for first confirmation · usually about 10 minutes"
+                : circle.status === "completed" || circle.status === "cancelled"
                 ? (circle.status === "cancelled" ? "Cancelled" : "Completed") +
                   (circle.completedAt ? " · " + new Date(circle.completedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "")
                 : circle.status === "unknown"
@@ -2104,20 +2213,23 @@ export default function App() {
                     : "Round " + Math.min(circle.round + 1, circle.memberCount) + " of " + circle.memberCount}</small>
             </span>
             <span className={
-              circle.status === "completed" ? "my-circle-status completed"
+              waiting ? "my-circle-status checking"
+                : circle.status === "completed" ? "my-circle-status completed"
                 : circle.status === "cancelled" ? "my-circle-status cancelled"
                   : circle.status === "unknown" ? circle.checkedAt === null ? "my-circle-status checking" : "my-circle-status unavailable" : "my-circle-status"
-            }>{circle.status === "completed" ? "Completed"
+            }>{waiting ? "Waiting for first confirmation"
+              : circle.status === "completed" ? "Completed"
               : circle.status === "cancelled" ? "Cancelled"
                 : circle.status === "unknown" ? circle.checkedAt === null ? "Checking…" : "Status unavailable" : "Active"}</span>
             <ArrowRight size={17} />
           </button>
-          {circle.status === "unknown" && circle.checkedAt !== null && (
+          {!waiting && circle.status === "unknown" && circle.checkedAt !== null && (
             <button type="button" className="secondary-button circle-status-retry"
               onClick={() => retryCircleStatus(circle)}>Retry status check</button>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 
@@ -2265,7 +2377,10 @@ export default function App() {
                 <button className="secondary-button hero-secondary-cta" type="button" onClick={() => navigate("my-circles")}>
                   My circles
                 </button>
+                {renderFindMyCirclesButton("hero-secondary-cta")}
               </div>
+              {discoveryMessage && <p className="wallet-match-message" role="status">{discoveryMessage}</p>}
+              <p className="field-hint find-circles-hint">Added to someone's circle? Tap Find my circles. New circles show up after their first confirmation, usually about 10 minutes.</p>
             </section>
           </>
         )}
@@ -2358,10 +2473,22 @@ export default function App() {
               <h1>{network === "mainnet" ? "Mainnet circles" : "Chipnet test circles"}</h1>
               <p>Only circles on the selected network appear here.</p>
             </div>
+            <section className="wallet-discovery-actions my-circles-find" aria-label="Find my circles">
+              {renderFindMyCirclesButton()}
+              {discoveryMessage && <p className="wallet-match-message" role="status">{discoveryMessage}</p>}
+              <p className="field-hint">Looks for circles your wallet is a member of. New circles show up after their first confirmation, usually about 10 minutes.</p>
+            </section>
             <div className="circle-scan-summary-row">
               <span className="circle-scan-summary" role="status">✓ {NETWORKS[network].label}: {networkCircleCounts.active} active, {networkCircleCounts.completed} completed</span>
-              {visibleNetworkCircles.some((circle) => circle.status === "unknown") &&
-                <span className="circle-scan-warning" role="status">{visibleNetworkCircles.filter((circle) => circle.status === "unknown").length} status check(s) unavailable</span>}
+              {(() => {
+                // Circles still being checked for the first time are not failures.
+                const unavailable = visibleNetworkCircles.filter((circle) =>
+                  circle.status === "unknown" && circle.checkedAt !== null && !isAwaitingFirstConfirmation(circle)).length;
+                return unavailable > 0 &&
+                  <span className="circle-scan-warning" role="status">
+                    {unavailable === 1 ? "1 circle's status couldn't be checked" : unavailable + " circles' status couldn't be checked"}
+                  </span>;
+              })()}
             </div>
             {network === "mainnet" && (
               <section className="pusd-mainnet-saved mainnet-invite-join" aria-label="Join a Mainnet circle">
@@ -2795,11 +2922,8 @@ export default function App() {
                   </div>}
                 </>}
  
-                <section className="wallet-discovery-actions" aria-label="Find saved circles">
-                  <button type="button" className="secondary-button" disabled={discoveryBusy}
-                    onClick={() => setDiscoveryRun((run) => run + 1)}>
-                    {discoveryBusy ? "Checking circles…" : "Check again"}
-                  </button>
+                <section className="wallet-discovery-actions" aria-label="Find my circles">
+                  {renderFindMyCirclesButton()}
                   {discoveryMessage && <p className="wallet-match-message" role="status">{discoveryMessage}</p>}
                 </section>
 
