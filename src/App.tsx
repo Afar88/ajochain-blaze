@@ -1309,27 +1309,27 @@ export default function App() {
   };
 
   const verifyPusdTransferSignature = async () => {
-    setPusdSignatureMessage("");
+    setPusdSignatureError("");
     setPusdSignatureError("");
     if (!walletClient || walletClient.state !== "connected" || !connected) {
       setPusdSignatureError("Connect Selene before checking this transfer.");
       return;
     }
     if (network !== "mainnet" || pusdView.status !== "ready") {
-      setPusdSignatureMessage("Check your Mainnet PUSD balance first.");
+      setPusdSignatureError("Check your Mainnet PUSD balance first.");
       return;
     }
     if (!walletClient.isReceiveAddressConfirmed("mainnet")) {
-      setPusdSignatureMessage("Pick your Mainnet address first.");
+      setPusdSignatureError("Pick your Mainnet address first.");
       return;
     }
     const senderAddress = walletClient.address("mainnet");
     if (!senderAddress || !pusdRecipient.trim()) {
-      setPusdSignatureMessage("Check the sender and recipient addresses.");
+      setPusdSignatureError("Check the sender and recipient addresses.");
       return;
     }
     if (!/^\d+$/.test(pusdMaxFee.trim())) {
-      setPusdSignatureMessage("Enter the maximum fee in satoshis.");
+      setPusdSignatureError("Enter the maximum fee in satoshis.");
       return;
     }
     setPusdSignatureBusy(true);
@@ -1376,13 +1376,13 @@ export default function App() {
       );
       setPusdView((current) => ({
         ...current,
-        amount: freshBalance.balance,
+        amount: current.amount,
         utxos: freshBalance.utxos,
         rawPreviousTransactions: freshBalance.rawPreviousTransactions,
         tipHeight: freshBalance.tipHeight,
         providerConfidence: freshBalance.providerConfidence,
         utxoCount: freshBalance.utxos.length,
-        detail: "Refreshed " + freshBalance.providerConfidence + " wallet coins immediately before checking the signature.",
+        detail: "Refreshed the active address before checking the signature.",
       }));
     } catch (cause) {
       setPusdSignatureError(cause instanceof Error ? cause.message : "PUSD signature check failed. Nothing was sent.");
