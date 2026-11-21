@@ -981,7 +981,7 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
 :root[data-theme="dark"] .compact-app { background:var(--page-bg); color:var(--ink); }
 
 @media (max-width: 767px) {
-  html, body, #root, .compact-app { max-width:100%; overflow-x:hidden; }
+  html, body, #root, .compact-app { width:100%; max-width:100%; min-width:0; }
   .app-header {
     min-height:64px;
     padding:8px 16px;
@@ -1323,7 +1323,7 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
   .app-shell .page-body, .app-shell .content { max-width:1280px; }
 }
 @media (max-width: 767px) {
-  html, body, #root, .app-shell, .compact-app { max-width:100%; overflow-x:clip; }
+  html, body, #root, .app-shell, .compact-app { width:100%; max-width:100%; min-width:0; }
   .app-shell :is(.overview-status-grid,.circle-choice-grid,.circle-workspace-grid,.classic-workspace-grid,.pusd-mainnet-breakdown-grid,.workspace-grid) {
     grid-template-columns:minmax(0,1fr);
   }
@@ -1399,7 +1399,7 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
 }
 @media (min-width:1200px) { .app-shell .page-body,.app-shell .content { max-width:1280px; } }
 @media (max-width:767px) {
- html,body,#root,.app-shell,.compact-app { max-width:100%; overflow-x:clip; }
+ html,body,#root,.app-shell,.compact-app { width:100%; max-width:100%; min-width:0; }
  .app-shell :is(.overview-status-grid,.circle-choice-grid,.circle-workspace-grid,.classic-workspace-grid,.pusd-mainnet-breakdown-grid,.workspace-grid) { grid-template-columns:minmax(0,1fr); }
  .app-shell .page-body,.app-shell .content { padding-inline:16px; }
  .app-shell :is(p,span,small,label,input,textarea,select,button,summary,li,a,code,time,strong,b) { font-size:max(14px,1rem); }
@@ -1510,3 +1510,208 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
 .app-shell .test-sign-button { min-height: 44px; font-weight: 700; }
 .app-shell .test-sign-helper { flex-basis: 100%; font-size: 14px; font-weight: 600; color: var(--muted); }
 .app-shell .test-sign-checked { display: inline-flex; align-items: center; min-height: 32px; padding: 4px 12px; border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--ink); background: var(--surface-raised); border: 2px solid var(--primary); }
+
+
+/* Phone-width content fit: wrap text and constrain layout instead of clipping it. */
+@media (max-width: 767px) {
+  html,
+  body,
+  #root,
+  .app-shell,
+  .compact-app {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .app-shell,
+  .app-shell .main-panel,
+  .app-shell .page-body,
+  .app-shell .content,
+  .compact-app,
+  .compact-app .page-body {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .app-shell :is(
+    .app-header,
+    .header-actions,
+    .top-actions,
+    .page-section,
+    .section-card,
+    .section-heading,
+    .overview-status-card,
+    .overview-status-card > div:nth-child(2),
+    .dropdown-wallet,
+    .dropdown-wallet > span:nth-child(2),
+    .overview-network-notice,
+    .overview-notice-copy,
+    .my-circle-entry,
+    .my-circle-row,
+    .my-circle-copy,
+    .circle-panel,
+    .circle-workspace,
+    .classic-workspace,
+    .circle-choice-card,
+    .wallet-address-card,
+    .creator-member-preview,
+    .asset-preview,
+    .asset-detail-card,
+    .verification-strip,
+    .verification-strip > div,
+    .test-sign-control
+  ) {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .app-shell :is(
+    .app-header,
+    .header-actions,
+    .overview-status-card,
+    .dropdown-wallet,
+    .section-heading,
+    .verification-strip
+  ) > * {
+    min-width: 0;
+  }
+
+  .app-header {
+    min-width: 0;
+    max-width: 100%;
+    gap: 6px;
+  }
+
+  .app-header .brand {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 112px;
+    overflow-wrap: anywhere;
+  }
+
+  .header-actions {
+    flex: 0 1 auto;
+    gap: 5px;
+  }
+
+  .header-network-pill {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 92px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.2;
+    padding-inline: 7px;
+  }
+
+  .header-wallet-chip {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100px;
+    height: auto;
+    min-height: 40px;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.2;
+    text-align: left;
+    padding: 6px 7px;
+  }
+
+  .overview-status-card b,
+  .overview-status-card small,
+  .dropdown-wallet small {
+    min-width: 0;
+    max-width: 100%;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.4;
+  }
+
+  .overview-status-card {
+    align-items: flex-start;
+  }
+
+  .overview-status-card > div:nth-child(2) {
+    flex: 1 1 auto;
+  }
+
+  .status-action {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .dropdown-wallet {
+    align-items: flex-start;
+  }
+
+  .dropdown-wallet > span:nth-child(2) {
+    flex: 1 1 auto;
+  }
+
+  .welcome-hero {
+    min-width: 0;
+    max-width: 100%;
+    overflow: visible;
+  }
+
+  .welcome-hero::after {
+    right: 0;
+    top: -54px;
+    width: min(52vw, 188px);
+    height: min(52vw, 188px);
+  }
+
+  .fee-accounting-table {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .fee-accounting-row {
+    min-width: 860px;
+  }
+
+  .app-shell :is(
+    .page-intro,
+    .page-section,
+    .circle-workspace,
+    .classic-workspace,
+    .circle-panel,
+    .section-card,
+    .wallet-address-card,
+    .creator-member-preview
+  ) :is(p, span, small, b, strong, label, code, a, li) {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+
+@media (max-width: 420px) {
+  .app-header .brand {
+    max-width: 104px;
+    font-size: 15px;
+  }
+
+  .header-network-pill {
+    max-width: 84px;
+    padding-inline: 6px;
+  }
+
+  .header-wallet-chip {
+    max-width: 88px;
+    padding-inline: 6px;
+  }
+}
