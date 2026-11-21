@@ -36,3 +36,12 @@ export function toCashTokenAddress(address: string | null | undefined): string {
   const result = encodeCashAddress({ prefix: decoded.prefix, type: "p2pkhWithTokens", payload: decoded.payload });
   return typeof result === "string" ? address : result.address;
 }
+
+/** Short display of the classic (q) form, e.g. "bitcoincash:qp7z…d43h". */
+export function shortClassic(address: string | null | undefined): string {
+  if (!address) return "";
+  const value = address.trim();
+  const prefix = value.startsWith("bitcoincash:") ? "bitcoincash:" : value.startsWith("bchtest:") ? "bchtest:" : "";
+  const body = prefix ? value.slice(prefix.length) : value;
+  return prefix + body.slice(0, 4) + "…" + body.slice(-4);
+}

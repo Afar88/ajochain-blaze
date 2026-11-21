@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { plainErrorSummary } from "./error-copy";
 import { CashTokensGenesisUtxoMissingError, decodeClassicCircle, getClassicProvider, planClassicContribution, planClassicGenesis, planClassicGenesisSetup, planClassicPayout, readClassicCircle, type ClassicCircleParams, type ClassicCircleStatus } from "../core/classic-bch";
 import { assertBchTransactionBroadcastAllowed } from "../core/bch-mainnet-guard";
@@ -7,6 +7,10 @@ import { parseAssetAmount } from "../core/assets";
 import { formatBch, type NetworkId } from "../core/network";
 import { wallet } from "../core/wizard-wallet";
 import { updateSavedCircleChainStatus } from "../circles/saved-circle-status";
+import { useNoticeFade } from "./notice-display";
+import { WorkspaceNotice } from "./WorkspaceNotice";
+import { shortClassic, toCashTokenAddress } from "../core/bch-address";
+import { recallSnapshot, rememberSnapshot } from "./remembered-snapshots";
 
 type Props = {
   network: NetworkId;
@@ -30,16 +34,18 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
   const [membersText, setMembersText] = useState("");
   const [restoreInput, setRestoreInput] = useState("");
   const [status, setStatus] = useState<ClassicCircleStatus | null>(null);
+  // True when the last read failed and the details shown are from an earlier check.
+  const [statusStale, setStatusStale] = useState(false);
+  // True while remembered details are shown and a fresh read is still running.
+  const [checkingSaved, setCheckingSaved] = useState(false);
+  const quietRefreshTimersRef = useRef<number[]>([]);
+  const selectedRef = useRef<string | null>(null);
   const [contractAddress, setContractAddress] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(""), 4_000);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
+  useNoticeFade(notice, () => setNotice(""));
 
   useEffect(() => {
     onBusyChange?.(busy);
@@ -93,16 +99,45 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
     try {
       const snapshot = await readClassicCircle(params);
       setStatus(snapshot.status);
+      setStatusStale(false);
+      rememberSnapshot(selected, { status: snapshot.status, contractAddress: snapshot.contract.address });
       saveChainProgress(params, snapshot.status, selected);
       setContractAddress(snapshot.contract.address);
-      setNotice("Chain data refreshed from " + params.network + ". Mainnet circle details are checked against the blockchain.");
+      setNotice("Circle details updated.");
     } catch (cause) {
-      setStatus(null);
+      // Keep the last good details on screen and say they may be out of date.
+      setStatusStale(true);
       setError(message(cause));
     } finally {
       setBusy(false);
     }
   };
+
+  // After a send, re-read the circle in the background a few seconds later so
+  // the network has the new transaction. This never changes the message or
+  // error on screen, and a failed read keeps the details already shown.
+  const refreshQuietly = (params: ClassicCircleParams, encoded: string | null, delayMs = 3_000) => {
+    const timer = window.setTimeout(() => {
+      quietRefreshTimersRef.current = quietRefreshTimersRef.current.filter((id) => id !== timer);
+      void readClassicCircle(params).then((snapshot) => {
+        if (selectedRef.current !== encoded) return;
+        setStatus(snapshot.status);
+        setStatusStale(false);
+        rememberSnapshot(encoded, { status: snapshot.status, contractAddress: snapshot.contract.address });
+        saveChainProgress(params, snapshot.status, encoded);
+        setContractAddress(snapshot.contract.address);
+      }).catch(() => {
+        if (selectedRef.current === encoded) setStatusStale(true);
+      });
+    }, delayMs);
+    quietRefreshTimersRef.current.push(timer);
+  };
+
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
+  useEffect(() => () => {
+    for (const timer of quietRefreshTimersRef.current) window.clearTimeout(timer);
+    quietRefreshTimersRef.current = [];
+  }, []);
 
   useEffect(() => {
     if (!activeCircle) {
@@ -110,15 +145,25 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
       return;
     }
     let current = true;
-    setStatus(null);
+    // Show what we read last time right away; replace it when the fresh read lands.
+    const remembered = recallSnapshot<{ status: ClassicCircleStatus; contractAddress: string }>(selected);
+    setStatus(remembered?.status ?? null);
+    if (remembered) setContractAddress(remembered.contractAddress);
+    setStatusStale(false);
+    setCheckingSaved(Boolean(remembered));
     void readClassicCircle(activeCircle).then((snapshot) => {
       if (current) {
         setStatus(snapshot.status);
+        setCheckingSaved(false);
+        rememberSnapshot(selected, { status: snapshot.status, contractAddress: snapshot.contract.address });
         saveChainProgress(activeCircle, snapshot.status, selected);
         setContractAddress(snapshot.contract.address);
       }
     }).catch((cause: unknown) => {
-      if (current) setError(message(cause));
+      if (!current) return;
+      setCheckingSaved(false);
+      if (remembered) setStatusStale(true);
+      setError(message(cause));
     });
     return () => { current = false; };
   }, [selected, activeCircle?.stateCategory, network]);
@@ -352,7 +397,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
       );
       const txid = await plan.provider.sendRawTransaction(signed.signedTransaction);
       setNotice("Contribution broadcast. Transaction ID: " + txid);
-      await refresh(activeCircle);
+      refreshQuietly(activeCircle, selected);
       window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
     } catch (cause) {
       setError(message(cause));
@@ -378,7 +423,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
       )) return;
       const txid = await plan.provider.sendRawTransaction(plan.builder.build());
       setNotice("Payout broadcast. Transaction ID: " + txid);
-      await refresh(activeCircle);
+      refreshQuietly(activeCircle, selected);
       window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
     } catch (cause) {
       setError(message(cause));
@@ -480,9 +525,12 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
           <p className="classic-contract-address">Contract address: <code>{contractAddress || "Loading…"}</code></p>
           <div className="classic-members">
             {activeCircle.members.map((member, index) => (
-              <div key={member}><b>Member {index + 1}</b><code>{member}</code></div>
+              <div key={member}><b>Member {index + 1}</b><code>{toCashTokenAddress(member)}</code>
+                {toCashTokenAddress(member) !== member && <small className="wallet-classic-address">Same as {shortClassic(member)}</small>}</div>
             ))}
           </div>
+          {status && checkingSaved && !statusStale && <p className="field-hint refresh-stale-note checking" role="status">Showing the last details we read. Checking for updates…</p>}
+          {status && statusStale && <p className="field-hint refresh-stale-note" role="status">These details may be out of date. The latest check didn't finish, so this is the last result we have.</p>}
           {status ? (
             <>
               <div className="classic-account-summary classic-chain-stats">
@@ -511,7 +559,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
       )}
 
       {busy && <p className="classic-feedback" role="status">Working with the selected BCH network…</p>}
-      {notice && <p className="classic-feedback" role="status">{notice}</p>}
+      <WorkspaceNotice notice={notice} className="classic-feedback" onClose={() => setNotice("")} />
       {error && <div className="classic-error" role="alert">
         <span>{plainErrorSummary(error)}</span>
         <details className="technical-details"><summary>Details</summary><p>{error}</p></details>

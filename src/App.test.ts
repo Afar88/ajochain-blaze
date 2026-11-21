@@ -1,14 +1,19 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   getCancelledDiscoveryStatus,
   getDefaultWalletReceiveIndex,
   getDiscoveryEffectDependencies,
   getDiscoveryNetworkStatus,
+  getWalletActivityFingerprint,
   getWalletBchBalanceSummary,
   getWalletDiscoveryCacheKey,
   isWalletDiscoveryCacheFresh,
   readWalletDiscoveryCache,
   totalUniquePusdWalletBalance,
+  walletActivityChanged,
   writeWalletDiscoveryCache,
 } from "./App";
 
@@ -57,10 +62,10 @@ describe("App wallet discovery lifecycle", () => {
     )).toBe("Mainnet: found 1 circle.");
     expect(getDiscoveryNetworkStatus(
       "Mainnet", { status: "fulfilled", value: { foundCount: 0 } }, true,
-    )).toBe("Mainnet: timed out, tap Retry to check again.");
+    )).toBe("Mainnet: timed out, tap Find my circles to try again.");
     expect(getDiscoveryNetworkStatus(
       "Mainnet", { status: "rejected", reason: new Error("offline") }, true,
-    )).toBe("Mainnet: timed out, tap Retry to check again.");
+    )).toBe("Mainnet: timed out, tap Find my circles to try again.");
     expect(getCancelledDiscoveryStatus("Mainnet")).not.toContain("checking");
   });
 });
@@ -202,5 +207,47 @@ describe("wallet-wide PUSD totals", () => {
       ] },
     ]);
     expect(total).toBe(875n);
+  });
+});
+
+describe("circle discovery looks again when the wallet changes", () => {
+  const choice = (address: string, confirmed: string, extra: Partial<{ hasHistory: boolean; hasPendingHistory: boolean; unconfirmed: string }> = {}) => ({
+    address,
+    confirmedSatoshis: confirmed,
+    unconfirmedSatoshis: extra.unconfirmed ?? "0",
+    hasHistory: extra.hasHistory ?? confirmed !== "0",
+    hasPendingHistory: extra.hasPendingHistory ?? false,
+  });
+
+  it("treats a new payment to a wallet address (like a circle's member marker) as a reason to rescan", () => {
+    const before = getWalletActivityFingerprint([choice("bitcoincash:qa", "1000"), choice("bitcoincash:qb", "0")]);
+    const after = getWalletActivityFingerprint([
+      choice("bitcoincash:qa", "1000"),
+      choice("bitcoincash:qb", "0", { unconfirmed: "546", hasPendingHistory: true }),
+    ]);
+    expect(walletActivityChanged(before, after)).toBe(true);
+  });
+
+  it("treats a pending payment confirming as a reason to rescan", () => {
+    const pending = getWalletActivityFingerprint([choice("bitcoincash:qb", "0", { unconfirmed: "546", hasPendingHistory: true })]);
+    const mined = getWalletActivityFingerprint([choice("bitcoincash:qb", "546", { hasHistory: true })]);
+    expect(walletActivityChanged(pending, mined)).toBe(true);
+  });
+
+  it("does not rescan for the same activity, a first reading, or a different address set", () => {
+    const one = getWalletActivityFingerprint([choice("bitcoincash:qa", "1000")]);
+    expect(walletActivityChanged(one, one)).toBe(false);
+    expect(walletActivityChanged(null, one)).toBe(false);
+    const otherWallet = getWalletActivityFingerprint([choice("bitcoincash:qz", "5")]);
+    expect(walletActivityChanged(one, otherWallet)).toBe(false);
+  });
+
+  it("never lets a fresh discovery cache skip the background scan", () => {
+    const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "App.tsx"), "utf8");
+    expect(source).not.toContain("isWalletDiscoveryCacheFresh(mainnetCache)");
+    expect(source).not.toContain("isWalletDiscoveryCacheFresh(chipnetCache)");
+    expect(source).toContain("const skipMainnetScan = false;");
+    expect(source).toContain('"Find my circles"');
+    expect(source).toContain("Waiting for first confirmation");
   });
 });

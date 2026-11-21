@@ -28,6 +28,9 @@ import {
   shouldRenderCircleCreation,
 } from "./mainnet-circle-lifecycle-ui";
 import { updateSavedCircleChainStatus } from "../circles/saved-circle-status";
+import { useNoticeFade } from "./notice-display";
+import { WorkspaceNotice } from "./WorkspaceNotice";
+import { recallSnapshot, rememberSnapshot } from "./remembered-snapshots";
 
 type Props = { network: NetworkId; walletConnected: boolean; selectedAddressPendingOnly?: boolean; selectedCircle?: string | null; onBusyChange?: (busy: boolean) => void };
 type Draft = {
@@ -197,13 +200,11 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(""), 4_000);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
+  useNoticeFade(notice, () => setNotice(""));
   const [activeCircle, setActiveCircle] = useState<PusdMainnetCircleParams | null>(readActiveCircle);
   const [circleSnapshot, setCircleSnapshot] = useState<PusdMainnetCircleSnapshot | null>(null);
+  // True when the last status check failed; any details shown are from an earlier check.
+  const [snapshotStale, setSnapshotStale] = useState(false);
   const [depositAmount, setDepositAmount] = useState("10.00");
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
   const [actionPreview, setActionPreview] = useState<{
@@ -260,7 +261,9 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     setOpenCircleKey("selected:" + selectedCircle);
     setCreationResult(null);
     persistActiveCircle(circle);
-    setCircleSnapshot(null);
+    // Show what we read last time right away; the automatic check replaces it.
+    setCircleSnapshot(recallSnapshot<PusdMainnetCircleSnapshot>(serializeCircle(circle)));
+    setSnapshotStale(false);
     setGenesisSigningPlan(null);
     setActionSigningPlan(null);
     setNotice("Opened " + circle.name + ". Checking its latest blockchain status.");
@@ -534,10 +537,13 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     try {
       const snapshot = await readPusdMainnetCircle(activeCircle);
       setCircleSnapshot(snapshot);
+      setSnapshotStale(false);
+      rememberSnapshot(serializeCircle(activeCircle), snapshot);
       persistPusdChainProgress(activeCircle, serializeCircle(activeCircle), snapshot);
-      setNotice("PUSD Mainnet circle status refreshed from the blockchain.");
+      setNotice("Circle status updated.");
     } catch (cause) {
-      setCircleSnapshot(null);
+      // Keep the last good details (if any) and mark them as maybe out of date.
+      setSnapshotStale(true);
       setError(errorMessage(cause));
     } finally {
       setLifecycleBusy(false);
@@ -673,6 +679,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     setOpenCircleKey(null);
     setActiveCircle(null);
     setCircleSnapshot(null);
+    setSnapshotStale(false);
     setActionPreview(null);
     setActionSigningPlan(null);
     setGenesisSigningPlan(null);
@@ -822,8 +829,14 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
               <button type="button" className="secondary-button circle-lifecycle-new" onClick={closeCircleAndCreateNew}>Create a new circle</button>
             </div>
           </div>
-          {!circleSnapshot && <p className="classic-empty">Checking circle status…</p>}
-          {circleSnapshot && <p className="classic-empty">Latest PUSD Mainnet circle details are up to date.</p>}
+          {!circleSnapshot && (snapshotStale && !lifecycleBusy
+            ? <p className="classic-empty">Couldn't check this circle's status. Tap Refresh status to try again.</p>
+            : <p className="classic-empty">Checking circle status…</p>)}
+          {circleSnapshot && (snapshotStale
+            ? <p className="field-hint refresh-stale-note" role="status">These details may be out of date. The latest check didn't finish, so this is the last result we have.</p>
+            : lifecycleBusy
+              ? <p className="field-hint refresh-stale-note checking" role="status">Showing the last details we read. Checking for updates…</p>
+              : <p className="classic-empty">Circle details are up to date.</p>)}
           {circleSnapshot && (
             <div className="pusd-mainnet-breakdown">
               <b>Circle status</b>
@@ -874,7 +887,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         <details className="technical-details"><summary>Details</summary><p>{error}</p></details>
         <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setError("")}>×</button>
       </div>}
-      {notice && <p className="classic-notice" role="status">{notice}</p>}
+      <WorkspaceNotice notice={notice} className="classic-notice" onClose={() => setNotice("")} />
 
       {isCircleOpen && activeCircle && (
         <div className="pusd-mainnet-invite">

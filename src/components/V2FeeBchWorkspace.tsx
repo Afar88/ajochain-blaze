@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { plainErrorSummary } from "./error-copy";
 import { Copy, RefreshCw } from "lucide-react";
 import { parseAssetAmount } from "../core/assets";
@@ -18,6 +18,10 @@ import {
   type V2FeeCircleDraft,
   type V2FeeCircleParams,
 } from "../core/v2-fee-bch";
+import { useNoticeFade } from "./notice-display";
+import { WorkspaceNotice } from "./WorkspaceNotice";
+import { shortClassic, toCashTokenAddress } from "../core/bch-address";
+import { recallSnapshot, rememberSnapshot } from "./remembered-snapshots";
 
 const STORAGE_KEY = "ajochain-blaze:v2-fee-circles:v1";
 const DEFAULT_TREASURY = "bchtest:zpn8rsua556gewluc0gf5mq4v343w8vc9vfcnq22v6";
@@ -98,15 +102,17 @@ export default function V2FeeBchWorkspace({
   const [depositAmount, setDepositAmount] = useState("0.002");
   const [restoreInput, setRestoreInput] = useState("");
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  // True when the last read failed and the details shown are from an earlier check.
+  const [snapshotStale, setSnapshotStale] = useState(false);
+  // True while remembered details are shown and a fresh read is still running.
+  const [checkingSaved, setCheckingSaved] = useState(false);
+  const quietRefreshTimersRef = useRef<number[]>([]);
+  const selectedRef = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(""), 4_000);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
+  useNoticeFade(notice, () => setNotice(""));
 
   useEffect(() => {
     onBusyChange?.(busy);
@@ -151,13 +157,41 @@ export default function V2FeeBchWorkspace({
     try {
       const result = await readV2FeeCircle(params);
       setSnapshot(result);
+      setSnapshotStale(false);
+      rememberSnapshot(selected, result);
       if (selected) persistChainProgress(params, selected, result);
       setNotice("Circle details and member balances were updated.");
     } catch (cause) {
-      setSnapshot(null);
+      // Keep the last good details on screen and say they may be out of date.
+      setSnapshotStale(true);
       setError(errorText(cause));
     } finally { setBusy(false); }
   };
+
+  // After a send, re-read the circle in the background a few seconds later so
+  // the network has the new transaction. This never changes the message or
+  // error on screen, and a failed read keeps the details already shown.
+  const refreshQuietly = (params: V2FeeCircleParams, encoded: string | null, delayMs = 3_000) => {
+    const timer = window.setTimeout(() => {
+      quietRefreshTimersRef.current = quietRefreshTimersRef.current.filter((id) => id !== timer);
+      void readV2FeeCircle(params).then((result) => {
+        if (selectedRef.current !== encoded) return;
+        setSnapshot(result);
+        setSnapshotStale(false);
+        rememberSnapshot(encoded, result);
+        if (encoded) persistChainProgress(params, encoded, result);
+      }).catch(() => {
+        if (selectedRef.current === encoded) setSnapshotStale(true);
+      });
+    }, delayMs);
+    quietRefreshTimersRef.current.push(timer);
+  };
+
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
+  useEffect(() => () => {
+    for (const timer of quietRefreshTimersRef.current) window.clearTimeout(timer);
+    quietRefreshTimersRef.current = [];
+  }, []);
 
   useEffect(() => {
     if (selectedCircle) {
@@ -170,14 +204,23 @@ export default function V2FeeBchWorkspace({
   useEffect(() => {
     if (!active) { setSnapshot(null); return; }
     let current = true;
-    setSnapshot(null);
+    // Show what we read last time right away; replace it when the fresh read lands.
+    const remembered = recallSnapshot<Snapshot>(selected);
+    setSnapshot(remembered);
+    setSnapshotStale(false);
+    setCheckingSaved(Boolean(remembered));
     void readV2FeeCircle(active).then((result) => {
       if (current) {
         setSnapshot(result);
+        setCheckingSaved(false);
+        rememberSnapshot(selected, result);
         if (selected) persistChainProgress(active, selected, result);
       }
     }).catch((cause: unknown) => {
-      if (current) setError(errorText(cause));
+      if (!current) return;
+      setCheckingSaved(false);
+      if (remembered) setSnapshotStale(true);
+      setError(errorText(cause));
     });
     return () => { current = false; };
   }, [selected]);
@@ -432,7 +475,7 @@ export default function V2FeeBchWorkspace({
       const provider = await getClassicProvider("chipnet");
       const txid = await provider.sendRawTransaction(signed.signedTransaction);
       setNotice("Member credit deposit broadcast. Transaction: " + txid);
-      await refresh(active);
+      refreshQuietly(active, selected);
       window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
     } catch (cause) { setError(errorText(cause)); }
     finally { setBusy(false); }
@@ -470,7 +513,7 @@ export default function V2FeeBchWorkspace({
       const provider = await getClassicProvider("chipnet");
       const txid = await provider.sendRawTransaction(signed.signedTransaction);
       setNotice("V2 fee payout broadcast. The 1% project fee and member payout were paid from the circle pot; miner fee came from the connected wallet. Transaction: " + txid);
-      await refresh(active);
+      refreshQuietly(active, selected);
       window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
     } catch (cause) { setError(errorText(cause)); }
     finally { setBusy(false); }
@@ -493,7 +536,7 @@ export default function V2FeeBchWorkspace({
       const provider = await getClassicProvider("chipnet");
       const txid = await provider.sendRawTransaction(signed.signedTransaction);
       setNotice("Pre-payout cancellation broadcast. Transaction: " + txid);
-      await refresh(active);
+      refreshQuietly(active, selected);
     } catch (cause) { setError(errorText(cause)); }
     finally { setBusy(false); }
   };
@@ -557,7 +600,10 @@ export default function V2FeeBchWorkspace({
             <div className="creator-member-preview">
               <b>Member 1 · You, the creator</b>
               {walletConnected && wallet.state === "connected" && wallet.address("chipnet")
-                ? <code>{wallet.address("chipnet")}</code>
+                ? <>
+                    <code>{toCashTokenAddress(wallet.address("chipnet"))}</code>
+                    {toCashTokenAddress(wallet.address("chipnet")) !== wallet.address("chipnet") && <small className="wallet-classic-address">Same as {shortClassic(wallet.address("chipnet"))}</small>}
+                  </>
                 : "Connect your Selene wallet and it will be registered automatically."}
             </div>
             <label>Other members' Chipnet BCH addresses · one per line<textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder="bchtest:…\nbchtest:…" required /></label>
@@ -586,6 +632,8 @@ export default function V2FeeBchWorkspace({
         </div>
         <p className="classic-contract-address">Circle ID: <code>{active.stateCategory}</code></p>
         <p className="classic-contract-address">Fee address: <code>{active.treasury}</code> · 1% of each gross payout</p>
+        {snapshot && checkingSaved && !snapshotStale && <p className="field-hint refresh-stale-note checking" role="status">Showing the last details we read. Checking for updates…</p>}
+        {snapshot && snapshotStale && <p className="field-hint refresh-stale-note" role="status">These details may be out of date. The latest check didn't finish, so this is the last result we have.</p>}
         {snapshot ? <>
           <div className="classic-account-summary classic-chain-stats">
             <div><b>{snapshot.completed ? "Complete" : (snapshot.round + 1) + " / " + active.members.length}</b><span>{snapshot.completed ? "All scheduled payouts" : "Next payout round"}</span></div>
@@ -625,7 +673,10 @@ export default function V2FeeBchWorkspace({
           {memberIndex >= 0
             ? <p><b>You're Member {memberIndex + 1}.</b> Pay your share below.</p>
             : walletConnected
-              ? <><p><b>This wallet isn't a member.</b> Connect the registered wallet.</p><code>{wallet.address("chipnet") ?? "Address unavailable"}</code></>
+              ? <><p><b>This wallet isn't a member.</b> Connect the registered wallet.</p>{wallet.address("chipnet")
+                ? <><code>{toCashTokenAddress(wallet.address("chipnet"))}</code>
+                    {toCashTokenAddress(wallet.address("chipnet")) !== wallet.address("chipnet") && <small className="wallet-classic-address">Same as {shortClassic(wallet.address("chipnet"))}</small>}</>
+                : <code>Address unavailable</code>}</>
               : <p>Connect the wallet registered for your share.</p>}
         </div>
         <label className="classic-deposit-field">Your BCH contribution deposit<input value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} inputMode="decimal" /></label>
@@ -640,7 +691,7 @@ export default function V2FeeBchWorkspace({
         </div>
       </div>}
       {busy && <p className="classic-feedback" role="status">Preparing or verifying a Chipnet transaction…</p>}
-      {notice && <p className="classic-feedback" role="status">{notice}</p>}
+      <WorkspaceNotice notice={notice} className="classic-feedback" onClose={() => setNotice("")} />
       {error && <div className="classic-error" role="alert">
         <span>{plainErrorSummary(error)}</span>
         <details className="technical-details"><summary>Details</summary><p>{error}</p></details>

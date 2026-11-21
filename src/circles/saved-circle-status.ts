@@ -97,7 +97,18 @@ export function updateSavedCircleChainStatus(
   const records = readSavedCircleMetadata(storage);
   const previous = records.find((record) => record.id === circle.id);
   const closed = status === "completed" || status === "cancelled";
-  const record: SavedCircleMetadata = {
+  const previouslyClosed = previous?.status === "completed" || previous?.status === "cancelled";
+  // A check that timed out or failed (Unknown) says nothing new about a circle
+  // the chain already showed as finished. Keep the saved Completed/Cancelled
+  // result and its close time; only note when we last tried.
+  const record: SavedCircleMetadata = status === "unknown" && previous && previouslyClosed ? {
+    ...previous,
+    ...circle,
+    status: previous.status,
+    completedAt: previous.completedAt,
+    round: previous.round,
+    checkedAt: Number.isSafeInteger(checkedAt) ? checkedAt : Date.now(),
+  } : {
     ...previous,
     ...circle,
     status,

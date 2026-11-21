@@ -100,15 +100,37 @@ describe("saved circle network and lifecycle filters", () => {
     expect(updated.completedAt).toBeNull();
   });
 
-  it("stores Unknown after a failed read rather than preserving a saved Completed guess", () => {
+  it("keeps a saved Completed result when a later check fails or times out", () => {
     const storage = memoryStorage();
     ensureSavedCircleMetadata(storage, [mainnet]);
     updateSavedCircleChainStatus(storage, mainnet, "completed", 5, 1_800_000_000_000);
     const unknown = updateSavedCircleChainStatus(storage, mainnet, "unknown", null, null, 1_800_000_500_000);
+    expect(unknown.status).toBe("completed");
+    expect(unknown.completedAt).toBe(1_800_000_000_000);
+    expect(unknown.round).toBe(5);
+    expect(unknown.checkedAt).toBe(1_800_000_500_000);
+    expect(filterSavedCirclesByStatus([unknown], "active")).toHaveLength(0);
+    expect(filterSavedCirclesByStatus([unknown], "completed")).toHaveLength(1);
+  });
+
+  it("keeps a saved Cancelled result when a later check fails or times out", () => {
+    const storage = memoryStorage();
+    ensureSavedCircleMetadata(storage, [mainnet]);
+    updateSavedCircleChainStatus(storage, mainnet, "cancelled", 5, 1_800_000_000_000);
+    const unknown = updateSavedCircleChainStatus(storage, mainnet, "unknown", null, null, 1_800_000_600_000);
+    expect(unknown.status).toBe("cancelled");
+    expect(unknown.completedAt).toBe(1_800_000_000_000);
+    expect(unknown.checkedAt).toBe(1_800_000_600_000);
+  });
+
+  it("stores Unknown after a failed read when nothing final was saved before", () => {
+    const storage = memoryStorage();
+    ensureSavedCircleMetadata(storage, [mainnet]);
+    updateSavedCircleChainStatus(storage, mainnet, "active", 2, null, 1_800_000_000_000);
+    const unknown = updateSavedCircleChainStatus(storage, mainnet, "unknown", null, null, 1_800_000_500_000);
     expect(unknown.status).toBe("unknown");
-    expect(unknown.completedAt).toBeNull();
+    expect(unknown.checkedAt).toBe(1_800_000_500_000);
     expect(filterSavedCirclesByStatus([unknown], "active")).toHaveLength(1);
-    expect(filterSavedCirclesByStatus([unknown], "completed")).toHaveLength(0);
   });
 
   it("does not let a legacy progress refresh relabel an already Cancelled circle as Completed", () => {

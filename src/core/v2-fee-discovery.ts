@@ -31,6 +31,28 @@ export type V2FeeDiscoveryOptions = {
   onTimeout?: () => void;
 };
 
+// Mined transactions never change, so a repeat scan (Find my circles, a rescan
+// after new wallet activity) reuses what an earlier scan in this page session
+// already downloaded and checked instead of fetching it again. Only mined
+// transactions are kept; mempool ones are always read fresh.
+const MINED_TX_RESULT_CACHE_LIMIT = 2_000;
+const minedTxResultCache = new Map<string, V2FeeCircleParams | null>();
+
+function rememberMinedTxResult(key: string, result: V2FeeCircleParams | null) {
+  if (minedTxResultCache.has(key)) minedTxResultCache.delete(key);
+  minedTxResultCache.set(key, result);
+  while (minedTxResultCache.size > MINED_TX_RESULT_CACHE_LIMIT) {
+    const oldest = minedTxResultCache.keys().next().value;
+    if (oldest === undefined) break;
+    minedTxResultCache.delete(oldest);
+  }
+}
+
+/** Forget remembered scan results (tests, or after switching wallets). */
+export function clearV2FeeDiscoveryCache(): void {
+  minedTxResultCache.clear();
+}
+
 class DiscoveryRequestTimeoutError extends Error {
   constructor() {
     super("Circle discovery request timed out.");
@@ -149,6 +171,29 @@ export async function discoverV2FeeCircles(
   network: DiscoveryNetwork = 'chipnet',
   options: V2FeeDiscoveryOptions = {},
 ): Promise<V2FeeCircleParams[]> {
+  const found = await discoverV2FeeCirclesWithStatus(provider, walletAddresses, maxTransactions, network, options);
+  return found.map((entry) => entry.params);
+}
+
+export type DiscoveredV2FeeCircle = {
+  params: V2FeeCircleParams;
+  /** False while the circle's setup transaction is still waiting for its first block. */
+  confirmed: boolean;
+};
+
+/**
+ * Same scan as discoverV2FeeCircles, but also reports whether each circle's
+ * setup transaction has been mined. Transactions still in the mempool
+ * (Electrum height 0 or -1) are included so a member sees a new circle right
+ * away; they go through exactly the same decoding and covenant checks.
+ */
+export async function discoverV2FeeCirclesWithStatus(
+  provider: NetworkProvider,
+  walletAddresses: readonly string[],
+  maxTransactions = DEFAULT_MAX_TRANSACTIONS,
+  network: DiscoveryNetwork = 'chipnet',
+  options: V2FeeDiscoveryOptions = {},
+): Promise<DiscoveredV2FeeCircle[]> {
   const concurrency = options.concurrency ?? DEFAULT_DISCOVERY_CONCURRENCY;
   const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_DISCOVERY_REQUEST_TIMEOUT_MS;
   const overallTimeoutMs = options.overallTimeoutMs ?? DEFAULT_DISCOVERY_OVERALL_TIMEOUT_MS;
@@ -227,12 +272,16 @@ export async function discoverV2FeeCircles(
         if (!Array.isArray(history)) return;
         const recentForAddress = history.flatMap((entry) => {
           const item = entry as { tx_hash?: unknown; height?: unknown };
-          if (!Number.isSafeInteger(item?.height) || (item.height as number) <= 0 ||
+          // Electrum reports mempool transactions with height 0 (or -1 when a
+          // parent is also unconfirmed). Keep them, newest of all.
+          if (!Number.isSafeInteger(item?.height) || (item.height as number) < -1 ||
               typeof item?.tx_hash !== 'string' || !/^[0-9a-f]{64}$/i.test(item.tx_hash)) return [];
           return [{ txid: item.tx_hash.toLowerCase(), height: item.height as number }];
-        }).sort((a, b) => b.height - a.height || a.txid.localeCompare(b.txid)).slice(0, maxTransactions);
+        }).sort((a, b) => historyRank(b.height) - historyRank(a.height) || a.txid.localeCompare(b.txid)).slice(0, maxTransactions);
         for (const item of recentForAddress) {
-          historyByTxid.set(item.txid, Math.max(historyByTxid.get(item.txid) ?? 0, item.height));
+          const previous = historyByTxid.get(item.txid);
+          // If any server/address already reports it mined, keep the block height.
+          historyByTxid.set(item.txid, previous !== undefined && previous > 0 ? previous : item.height > 0 ? item.height : (previous ?? item.height));
         }
       } catch {
         // An unavailable or timed-out address is skipped without blocking other workers.
@@ -248,16 +297,27 @@ export async function discoverV2FeeCircles(
 
   // Apply the global cap after collecting the newest confirmed history from
   // every address that answered before the deadline.
-  const txids = [...historyByTxid.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, maxTransactions)
-    .map(([txid]) => txid);
+  const ranked = [...historyByTxid.entries()]
+    .sort((a, b) => historyRank(b[1]) - historyRank(a[1]) || a[0].localeCompare(b[0]))
+    .slice(0, maxTransactions);
+  const txids = ranked.map(([txid]) => txid);
 
   const decodedByIndex = new Array<V2FeeCircleParams | null>(txids.length).fill(null);
   await mapConcurrent(
     txids,
     concurrency,
     async (txid, index) => {
+      const mined = ranked[index][1] > 0;
+      const cacheKey = network + ':' + txid;
+      const accept = (params: V2FeeCircleParams | null) => {
+        if (params && params.members.some((member) => owned.has(member.toLowerCase()))) {
+          decodedByIndex[index] = params;
+        }
+      };
+      if (mined && minedTxResultCache.has(cacheKey)) {
+        accept(minedTxResultCache.get(cacheKey) ?? null);
+        return;
+      }
       try {
         const raw = await request(() => provider.getRawTransaction(txid));
         if (typeof raw !== 'string' || !/^(?:[0-9a-f]{2})+$/i.test(raw)) return;
@@ -267,9 +327,8 @@ export async function discoverV2FeeCircles(
         const decoded = decodeTransaction(rawBytes);
         if (typeof decoded === 'string') return;
         const params = parseV2FeeDiscoveryTransaction(decoded, provider, network);
-        if (params && params.members.some((member) => owned.has(member.toLowerCase()))) {
-          decodedByIndex[index] = params;
-        }
+        if (mined) rememberMinedTxResult(cacheKey, params);
+        accept(params);
       } catch {
         // One stale, unavailable, or timed-out history item cannot hide other circles.
       }
@@ -278,11 +337,19 @@ export async function discoverV2FeeCircles(
     noteTimeout,
   );
 
-  const found = new Map<string, V2FeeCircleParams>();
-  for (const params of decodedByIndex) {
-    if (params) found.set(params.stateCategory, params);
-  }
+  const found = new Map<string, DiscoveredV2FeeCircle>();
+  decodedByIndex.forEach((params, index) => {
+    if (!params) return;
+    const confirmed = ranked[index][1] > 0;
+    const previous = found.get(params.stateCategory);
+    found.set(params.stateCategory, { params, confirmed: confirmed || Boolean(previous?.confirmed) });
+  });
   return [...found.values()];
+}
+
+/** Sort key: unconfirmed (height 0 / -1) first as the newest, then by block height. */
+function historyRank(height: number): number {
+  return height > 0 ? height : Number.MAX_SAFE_INTEGER;
 }
 
 export function encodeV2FeeCircleParams(params: V2FeeCircleParams): string {
