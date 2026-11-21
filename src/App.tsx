@@ -505,6 +505,7 @@ export default function App() {
   });
   const [showWallet, setShowWallet] = useState(false);
   const [receiveAddressChoices, setReceiveAddressChoices] = useState<ReceiveAddressChoice[]>([]);
+  const [receiveAddressChoicesNetwork, setReceiveAddressChoicesNetwork] = useState<NetworkId | null>(null);
   const [receiveAddressPickerExpanded, setReceiveAddressPickerExpanded] = useState(false);
   const [walletAddressPickerShowAll, setWalletAddressPickerShowAll] = useState(false);
   const [expandedWalletAddress, setExpandedWalletAddress] = useState(false);
@@ -1059,6 +1060,7 @@ export default function App() {
     if (walletView.state !== "connected" || !walletClient || walletClient.state !== "connected") {
       if (walletView.state !== "connected") {
         setReceiveAddressChoices([]);
+        setReceiveAddressChoicesNetwork(null);
         setWalletPusdTotal(null);
         setWalletPusdError("");
       }
@@ -1157,6 +1159,7 @@ export default function App() {
             : leftTotal > rightTotal ? -1 : 1;
         });
         setReceiveAddressChoices(choices);
+        setReceiveAddressChoicesNetwork(network);
 
         if (network === "mainnet" && !client.isReceiveAddressConfirmed("mainnet")) {
           let preferredIndex: number | null = null;
@@ -1906,14 +1909,17 @@ export default function App() {
     bchBalanceScan.address.toLowerCase() === walletAddress.toLowerCase()
     ? bchBalanceScan
     : null;
+  const currentNetworkAddressChoices = receiveAddressChoicesNetwork === network
+    ? receiveAddressChoices
+    : [];
   const walletBchBalanceSummary = getWalletBchBalanceSummary({
     network,
     connected,
-    receiveAddressChoices,
+    receiveAddressChoices: currentNetworkAddressChoices,
     currentBchBalanceScan,
     receiveAddressScanLoading,
   });
-  const selectedReceiveAddressChoice = receiveAddressChoices.find((choice) =>
+  const selectedReceiveAddressChoice = currentNetworkAddressChoices.find((choice) =>
     (choice.branch ?? "receive") === "receive" && choice.index === walletView.receiveIndex,
   ) ?? null;
   const selectedAddressPendingOnly = network === "mainnet" && Boolean(selectedReceiveAddressChoice &&
@@ -2489,12 +2495,12 @@ export default function App() {
                     {receiveAddressScanError}
                     <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setReceiveAddressScanError("")}>×</button>
                   </p>}
-                  {receiveAddressChoices.length === 0 && !receiveAddressScanLoading && !receiveAddressScanError &&
+                  {currentNetworkAddressChoices.length === 0 && !receiveAddressScanLoading && !receiveAddressScanError &&
                     <p className="field-hint">Couldn't load your addresses. Reconnect and try again.</p>}
                   {receiveAddressPickerExpanded && (
                     <div className="receive-address-picker-list-wrap">
                       <div className="receive-address-choice-list">
-                        {receiveAddressChoices
+                        {currentNetworkAddressChoices
                           .filter((choice) => walletAddressPickerShowAll ||
                             BigInt(choice.confirmedSatoshis) + BigInt(choice.unconfirmedSatoshis) > 0n)
                           .map((choice) => {
@@ -2558,7 +2564,7 @@ export default function App() {
                         {receiveAddressScanLoading && <span className="receive-address-scan-state">Updating…</span>}
                       </div>
                       <div className="receive-address-choice-list">
-                        {receiveAddressChoices
+                        {currentNetworkAddressChoices
                           .filter((choice) => walletAddressPickerShowAll ||
                             BigInt(choice.confirmedSatoshis) + BigInt(choice.unconfirmedSatoshis) > 0n)
                           .map((choice) => {
