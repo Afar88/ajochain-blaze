@@ -88,7 +88,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
       setStatus(snapshot.status);
       saveChainProgress(params, snapshot.status, selected);
       setContractAddress(snapshot.contract.address);
-      setNotice("Chain data refreshed from " + params.network + ". For Mainnet, the app checks the circle details with independent blockchain providers.");
+      setNotice("Circle details updated on " + params.network + ".");
     } catch (cause) {
       setStatus(null);
       setError(message(cause));
@@ -131,7 +131,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
     setNotice("");
     if (!walletConnected || wallet.state !== "connected") {
       connect();
-      setError("Connect Selene through WizardConnect, then submit the circle again.");
+      setError("Connect Selene, then try again.");
       return;
     }
     const walletAddress = wallet.address(network);
