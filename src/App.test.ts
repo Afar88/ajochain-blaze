@@ -126,6 +126,13 @@ describe("App wallet BCH balance summary", () => {
 
 
 describe("wallet receive and change balances", () => {
+  const baseInput = {
+    network: "mainnet" as const,
+    connected: true,
+    currentBchBalanceScan: null,
+    receiveAddressScanLoading: false,
+  };
+
   it("includes change-address coins in the total BCH balance", () => {
     const summary = getWalletBchBalanceSummary({
       ...baseInput,
