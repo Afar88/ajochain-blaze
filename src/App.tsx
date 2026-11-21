@@ -1,9 +1,10 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
-  Activity, ArrowRight, Check, ChevronDown, Copy, Home,
-  Monitor, MoreVertical, Moon, ShieldCheck, Sun, Users, Wallet, X,
+  Activity, ArrowRight, Check, Copy, Home,
+  Monitor, MoreVertical, Moon, RefreshCw, ShieldCheck, Sun, Users, Wallet, X,
 } from "lucide-react";
 import { getDefaultNetwork, NETWORKS, type NetworkId } from "./core/network-config";
+import { plainErrorSummary } from "./components/error-copy";
 import { settleIndependentTasks } from "./core/independent-network-tasks";
 import { getDefaultCircleWorkspace, resolveCircleWorkspaceForNetwork, type CircleWorkspaceId } from "./core/circle-network-options";
 import { formatAssetAmount, parseAssetAmount, PUSD_ASSET } from "./core/assets";
@@ -59,6 +60,7 @@ const BCH_MAINNET_CIRCLES_STORAGE_KEY = "ajochain-blaze:bch-mainnet-circles-depl
 const PUSD_MAINNET_CIRCLES_STORAGE_KEY = "ajochain-blaze:pusd-mainnet-circles-deployed:v1";
 const CLASSIC_CIRCLES_STORAGE_KEY = "ajochain-blaze:classic-circles:v1";
 const V2_MENU_STORAGE_KEY = "ajochain-blaze:v2-fee-circles:v1";
+const WALLET_SELECTED_RECEIVE_INDEX_KEY = "ajochain:wallet-selected-receive-index:v1";
 
 function decodeMenuCirclePayload(encoded: string): Record<string, unknown> | null {
   try {
@@ -209,6 +211,7 @@ type WalletView = {
 };
 export type ReceiveAddressChoice = {
   index: number;
+  branch?: "receive" | "change";
   address: string;
   confirmedSatoshis: string;
   unconfirmedSatoshis: string;
@@ -217,6 +220,72 @@ export type ReceiveAddressChoice = {
   status: "confirmed" | "pending" | "unused";
   newest: boolean;
 };
+
+export type WalletDiscoveryCache = { checkedAt: number; circles: string[] };
+const DISCOVERY_CACHE_PREFIX = "ajochain:wallet-discovery:v1:";
+const DISCOVERY_CACHE_MAX_AGE_MS = 30 * 60 * 1000;
+
+export function getWalletDiscoveryCacheKey(firstReceiveAddress: string, network: NetworkId): string {
+  return DISCOVERY_CACHE_PREFIX + network + ":" + firstReceiveAddress.trim().toLowerCase();
+}
+
+export function readWalletDiscoveryCache(
+  storage: Pick<Storage, "getItem">,
+  key: string,
+): WalletDiscoveryCache | null {
+  try {
+    const raw: unknown = JSON.parse(storage.getItem(key) || "null");
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const value = raw as Record<string, unknown>;
+    if (typeof value.checkedAt !== "number" || !Number.isFinite(value.checkedAt) ||
+        !Array.isArray(value.circles) || !value.circles.every((item) => typeof item === "string")) return null;
+    return { checkedAt: value.checkedAt, circles: value.circles as string[] };
+  } catch { return null; }
+}
+
+export function writeWalletDiscoveryCache(
+  storage: Pick<Storage, "setItem">,
+  key: string,
+  circles: readonly string[],
+  checkedAt = Date.now(),
+): WalletDiscoveryCache {
+  const cache = { checkedAt, circles: [...new Set(circles)] };
+  storage.setItem(key, JSON.stringify(cache));
+  return cache;
+}
+
+export function isWalletDiscoveryCacheFresh(cache: WalletDiscoveryCache | null, now = Date.now()): boolean {
+  return Boolean(cache && cache.checkedAt <= now && now - cache.checkedAt < DISCOVERY_CACHE_MAX_AGE_MS);
+}
+
+export function getDefaultWalletReceiveIndex(
+  entries: readonly Pick<ReceiveAddressChoice, "index" | "branch" | "confirmedSatoshis" | "unconfirmedSatoshis">[],
+  preferredIndex?: number | null,
+): number | null {
+  const receiveEntries = entries.filter((entry) => (entry.branch ?? "receive") === "receive");
+  if (preferredIndex !== null && preferredIndex !== undefined &&
+      receiveEntries.some((entry) => entry.index === preferredIndex)) return preferredIndex;
+  const ranked = [...receiveEntries].sort((left, right) => {
+    const leftTotal = BigInt(left.confirmedSatoshis) + BigInt(left.unconfirmedSatoshis);
+    const rightTotal = BigInt(right.confirmedSatoshis) + BigInt(right.unconfirmedSatoshis);
+    return leftTotal === rightTotal ? left.index - right.index : leftTotal > rightTotal ? -1 : 1;
+  });
+  return ranked[0]?.index ?? null;
+}
+
+export function totalUniquePusdWalletBalance(
+  addressBalances: readonly {
+    utxos: readonly { txid: string; vout: number; token?: { amount: bigint } | null }[];
+  }[],
+): bigint {
+  const unique = new Map<string, bigint>();
+  for (const balance of addressBalances) {
+    for (const utxo of balance.utxos) {
+      unique.set(utxo.txid.toLowerCase() + ":" + utxo.vout, utxo.token?.amount ?? 0n);
+    }
+  }
+  return [...unique.values()].reduce((total, amount) => total + amount, 0n);
+}
 type PreparedGather = {
   network: NetworkId;
   destinationAddress: string;
@@ -245,6 +314,30 @@ export function circleRiskNoticeText(network: NetworkId): string {
   return network === "mainnet"
     ? "Real BCH. The circle contract hasn't had an independent audit yet. Start with small amounts."
     : "Test network. No real money.";
+}
+
+export function walletErrorSummary(error: string): string {
+  const normalized = error.toLowerCase();
+  if (/wizardconnect|xpub|receive key|relay|session/.test(normalized)) {
+    return "Wallet couldn't connect. Reconnect Selene and try again.";
+  }
+  if (/derived receive|no valid live receive key|no receive addresses/.test(normalized)) {
+    return "Couldn't load your addresses. Reconnect and try again.";
+  }
+  if (/signature|signed transaction/.test(normalized)) {
+    return "Couldn't check this payment. Nothing was sent.";
+  }
+  return plainErrorSummary(error);
+}
+
+export function formatUpdatedAgo(timestamp: number, now = Date.now()): string {
+  const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
+  if (seconds < 5) return "just now";
+  if (seconds < 60) return seconds + "s ago";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return minutes + "m ago";
+  const hours = Math.floor(minutes / 60);
+  return hours + "h ago";
 }
 
 const formatBchSatoshis = (satoshis: bigint) => {
@@ -316,7 +409,7 @@ export function getWalletBchBalanceSummary(input: {
     };
   }
 
-  if (network === "mainnet" && receiveAddressChoices.length > 0) {
+  if (receiveAddressChoices.length > 0) {
     const totalSatoshis = receiveAddressChoices.reduce((total, choice) => {
       try {
         const addressTotal = BigInt(choice.confirmedSatoshis) + BigInt(choice.unconfirmedSatoshis);
@@ -327,8 +420,8 @@ export function getWalletBchBalanceSummary(input: {
     }, 0n);
     return {
       balanceLabel: formatBchSatoshis(totalSatoshis),
-      detailLabel: "Across your wallet addresses",
-      sourceLabel: "Receive-address activity across your wallet addresses",
+      detailLabel: "Across all wallet addresses",
+      sourceLabel: "Receive and change address balances",
     };
   }
 
@@ -351,7 +444,7 @@ export function getWalletBchBalanceSummary(input: {
   return {
     balanceLabel: "Not checked yet",
     detailLabel: "BCH coins found in your connected wallet",
-    sourceLabel: "No wallet scan in this session",
+    sourceLabel: "No balance check yet",
   };
 }
 
@@ -362,7 +455,7 @@ const pageLabels: Record<Page, string> = {
   "create-circle": "Create a circle",
   "my-circles": "My circles",
   "circle-detail": "Circle details",
-  assets: "Wallet",
+  assets: "Wallet & assets",
   activity: "Activity",
 };
 
@@ -413,7 +506,18 @@ export default function App() {
   });
   const [showWallet, setShowWallet] = useState(false);
   const [receiveAddressChoices, setReceiveAddressChoices] = useState<ReceiveAddressChoice[]>([]);
-  const [receiveAddressPickerExpanded, setReceiveAddressPickerExpanded] = useState(true);
+  const [receiveAddressChoicesNetwork, setReceiveAddressChoicesNetwork] = useState<NetworkId | null>(null);
+  const [receiveAddressPickerExpanded, setReceiveAddressPickerExpanded] = useState(false);
+  const [walletAddressPickerShowAll, setWalletAddressPickerShowAll] = useState(false);
+  const [expandedWalletAddress, setExpandedWalletAddress] = useState(false);
+  const [showWalletAddressQr, setShowWalletAddressQr] = useState(false);
+  const [walletAddressQrDataUrl, setWalletAddressQrDataUrl] = useState("");
+  const [walletBalanceRefreshRun, setWalletBalanceRefreshRun] = useState(0);
+  const [walletBalanceUpdatedAt, setWalletBalanceUpdatedAt] = useState<number | null>(null);
+  const [walletBalanceRefreshing, setWalletBalanceRefreshing] = useState(false);
+  const [walletPusdTotal, setWalletPusdTotal] = useState<bigint | null>(null);
+  const [walletPusdError, setWalletPusdError] = useState("");
+  const lastManualDiscoveryRunRef = useRef(0);
   const [receiveAddressScanLoading, setReceiveAddressScanLoading] = useState(false);
   const [receiveAddressScanError, setReceiveAddressScanError] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState("");
@@ -432,6 +536,7 @@ export default function App() {
   const [pusdPlanBusy, setPusdPlanBusy] = useState(false);
   const [pusdSignatureBusy, setPusdSignatureBusy] = useState(false);
   const [pusdSignatureMessage, setPusdSignatureMessage] = useState("");
+  const [pusdSignatureError, setPusdSignatureError] = useState("");
 
   const walletAddress = walletClient?.address(network) ?? null;
   const connected = walletView.state === "connected";
@@ -466,9 +571,6 @@ export default function App() {
     cancelled: boolean;
     cancel: () => void;
   } | null>(null);
-  const selectedMainnetReceiveAddress = receiveAddressChoices.find((choice) =>
-    choice.index === walletView.receiveIndex,
-  ) ?? null;
 
   useEffect(() => {
     let timer: number | undefined;
@@ -492,17 +594,23 @@ export default function App() {
     walletClient?.clearReceiveAddressConfirmation(network);
   }, [network, walletClient]);
 
-  // Status messages are transient: show them while relevant and clear them
-  // automatically so the page returns to a clean state.
+  // Status and success notes fade quickly. Errors are dismissed by the saver.
   useEffect(() => {
+    if (!gatherMessage && !addressMatchMessage && !pusdSignatureMessage && !mainnetInviteNotice) return;
     const timer = window.setTimeout(() => {
       setGatherMessage("");
       setAddressMatchMessage("");
       setPusdSignatureMessage("");
-      setPusdPlanError("");
-    }, 20_000);
+      setMainnetInviteNotice("");
+    }, 4_000);
     return () => window.clearTimeout(timer);
-  }, [gatherMessage, addressMatchMessage, pusdSignatureMessage, pusdPlanError]);
+  }, [gatherMessage, addressMatchMessage, pusdSignatureMessage, mainnetInviteNotice]);
+
+  useEffect(() => {
+    if (gatherResult?.status !== "success") return;
+    const timer = window.setTimeout(() => setGatherResult(null), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [gatherResult]);
 
   const selectedCircleRecord = menuCircles.find((circle) =>
     circle.id === selectedMenuCircle && circle.network === network,
@@ -636,7 +744,7 @@ export default function App() {
           throw cause;
         }
       }
-      throw new Error("No read-only status checker is available for this saved circle type.");
+      throw new Error("This saved circle type can't be checked here yet.");
     };
 
     void (async () => {
@@ -751,7 +859,7 @@ export default function App() {
       const next = [encoded, ...records.filter((entry) => getV2FeeCircleRecordIdentity(entry)?.key !== identity.key)].slice(0, 50);
       window.localStorage.setItem(BCH_MAINNET_CIRCLES_STORAGE_KEY, JSON.stringify(next));
       window.dispatchEvent(new Event("ajochain:bch-mainnet-circles-changed"));
-      return "BCH Mainnet circle added. Open it from the list to check its on-chain state.";
+      return "BCH Mainnet circle added. Open it from the list to check its latest details.";
     }
 
     if (payload.version === 3 && typeof payload.contribution === "string" &&
@@ -770,7 +878,7 @@ export default function App() {
         } catch { return true; }
       })].slice(0, 50);
       window.localStorage.setItem(PUSD_MAINNET_CIRCLES_STORAGE_KEY, JSON.stringify(next));
-      return "PUSD Mainnet circle added. Open it from the list to check its on-chain state.";
+      return "PUSD Mainnet circle added. Open it from the list to check its latest details.";
     }
 
     throw new Error("This invite is not a supported BCH or PUSD Mainnet circle.");
@@ -950,94 +1058,218 @@ export default function App() {
   }, [walletView.qrUri]);
 
   useEffect(() => {
-    let cancelled = false;
-    if (!showWallet || network !== "mainnet" || walletView.state !== "connected" || !walletClient || walletClient.state !== "connected") {
-      setReceiveAddressChoices([]);
-      setReceiveAddressPickerExpanded(true);
-      setReceiveAddressScanError("");
+    if (walletView.state !== "connected" || !walletClient || walletClient.state !== "connected") {
+      if (walletView.state !== "connected") {
+        setReceiveAddressChoices([]);
+        setReceiveAddressChoicesNetwork(null);
+        setWalletPusdTotal(null);
+        setWalletPusdError("");
+      }
       setReceiveAddressScanLoading(false);
-      return () => { cancelled = true; };
+      setWalletBalanceRefreshing(false);
+      return;
     }
+
+    let cancelled = false;
     const client = walletClient;
     const identity = client.getSessionIdentity();
     const revision = client.addressSetRevision;
     setReceiveAddressScanLoading(true);
+    setWalletBalanceRefreshing(true);
     setReceiveAddressScanError("");
+
     void (async () => {
       try {
-        const [{ getClassicProvider }, { getNextUnusedReceiveAddressIndex, selectDefaultReceiveAddressIndex }] = await Promise.all([
+        const [{ getClassicProvider }, { fetchPusdWalletBalance }] = await Promise.all([
           import("./core/classic-bch"),
-          import("./core/wizard-wallet"),
+          import("./core/pusd-api"),
         ]);
-        const derived = client.listReceiveAddresses("mainnet", 49);
-        if (derived.length === 0) throw new Error("Selene has not supplied a usable Mainnet receive xpub yet.");
-        const provider = await getClassicProvider("mainnet");
-        const activityProvider = provider as typeof provider & {
-          getAddressActivityForAddresses?: (addresses: readonly string[]) => Promise<Array<{
-            address: string; hasHistory: boolean; hasPendingHistory: boolean;
-            confirmedSatoshis: bigint; unconfirmedSatoshis: bigint;
-          }>>;
-        };
-        if (typeof activityProvider.getAddressActivityForAddresses !== "function") {
-          throw new Error("The verified Mainnet provider does not support receive-address activity scanning.");
+        const walletAddresses = client.listWalletAddresses(network, 49, 20);
+        if (walletAddresses.length === 0) throw new Error("Couldn't load your wallet addresses. Reconnect and try again.");
+        const provider = await getClassicProvider(network);
+        const scanned: Array<{
+          address: string;
+          hasHistory: boolean;
+          hasPendingHistory: boolean;
+          confirmedSatoshis: bigint;
+          unconfirmedSatoshis: bigint;
+        }> = [];
+        if (network === "mainnet") {
+          const activityProvider = provider as typeof provider & {
+            getAddressActivityForAddresses?: (addresses: readonly string[]) => Promise<Array<{
+              address: string; hasHistory: boolean; hasPendingHistory: boolean;
+              confirmedSatoshis: bigint; unconfirmedSatoshis: bigint;
+            }>>;
+          };
+          if (typeof activityProvider.getAddressActivityForAddresses !== "function") {
+            throw new Error("Your wallet balances could not be checked right now.");
+          }
+          // Mainnet address-activity reads accept up to 50 addresses per call.
+          for (let offset = 0; offset < walletAddresses.length; offset += 50) {
+            const batch = walletAddresses.slice(offset, offset + 50);
+            scanned.push(...await activityProvider.getAddressActivityForAddresses(batch.map((entry) => entry.address)));
+          }
+        } else {
+          // Chipnet's regular provider exposes spendable UTXOs rather than the
+          // Mainnet activity quorum. Read each receive/change address directly.
+          const results: Array<{ address: string; utxos: Awaited<ReturnType<typeof provider.getUtxos>> }> = [];
+          for (let offset = 0; offset < walletAddresses.length; offset += 10) {
+            const batch = walletAddresses.slice(offset, offset + 10);
+            results.push(...await Promise.all(batch.map(async (entry) => ({
+              address: entry.address,
+              utxos: await provider.getUtxos(entry.address),
+            }))));
+          }
+          for (const result of results) {
+            const total = result.utxos.reduce((sum, utxo) => sum + (utxo.satoshis > 0n ? utxo.satoshis : 0n), 0n);
+            scanned.push({
+              address: result.address,
+              hasHistory: result.utxos.length > 0,
+              hasPendingHistory: false,
+              confirmedSatoshis: total,
+              unconfirmedSatoshis: 0n,
+            });
+          }
         }
-        const scanned = await activityProvider.getAddressActivityForAddresses(derived.map((entry) => entry.address));
         if (cancelled || client.state !== "connected" || client.getSessionIdentity() !== identity ||
             client.addressSetRevision !== revision) return;
         const byAddress = new Map(scanned.map((entry) => [entry.address.toLowerCase(), entry]));
-        const activity = derived.map((entry) => {
+        const choices: ReceiveAddressChoice[] = walletAddresses.map((entry) => {
           const result = byAddress.get(entry.address.toLowerCase());
-          if (!result) throw new Error("Mainnet activity scan omitted a derived Selene receive address.");
-          return { ...result, index: entry.index };
+          if (!result) throw new Error("The wallet balance scan did not return every address.");
+          return {
+            index: entry.index,
+            branch: entry.branch,
+            address: entry.address,
+            confirmedSatoshis: result.confirmedSatoshis.toString(),
+            unconfirmedSatoshis: result.unconfirmedSatoshis.toString(),
+            hasHistory: result.hasHistory,
+            hasPendingHistory: result.hasPendingHistory,
+            status: (result.confirmedSatoshis > 0n || (result.hasHistory && !result.hasPendingHistory)
+              ? "confirmed"
+              : result.hasPendingHistory || result.unconfirmedSatoshis > 0n
+                ? "pending"
+                : "unused") as ReceiveAddressChoice["status"],
+            newest: false,
+          };
+        }).sort((left, right) => {
+          const leftTotal = BigInt(left.confirmedSatoshis) + BigInt(left.unconfirmedSatoshis);
+          const rightTotal = BigInt(right.confirmedSatoshis) + BigInt(right.unconfirmedSatoshis);
+          return leftTotal === rightTotal
+            ? left.branch === right.branch ? left.index - right.index : left.branch === "receive" ? -1 : 1
+            : leftTotal > rightTotal ? -1 : 1;
         });
-        const nextUnusedIndex = getNextUnusedReceiveAddressIndex(activity);
-        const newestEntry = derived.find((entry) => entry.index === nextUnusedIndex) ??
-          client.listReceiveAddresses("mainnet", nextUnusedIndex).find((entry) => entry.index === nextUnusedIndex);
-        if (!newestEntry) throw new Error("Could not derive the next unused Mainnet receive address from this Selene xpub.");
-        // Keep every one of the first 50 derived receive addresses selectable.
-        // A currently displayed Selene address can be unused and therefore have
-        // no history; hiding unused indexes would force a second manual sync step.
-        const choices: ReceiveAddressChoice[] = activity.map((entry) => ({
-          index: entry.index,
-          address: entry.address,
-          confirmedSatoshis: entry.confirmedSatoshis.toString(),
-          unconfirmedSatoshis: entry.unconfirmedSatoshis.toString(),
-          hasHistory: entry.hasHistory,
-          hasPendingHistory: entry.hasPendingHistory,
-          status: entry.confirmedSatoshis > 0n || (entry.hasHistory && !entry.hasPendingHistory)
-            ? "confirmed"
-            : entry.hasPendingHistory || entry.unconfirmedSatoshis > 0n
-              ? "pending"
-              : "unused",
-          newest: false,
-        }));
-        if (!choices.some((choice) => choice.index === newestEntry.index)) {
-          choices.push({
-            index: newestEntry.index, address: newestEntry.address,
-            confirmedSatoshis: "0", unconfirmedSatoshis: "0",
-            hasHistory: false, hasPendingHistory: false, status: "unused", newest: true,
-          });
-        } else {
-          const newestChoice = choices.find((choice) => choice.index === newestEntry.index);
-          if (newestChoice) newestChoice.newest = true;
-        }
-        choices.sort((left, right) => left.index - right.index);
         setReceiveAddressChoices(choices);
-        if (!client.isReceiveAddressConfirmed("mainnet")) {
-          const defaultIndex = selectDefaultReceiveAddressIndex(activity, nextUnusedIndex);
-          client.selectReceiveAddressIndex(defaultIndex, "mainnet");
-          setReceiveAddressPickerExpanded(false);
-        } else {
-          setReceiveAddressPickerExpanded(false);
+        setReceiveAddressChoicesNetwork(network);
+
+        if (!client.isReceiveAddressConfirmed(network)) {
+          let preferredIndex: number | null = null;
+          try {
+            const storedIndex = window.localStorage.getItem(WALLET_SELECTED_RECEIVE_INDEX_KEY + ":" + network);
+            if (storedIndex !== null && /^\d+$/.test(storedIndex)) preferredIndex = Number(storedIndex);
+          } catch { /* use the highest-balance receive address when storage is unavailable */ }
+          const defaultIndex = getDefaultWalletReceiveIndex(choices, preferredIndex);
+          const defaultChoice = choices.find((choice) =>
+            (choice.branch ?? "receive") === "receive" && choice.index === defaultIndex,
+          );
+          if (defaultChoice) {
+            if (network === "mainnet") {
+              // Mainnet's existing picker action selects and confirms together.
+              client.selectReceiveAddressIndex(defaultChoice.index, "mainnet");
+            } else {
+              // Chipnet selects the address for display, but still requires
+              // the user's explicit Selene confirmation before circle actions.
+              client.matchReceiveAddress(defaultChoice.address, "chipnet");
+            }
+          }
         }
+        setReceiveAddressPickerExpanded(false);
+        setBchBalanceScan({
+          address: client.address(network) ?? walletAddresses.find((entry) => entry.branch === "receive")?.address ?? "",
+          network,
+          totalSatoshis: choices.reduce((total, entry) => {
+            const amount = BigInt(entry.confirmedSatoshis) + BigInt(entry.unconfirmedSatoshis);
+            return total + (amount > 0n ? amount : 0n);
+          }, 0n),
+        });
+
+        if (network === "mainnet") {
+          try {
+            const allMainnetAddresses = client.listWalletAddresses("mainnet", 49, 20);
+            const balances: Awaited<ReturnType<typeof fetchPusdWalletBalance>>[] = [];
+            for (let offset = 0; offset < allMainnetAddresses.length; offset += 4) {
+              const batch = allMainnetAddresses.slice(offset, offset + 4);
+              const batchResults = await Promise.all(batch.map((entry) => fetchPusdWalletBalance(entry.address)));
+              balances.push(...batchResults);
+              if (cancelled || client.state !== "connected" ||
+                  client.getSessionIdentity() !== identity || client.addressSetRevision !== revision) return;
+            }
+            setWalletPusdTotal(totalUniquePusdWalletBalance(balances));
+            setWalletPusdError("");
+          } catch (cause) {
+            if (cancelled) return;
+            setWalletPusdError(cause instanceof Error ? cause.message : "PUSD balance unavailable.");
+          }
+        } else {
+          setWalletPusdTotal(null);
+          setWalletPusdError("");
+        }
+        setWalletBalanceUpdatedAt(Date.now());
       } catch (cause) {
-        if (!cancelled) setReceiveAddressScanError(cause instanceof Error ? cause.message : "Could not scan Selene receive addresses.");
+        if (!cancelled) {
+          setReceiveAddressScanError(cause instanceof Error ? cause.message : "Your wallet balances couldn't be loaded.");
+          if (network === "mainnet") {
+            setWalletPusdError(cause instanceof Error ? cause.message : "PUSD balance unavailable.");
+          }
+        }
       } finally {
-        if (!cancelled) setReceiveAddressScanLoading(false);
+        if (!cancelled) {
+          setReceiveAddressScanLoading(false);
+          setWalletBalanceRefreshing(false);
+        }
       }
     })();
+
     return () => { cancelled = true; };
-  }, [showWallet, network, walletClient, walletView.state, walletView.addressSetRevision]);
+  }, [network, walletClient, walletView.state, walletView.addressSetRevision, walletBalanceRefreshRun]);
+
+  useEffect(() => {
+    if (page === "assets" || showWallet) {
+      setWalletBalanceRefreshRun((value) => value + 1);
+    }
+  }, [page, showWallet]);
+
+  useEffect(() => {
+    if (!connected) return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") {
+        setWalletBalanceRefreshRun((value) => value + 1);
+      }
+    };
+    const interval = window.setInterval(refresh, 60_000);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("ajochain:wallet-balances-changed", refresh);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("ajochain:wallet-balances-changed", refresh);
+    };
+  }, [connected]);
+
+  useEffect(() => {
+    let active = true;
+    if (!showWallet || !connected || !walletAddress) {
+      setWalletAddressQrDataUrl("");
+      return () => { active = false; };
+    }
+    void import("qrcode")
+      .then(({ default: QRCode }) => QRCode.toDataURL(walletAddress, {
+        errorCorrectionLevel: "M", margin: 1, width: 220,
+      }))
+      .then((url) => { if (active) setWalletAddressQrDataUrl(url); })
+      .catch(() => { if (active) setWalletAddressQrDataUrl(""); });
+    return () => { active = false; };
+  }, [showWallet, connected, walletAddress]);
 
   useEffect(() => {
     let active = true;
@@ -1046,7 +1278,7 @@ export default function App() {
       setPusdView({
         status: "idle", amount: 0n,
         detail: network !== "mainnet"
-          ? "PUSD is available on Bitcoin Cash Mainnet. Switch networks to check your balance."
+          ? "PUSD is available on Mainnet. Switch networks to check it."
           : "Connect your wallet to check PUSD.",
         utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
       });
@@ -1055,7 +1287,7 @@ export default function App() {
     if (!walletClient.isReceiveAddressConfirmed("mainnet")) {
       setPusdView({
         status: "idle", amount: 0n,
-        detail: "Choose a Mainnet receive address in Wallet Details before checking this wallet's PUSD balance.",
+        detail: "Pick an address first.",
         utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
       });
       setPusdTransferPlan(null);
@@ -1066,7 +1298,7 @@ export default function App() {
     const address = walletClient.address("mainnet");
     if (!address) {
       setPusdView({
-        status: "idle", amount: 0n, detail: "Mainnet receive address is still being derived.",
+        status: "idle", amount: 0n, detail: "Mainnet address is still loading.",
         utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
       });
       return () => { active = false; };
@@ -1098,7 +1330,7 @@ export default function App() {
         if (!active) return;
         setPusdView({
           status: "error", amount: 0n,
-          detail: cause instanceof Error ? cause.message : "PUSD balance verification failed.",
+          detail: cause instanceof Error ? cause.message : "PUSD balance check failed.",
           utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
         });
       });
@@ -1118,16 +1350,16 @@ export default function App() {
       return;
     }
     if (!walletClient.isReceiveAddressConfirmed("mainnet")) {
-      setPusdPlanError("Choose a Mainnet receive address in Wallet Details before preparing a PUSD transfer.");
+      setPusdPlanError("Pick an address first.");
       return;
     }
     if (pusdView.status !== "ready") {
-      setPusdPlanError("A verified PUSD balance is required before planning a transfer.");
+      setPusdPlanError("Check your PUSD balance before planning a transfer.");
       return;
     }
     const senderAddress = walletClient?.address("mainnet");
     if (!senderAddress) {
-      setPusdPlanError("The connected wallet does not currently expose a verified Mainnet receive address.");
+      setPusdPlanError("The Mainnet wallet address isn't available right now.");
       return;
     }
     setPusdPlanBusy(true);
@@ -1155,25 +1387,26 @@ export default function App() {
 
   const verifyPusdTransferSignature = async () => {
     setPusdSignatureMessage("");
+    setPusdSignatureError("");
     if (!walletClient || walletClient.state !== "connected" || !connected) {
-      setPusdSignatureMessage("Connect Selene through WizardConnect before testing the PUSD signature path.");
+      setPusdSignatureError("Connect Selene first.");
       return;
     }
     if (network !== "mainnet" || pusdView.status !== "ready") {
-      setPusdSignatureMessage("A verified Mainnet PUSD balance is required before signature verification.");
+      setPusdSignatureError("Check your PUSD balance before testing the signature.");
       return;
     }
     if (!walletClient.isReceiveAddressConfirmed("mainnet")) {
-      setPusdSignatureMessage("Choose a Mainnet receive address in Wallet Details before testing the PUSD signature.");
+      setPusdSignatureError("Pick the address shown in Selene first.");
       return;
     }
     const senderAddress = walletClient.address("mainnet");
     if (!senderAddress || !pusdRecipient.trim()) {
-      setPusdSignatureMessage("Confirm the connected sender address and a valid recipient address.");
+      setPusdSignatureError("Check your wallet address and recipient address.");
       return;
     }
     if (!/^\d+$/.test(pusdMaxFee.trim())) {
-      setPusdSignatureMessage("Maximum miner fee must be entered as whole satoshis.");
+      setPusdSignatureError("Enter the fee in whole satoshis.");
       return;
     }
     setPusdSignatureBusy(true);
@@ -1203,7 +1436,7 @@ export default function App() {
         feeRateSatoshisPerKb: feeQuote.feeRateSatoshisPerKb,
         maxFeeSatoshis: BigInt(pusdMaxFee.trim()),
       });
-      const verified = await walletClient.signAndVerify(
+      await walletClient.signAndVerify(
         freshPlan,
         freshPlan.walletInputs,
         "Verify PUSD Mainnet transfer to " + pusdRecipient.trim() + " (local verification only; never broadcast)",
@@ -1214,9 +1447,7 @@ export default function App() {
       }
       setPusdTransferPlan(freshPlan);
       setPusdSignatureMessage(
-        "Selene signed the freshly rebuilt PUSD transfer and AjoChain passed exact input/output comparison, CashTokens output comparison, 0x61 sighash checks and BCH 2026 VM verification (" +
-        verified.decoded.inputs.length + " inputs, " + verified.decoded.outputs.length +
-        " outputs). The signed bytes were discarded. Nothing was broadcast and no PUSD payment occurred.",
+        "Signature checked. Nothing was sent and no PUSD payment occurred.",
       );
       setPusdView((current) => ({
         ...current,
@@ -1229,7 +1460,7 @@ export default function App() {
         detail: "Refreshed " + freshBalance.providerConfidence + " wallet coins immediately before checking the signature.",
       }));
     } catch (cause) {
-      setPusdSignatureMessage(cause instanceof Error ? cause.message : "PUSD signature verification failed. Nothing was broadcast.");
+      setPusdSignatureError(cause instanceof Error ? cause.message : "PUSD signature verification failed. Nothing was broadcast.");
     } finally {
       setPusdSignatureBusy(false);
     }
@@ -1278,6 +1509,63 @@ export default function App() {
     if (!walletClient || walletView.state !== "connected" || walletClient.state !== "connected") {
       return;
     }
+
+    const firstReceive = (targetNetwork: NetworkId) => {
+      try {
+        const entries = walletClient.listWalletAddresses(targetNetwork, 49, 20);
+        return entries.find((entry) => entry.branch === "receive" && entry.index === 0)?.address
+          ?? entries.find((entry) => entry.branch === "receive")?.address
+          ?? "";
+      } catch {
+        return "";
+      }
+    };
+    const chipnetCacheAddress = firstReceive("chipnet");
+    const mainnetCacheAddress = firstReceive("mainnet");
+    const chipnetCacheKey = chipnetCacheAddress ? getWalletDiscoveryCacheKey(chipnetCacheAddress, "chipnet") : "";
+    const mainnetCacheKey = mainnetCacheAddress ? getWalletDiscoveryCacheKey(mainnetCacheAddress, "mainnet") : "";
+    const chipnetCache = chipnetCacheKey ? readWalletDiscoveryCache(window.localStorage, chipnetCacheKey) : null;
+    const mainnetCache = mainnetCacheKey ? readWalletDiscoveryCache(window.localStorage, mainnetCacheKey) : null;
+    const forceDiscoveryRefresh = discoveryRun !== lastManualDiscoveryRunRef.current;
+    if (forceDiscoveryRefresh) lastManualDiscoveryRunRef.current = discoveryRun;
+
+    const restoreCachedCircles = (targetNetwork: NetworkId, encodedCircles: readonly string[]) => {
+      if (encodedCircles.length === 0) return;
+      try {
+      if (targetNetwork === "chipnet") {
+        const stored: unknown = JSON.parse(window.localStorage.getItem(V2_MENU_STORAGE_KEY) || "[]");
+        const existing = Array.isArray(stored)
+          ? stored.filter((item): item is { encoded: string; savedAt?: number } =>
+              Boolean(item) && typeof item === "object" && typeof (item as { encoded?: unknown }).encoded === "string")
+          : [];
+        const seen = new Set(existing.map((item) => item.encoded));
+        const additions = encodedCircles.filter((encoded) => !seen.has(encoded))
+          .map((encoded) => ({ encoded, savedAt: 0 }));
+        if (additions.length) window.localStorage.setItem(V2_MENU_STORAGE_KEY, JSON.stringify([...existing, ...additions]));
+      } else {
+        const stored: unknown = JSON.parse(window.localStorage.getItem(BCH_MAINNET_CIRCLES_STORAGE_KEY) || "[]");
+        const existing = Array.isArray(stored) ? stored.filter((item): item is string => typeof item === "string") : [];
+        const seen = new Set(existing);
+        const additions = encodedCircles.filter((encoded) => !seen.has(encoded));
+        if (additions.length) window.localStorage.setItem(BCH_MAINNET_CIRCLES_STORAGE_KEY, JSON.stringify([...existing, ...additions]));
+      }
+      } catch { /* Cached circle recovery is optional; the original scan can still run. */ }
+    };
+    if (chipnetCache) restoreCachedCircles("chipnet", chipnetCache.circles);
+    if (mainnetCache) restoreCachedCircles("mainnet", mainnetCache.circles);
+    if (chipnetCache || mainnetCache) {
+      setMenuCircles(readSavedCircleMenuRecords());
+      window.dispatchEvent(new Event("ajochain:bch-mainnet-circles-changed"));
+      window.dispatchEvent(new Event("ajochain:saved-circles-changed"));
+    }
+
+    const skipChipnetScan = !forceDiscoveryRefresh && isWalletDiscoveryCacheFresh(chipnetCache);
+    const skipMainnetScan = !forceDiscoveryRefresh && isWalletDiscoveryCacheFresh(mainnetCache);
+    if (skipChipnetScan && skipMainnetScan) {
+      setDiscoveryMessage("");
+      return;
+    }
+
     if (discoveryMessageTimerRef.current !== null) {
       window.clearTimeout(discoveryMessageTimerRef.current);
       discoveryMessageTimerRef.current = null;
@@ -1341,8 +1629,9 @@ export default function App() {
 
         await settleIndependentTasks(
           async () => {
+            if (skipChipnetScan) return { foundCount: chipnetCache?.circles.length ?? 0 };
             const provider = await getClassicProvider("chipnet");
-            const addresses = walletClient.listWalletAddresses("chipnet").map((entry) => entry.address);
+            const addresses = walletClient.listWalletAddresses("chipnet", 49, 20).map((entry) => entry.address);
             if (addresses.length === 0) throw new Error("No Chipnet receive/change addresses are available from this wallet.");
             const found = await discoverV2FeeCircles(provider, addresses, undefined, "chipnet", {
               requestTimeoutMs: 10_000,
@@ -1350,6 +1639,8 @@ export default function App() {
               onTimeout: () => { chipnetTimedOut = true; },
             });
             if (run.cancelled) return { foundCount: 0 };
+            const encodedFound = found.map(encodeV2FeeCircleParams);
+            if (chipnetCacheKey) writeWalletDiscoveryCache(window.localStorage, chipnetCacheKey, encodedFound);
 
             const stored: unknown = JSON.parse(window.localStorage.getItem(V2_MENU_STORAGE_KEY) || "[]");
             const existing = dedupeSavedV2FeeCircleRecords(stored);
@@ -1362,12 +1653,14 @@ export default function App() {
               .map((params) => ({ encoded: encodeV2FeeCircleParams(params), savedAt: 0 }));
             if (additions.length > 0) {
               window.localStorage.setItem(V2_MENU_STORAGE_KEY, JSON.stringify([...existing, ...additions]));
+              window.dispatchEvent(new Event("ajochain:saved-circles-changed"));
             }
             if (!run.cancelled) setMenuCircles(readSavedCircleMenuRecords());
             return { foundCount: found.length };
           },
           async () => {
-            const mainnetEntries = walletClient.listWalletAddresses("mainnet");
+            if (skipMainnetScan) return { foundCount: mainnetCache?.circles.length ?? 0 };
+            const mainnetEntries = walletClient.listWalletAddresses("mainnet", 49, 20);
             if (mainnetEntries.length === 0) throw new Error("No Mainnet receive/change addresses are available from this wallet.");
             // Prioritize Selene's selected address, then active addresses from the
             // captured activity snapshot. Other receive/change addresses remain eligible.
@@ -1403,6 +1696,9 @@ export default function App() {
               },
             );
             if (run.cancelled) return { foundCount: 0 };
+            if (mainnetCacheKey) {
+              writeWalletDiscoveryCache(window.localStorage, mainnetCacheKey, mainnetFound.map(encodeV2FeeCircleParams));
+            }
 
             const savedMainnet: unknown = JSON.parse(window.localStorage.getItem(BCH_MAINNET_CIRCLES_STORAGE_KEY) || "[]");
             const savedList = Array.isArray(savedMainnet) ? savedMainnet.filter((entry): entry is string => typeof entry === "string") : [];
@@ -1459,12 +1755,12 @@ export default function App() {
         return;
       }
       if (gatherNetwork === "mainnet" && !walletClient.isReceiveAddressConfirmed("mainnet")) {
-        setGatherResult({ status: "error", message: "Choose a Mainnet receive address in Wallet Details before gathering real BCH." });
+        setGatherResult({ status: "error", message: "Pick an address first." });
         return;
       }
       const gatherWalletIdentity = gatherNetwork === "mainnet" ? walletClient.getSessionIdentity() : null;
       if (gatherNetwork === "mainnet" && !gatherWalletIdentity) {
-        setGatherResult({ status: "error", message: "WizardConnect has not supplied a verifiable Selene wallet identity. Reconnect Selene before gathering Mainnet BCH." });
+        setGatherResult({ status: "error", message: "Reconnect Selene before combining Mainnet BCH." });
         return;
       }
       setGatherBusy(true);
@@ -1577,7 +1873,7 @@ export default function App() {
           broadcast?: boolean;
         };
         if (!response.ok) {
-          throw new Error(typeof payload.error === "string" ? payload.error : "Mainnet BCH gather could not be verified or relayed.");
+          throw new Error(typeof payload.error === "string" ? payload.error : "Couldn't send your BCH. Check its status before trying again.");
         }
         if (payload.network !== "mainnet" || payload.broadcast !== true ||
             typeof payload.txid !== "string" || !/^[0-9a-f]{64}$/i.test(payload.txid)) {
@@ -1615,21 +1911,30 @@ export default function App() {
   // Keep the derived address visible even before Selene's current Receive
   // screen has been explicitly matched. Users need to compare this candidate
   // with the address shown in Selene before confirming it in Wallet Details.
-  const shortAddress = (value: string | null) =>
-    value ? value.slice(0, 10) + "…" + value.slice(-6) : "Address unavailable…";
+  const shortAddress = (value: string | null) => {
+    if (!value) return "Address unavailable";
+    const prefix = value.startsWith("bitcoincash:") ? "bitcoincash:" : "";
+    const body = prefix ? value.slice(prefix.length) : value;
+    return prefix + body.slice(0, 4) + "…" + body.slice(-4);
+  };
   const currentBchBalanceScan = bchBalanceScan && walletAddress &&
     bchBalanceScan.network === network &&
     bchBalanceScan.address.toLowerCase() === walletAddress.toLowerCase()
     ? bchBalanceScan
     : null;
+  const currentNetworkAddressChoices = receiveAddressChoicesNetwork === network
+    ? receiveAddressChoices
+    : [];
   const walletBchBalanceSummary = getWalletBchBalanceSummary({
     network,
     connected,
-    receiveAddressChoices,
+    receiveAddressChoices: currentNetworkAddressChoices,
     currentBchBalanceScan,
     receiveAddressScanLoading,
   });
-  const selectedReceiveAddressChoice = receiveAddressChoices.find((choice) => choice.index === walletView.receiveIndex) ?? null;
+  const selectedReceiveAddressChoice = currentNetworkAddressChoices.find((choice) =>
+    (choice.branch ?? "receive") === "receive" && choice.index === walletView.receiveIndex,
+  ) ?? null;
   const selectedAddressPendingOnly = network === "mainnet" && Boolean(selectedReceiveAddressChoice &&
     BigInt(selectedReceiveAddressChoice.confirmedSatoshis) === 0n &&
     (BigInt(selectedReceiveAddressChoice.unconfirmedSatoshis) > 0n || selectedReceiveAddressChoice.hasPendingHistory));
@@ -1647,9 +1952,9 @@ export default function App() {
                 ? (circle.status === "cancelled" ? "Cancelled" : "Completed") +
                   (circle.completedAt ? " · " + new Date(circle.completedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "")
                 : circle.status === "unknown"
-                  ? circle.checkedAt === null ? "Checking on-chain status…" : "Status unavailable · latest chain read failed"
+                  ? circle.checkedAt === null ? "Checking…" : "Status unavailable"
                   : circle.round === null
-                    ? "Checking round progress · " + circle.memberCount + " members"
+                    ? "Checking round · " + circle.memberCount + " members"
                     : "Round " + Math.min(circle.round + 1, circle.memberCount) + " of " + circle.memberCount}</small>
             </span>
             <span className={
@@ -1742,10 +2047,10 @@ export default function App() {
                   <Users size={17} /><span>My circles</span>{(page === "my-circles" || page === "circle-detail") && <Check size={15} />}
                 </button>
                 <button className={page === "assets" ? "dropdown-item active" : "dropdown-item"} onClick={() => navigate("assets")}>
-                  <Wallet size={17} /><span>Wallet</span>{page === "assets" && <Check size={15} />}
+                  <Wallet size={17} /><span>Wallet &amp; assets</span>{page === "assets" && <Check size={15} />}
                 </button>
                 <button className={page === "activity" ? "dropdown-item active" : "dropdown-item"} onClick={() => navigate("activity")}>
-                  <Activity size={17} /><span>Activity & records</span>{page === "activity" && <Check size={15} />}
+                  <Activity size={17} /><span>Activity</span>{page === "activity" && <Check size={15} />}
                 </button>
               </nav>
               <div className="dropdown-divider" />
@@ -1790,7 +2095,7 @@ export default function App() {
               <div className="dropdown-divider" />
               <button type="button" className="dropdown-wallet" onClick={openWallet}>
                 <span className="dropdown-wallet-icon"><Wallet size={17} /></span>
-                <span><b>{connected ? walletView.walletName ?? "Wallet connected" : "Connect wallet"}</b><small>{connected ? shortAddress(walletAddress) : walletView.state === "reconnecting" ? "Restoring Selene session…" : "WizardConnect · Selene"}</small></span>
+                <span><b>{connected ? walletView.walletName ?? "Wallet connected" : "Connect wallet"}</b><small>{connected ? shortAddress(walletAddress) : walletView.state === "reconnecting" ? "Reconnecting…" : "Selene wallet"}</small></span>
                 <ArrowRight size={16} />
               </button>
             </section>
@@ -1803,83 +2108,18 @@ export default function App() {
         {page === "overview" && (
           <>
             {renderCircleRiskNotice()}
-
-            <section className="overview-my-circles section-card" aria-labelledby="overview-circles-title">
-              <div className="section-heading overview-circles-heading">
-                <div><span className="section-kicker">YOUR SAVINGS</span><h2 id="overview-circles-title">My circles</h2>
-                  <p>{NETWORKS[network].label} circles, classified from read-only chain status.</p></div>
-                <button type="button" className="text-action" onClick={() => navigate("my-circles")}>View all <ArrowRight size={14} /></button>
-              </div>
-              {renderCircleTabs()}
-              {visibleStatusCircles.length === 0 ? (
-                <div className="my-circles-empty overview-empty">
-                  <h2>{circleStatusTab === "active" ? "No active circles yet" : "No completed circles yet"}</h2>
-                  <p>{circleStatusTab === "active"
-                    ? "Create your first circle or restore an invite. New circles appear here after their status is checked."
-                    : "Completed payouts and confirmed cancellations appear here."}</p>
-                  <button type="button" className="secondary-button" onClick={() => navigate("my-circles")}>Open My circles</button>
-                </div>
-              ) : renderCircleRows(visibleStatusCircles.slice(0, 3), true)}
-              {visibleNetworkCircles.length > 3 && (
-                <button type="button" className="text-action overview-view-more" onClick={() => navigate("my-circles")}>
-                  View all {visibleNetworkCircles.length} circles <ArrowRight size={14} />
-                </button>
-              )}
-              <span className="circle-scan-summary" role="status">✓ {NETWORKS[network].label}: {networkCircleCounts.active} active, {networkCircleCounts.completed} completed</span>
-            </section>
-
             <section className="welcome-hero">
               <div className="welcome-kicker"><span /> AJO · ESUSU · ON BITCOIN CASH</div>
               <h1>Your Ajo savings circle,<br /><em>on Bitcoin Cash.</em></h1>
-              <p>Save with people you trust. Everyone puts in the same amount, one member collects each round, and the rules are kept by the blockchain, not a middleman.</p>
-              <button className="primary-button hero-cta" type="button" onClick={() => navigate("create-circle")}>
-                Create a circle <ArrowRight size={16} />
-              </button>
-            </section>
-
-            <section className="overview-activity section-card" aria-labelledby="overview-activity-title">
-              <div className="section-heading"><div><span className="section-kicker">LATEST RECORDS</span><h2 id="overview-activity-title">Activity</h2></div>
-                <button type="button" className="text-action" onClick={() => navigate("activity")}>All activity <ArrowRight size={14} /></button>
+              
+              <div className="hero-actions">
+                <button className="primary-button hero-cta" type="button" onClick={() => navigate("create-circle")}>
+                  Create a circle <ArrowRight size={16} />
+                </button>
+                <button className="secondary-button hero-secondary-cta" type="button" onClick={() => navigate("my-circles")}>
+                  My circles
+                </button>
               </div>
-              <Suspense fallback={<p className="classic-empty">Loading chain-backed activity…</p>}>
-                <ActivityRecords network={network} compact key={"activity-overview-" + network} />
-              </Suspense>
-            </section>
-
-            <section className="how-ajo-works" aria-labelledby="how-ajo-works-title">
-              <div className="how-ajo-heading">
-                <span className="section-kicker">SIMPLE, TOGETHER</span>
-                <h2 id="how-ajo-works-title">How Ajo works</h2>
-              </div>
-              <ol className="how-ajo-steps">
-                <li><span className="how-ajo-number">01</span><div><b>Join</b><small>Join a circle with people you trust.</small></div></li>
-                <li><span className="how-ajo-number">02</span><div><b>Contribute each round</b><small>Everyone adds the agreed amount.</small></div></li>
-                <li><span className="how-ajo-number">03</span><div><b>Collect your turn</b><small>One member receives the pot each round.</small></div></li>
-              </ol>
-            </section>
-
-            <section className="overview-status-grid">
-              <article className="overview-status-card">
-                <div className="status-card-icon"><Wallet size={18} /></div>
-                <div><span className="status-label">WALLET</span><b>{connected ? walletView.walletName ?? "Connected" : "Not connected"}</b>
-                  <small>{connected ? shortAddress(walletAddress) : "Connect Selene to manage member contributions"}</small></div>
-                <button type="button" className="status-action" onClick={openWallet}>{connected ? "Details" : "Connect"} <ArrowRight size={13} /></button>
-              </article>
-              <article className="overview-status-card">
-                <div className="status-card-icon"><ShieldCheck size={18} /></div>
-                <div><span className="status-label">NETWORK</span><b>{NETWORKS[network].label}</b>
-                  <small>{network === "chipnet" ? "Chipnet testing environment" : "Mainnet · wallet approval required"}</small></div>
-                <button type="button" className="status-action" onClick={() => setMenuOpen(true)}>Change <ChevronDown size={13} /></button>
-              </article>
-            </section>
-
-            <section className="asset-preview">
-              <div><span className="section-kicker">SUPPORTED ASSETS</span><h2>BCH and PUSD</h2><p>Pick what your circle saves in. Fees are always shown up front.</p></div>
-              <div className="asset-preview-rows">
-                <div><span className="asset-symbol">B</span><span><b>Bitcoin Cash</b><small>Save in Bitcoin Cash · practise free on the test network first</small></span><span className="asset-state">Available</span></div>
-                <div><span className="asset-symbol pusd-symbol">P</span><span><b>ParyonUSD</b><small>Save in dollars with ParyonUSD · balances checked on the blockchain</small></span><span className="asset-state neutral">Read only</span></div>
-              </div>
-              <button type="button" className="text-action" onClick={() => navigate("assets")}>View asset details <ArrowRight size={14} /></button>
             </section>
           </>
         )}
@@ -1892,7 +2132,7 @@ export default function App() {
                 <div className="page-intro">
                   <span className="section-kicker">YOUR SAVINGS GROUPS</span>
                   <h1>Create a circle</h1>
-                  <p>Choose what your group wants to save in, set the amount and members, then review the circle setup before taking action.</p>
+                  <p>Choose a currency, amount and members. Review before creating.</p>
                 </div>
                 <section className="circle-choice-guide" aria-label="Choose a circle type">
                   <div className="circle-choice-heading">
@@ -1905,20 +2145,20 @@ export default function App() {
                         <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status">Mainnet</span></span>
                         <b>BCH savings circle</b>
                         <span>For groups saving in Bitcoin Cash. Tracks member contributions and reserves the next installment for each non-final payout.</span>
-                        <small>Best when your group wants native BCH and individual member accounting.</small>
+                        <small>For groups saving in BCH.</small>
                       </button>
                       <button type="button" className={circleWorkspace === "pusd-mainnet" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "pusd-mainnet"} onClick={() => enterCreateCircleForm("pusd-mainnet")}>
                         <span className="circle-choice-top"><span className="circle-choice-symbol pusd">PUSD</span><span className="circle-choice-status">Mainnet</span></span>
                         <b>PUSD savings circle</b>
                         <span>For groups that prefer ParyonUSD instead of BCH. Contributions and payouts are denominated in PUSD, with BCH needed separately for network fees.</span>
-                        <small>Choose this if your group wants a stable-value token rather than BCH price exposure.</small>
+                        <small>For groups saving in steady dollars.</small>
                       </button>
                     </>}
                     {network === "chipnet" && <>
                       <button type="button" className={circleWorkspace === "bch-fair-round" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-fair-round"} onClick={() => enterCreateCircleForm("bch-fair-round")}>
                         <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status testing">Chipnet · test</span></span>
                         <b>BCH savings circle</b>
-                        <span>Experimental member-credit model. Members fund the current round; a non-final recipient carries one next contribution forward in their own receipt.</span>
+                        <span>Experimental member-credit model. Members add money each round. Each winner keeps one contribution ready for the next round.</span>
                         <small>Try this option for the newer round-by-round savings experience.</small>
                       </button>
                       <button type="button" className={circleWorkspace === "bch-classic" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "bch-classic"} onClick={() => enterCreateCircleForm("bch-classic")}>
@@ -1970,7 +2210,7 @@ export default function App() {
             <div className="page-intro">
               <span className="section-kicker">YOUR SAVINGS CIRCLES</span>
               <h1>{network === "mainnet" ? "Mainnet circles" : "Chipnet test circles"}</h1>
-              <p>Circles are shown only for the network selected in the navigation menu. Status is read from the selected network's blockchain.</p>
+              <p>Only circles on the selected network appear here.</p>
             </div>
             <div className="circle-scan-summary-row">
               <span className="circle-scan-summary" role="status">✓ {NETWORKS[network].label}: {networkCircleCounts.active} active, {networkCircleCounts.completed} completed</span>
@@ -1988,7 +2228,11 @@ export default function App() {
                 </label>
                 <button type="button" className="secondary-button" disabled={!mainnetInviteInput.trim()}
                   onClick={joinMainnetCircleWithInvite}>Join with invite</button>
-                {mainnetInviteError && <p className="classic-error" role="alert">{mainnetInviteError}</p>}
+                {mainnetInviteError && <div className="classic-error" role="alert">
+                  <span>{plainErrorSummary(mainnetInviteError)}</span>
+                  <details className="technical-details"><summary>Details</summary><p>{mainnetInviteError}</p></details>
+                  <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setMainnetInviteError("")}>×</button>
+                </div>}
                 {mainnetInviteNotice && <p className="classic-notice" role="status">{mainnetInviteNotice}</p>}
               </section>
             )}
@@ -1998,13 +2242,13 @@ export default function App() {
                 {circleStatusTab === "active" ? (
                   <>
                     <h2>No active circles on {network === "mainnet" ? "Mainnet" : "Chipnet"} yet</h2>
-                    <p>New circles appear here as soon as they are saved and their chain status is checked.</p>
+                    <p>New circles appear here after they're saved.</p>
                     <button type="button" className="primary-button" onClick={() => navigate("create-circle")}>Create a circle</button>
                   </>
                 ) : (
                   <>
                     <h2>No completed circles yet</h2>
-                    <p>Completed payouts and confirmed cancellations move here after the blockchain check. Cancelled circles are labelled separately.</p>
+                    <p>Completed payouts and cancellations appear here.</p>
                   </>
                 )}
               </div>
@@ -2023,7 +2267,7 @@ export default function App() {
             <div className="page-intro">
               <span className="section-kicker">YOUR SAVINGS CIRCLE</span>
               <h1>{selectedCircleRecord?.name ?? "Circle details"}</h1>
-              <p>Review contributions, member progress and the next payout for this circle.</p>
+              <p>View contributions, progress and next payout.</p>
             </div>
             <Suspense fallback={<div className="workspace-loading"><span className="loading-orb" />Loading your circle…</div>}>
               {selectedCircleRecord?.kind === "v2-fee" && (
@@ -2048,9 +2292,26 @@ export default function App() {
           <section className="page-section wallet-page">
             <div className="page-intro">
               <span className="section-kicker">YOUR WALLET</span>
-              <h1>Wallet</h1>
-              <p>Balances held in the wallet connected to Selene.</p>
+              <h1>Wallet &amp; assets</h1>
+              <p>Your BCH and dollar balances in one place.</p>
             </div>
+            <article className="asset-detail-card wallet-asset-intro">
+              <span className="section-kicker">SAVE YOUR WAY</span>
+              <h2>Bitcoin Cash or digital dollars</h2>
+              <p>Your circle, your currency. Fees are always shown before you sign.</p>
+              <div className="wallet-asset-rows">
+                <div className="wallet-asset-row">
+                  <span className="asset-symbol">B</span>
+                  <span><b>Bitcoin Cash</b><small>Fast, low-fee savings. Practise free on Chipnet, then save for real on Mainnet.</small></span>
+                  <span className="wallet-asset-status">Live</span>
+                </div>
+                <div className="wallet-asset-row">
+                  <span className="asset-symbol pusd-symbol">P</span>
+                  <span><b>ParyonUSD (PUSD)</b><small>Save in steady dollars, no bank needed. Balances checked straight on the blockchain.</small></span>
+                  <span className="wallet-asset-status">Mainnet</span>
+                </div>
+              </div>
+            </article>
             <article className="asset-detail-card wallet-balance-card">
               <div className="wallet-balance-heading">
                 <div>
@@ -2067,31 +2328,38 @@ export default function App() {
                 </div>
                 <div className="wallet-balance-row">
                   <span className="asset-symbol pusd-symbol">P</span>
-                  <div><b>ParyonUSD</b><small>Dollar balance on Mainnet</small></div>
-                  <strong>{!connected ? "Connect wallet" : network !== "mainnet" ? "Switch to Mainnet" : pusdView.status === "ready" ? formatAssetAmount("PUSD", pusdView.amount) + " PUSD" : pusdView.status === "loading" ? "Checking…" : "Not checked"}</strong>
+                  <div><b>ParyonUSD</b><small>Across your wallet addresses</small></div>
+                  <strong>{!connected ? "Connect wallet" : network !== "mainnet" ? "Switch to Mainnet" : walletPusdTotal !== null ? formatAssetAmount("PUSD", walletPusdTotal) + " PUSD" : walletPusdError ? "Not available" : "Checking…"}</strong>
                 </div>
               </div>
               <div className="wallet-balance-actions">
-                <button type="button" className="secondary-button" onClick={openWallet}>
-                  {connected ? "Open wallet details" : "Connect wallet"}
-                </button>
                 <button type="button" className="secondary-button" onClick={() => {
                   if (!connected) { openWallet(); return; }
-                  if (network !== "mainnet") { changeNetwork("mainnet"); return; }
-                  setPusdRefresh((value) => value + 1);
-                }} disabled={pusdView.status === "loading"}>
-                  {pusdView.status === "loading" ? "Checking PUSD…" : network !== "mainnet" ? "Switch to Mainnet for PUSD" : "Refresh PUSD"}
+                  setWalletBalanceRefreshRun((value) => value + 1);
+                  if (network === "mainnet") setPusdRefresh((value) => value + 1);
+                }} disabled={!connected || walletBalanceRefreshing}>
+                  <RefreshCw size={15} className={walletBalanceRefreshing ? "activity-spin" : ""} />
+                  {walletBalanceRefreshing ? "Refreshing…" : "Refresh balances"}
+                </button>
+                <button type="button" className="secondary-button" onClick={openWallet}>
+                  {connected ? "Wallet details" : "Connect wallet"}
                 </button>
               </div>
+              <div className="wallet-balance-updated" aria-live="polite">
+                {walletBalanceUpdatedAt ? "Updated " + formatUpdatedAgo(walletBalanceUpdatedAt) : "Balances not checked yet"}
+                {walletPusdError && <span>{walletPusdTotal !== null ? "Showing your last PUSD balance." : "PUSD balance unavailable."}
+                  <button type="button" className="inline-dismiss" aria-label="Close PUSD balance warning" onClick={() => setWalletPusdError("")}>×</button>
+                </span>}
+              </div>
             </article>
-            <p className="wallet-balance-explainer">Money in your connected wallet. Money in a circle shows on that circle's page.</p>
+            <p className="wallet-balance-explainer">Circle balances are shown on each circle page.</p>
             <details className="technical-details wallet-technical-details">
-              <summary>Technical details</summary>
+              <summary>Details</summary>
               <div className="asset-detail-row"><span>Selected network</span><b>{NETWORKS[network].label}</b></div>
               <div className="asset-detail-row"><span>Selene receive address</span><b>{connected && walletClient?.isReceiveAddressConfirmed(network) ? "Confirmed" : connected ? "Choose address" : "Wallet not connected"}</b></div>
               <div className="asset-detail-row"><span>BCH balance source</span><b>{walletBchBalanceSummary.sourceLabel}</b></div>
               <div className="asset-detail-row"><span>PUSD balance check</span><b>{pusdView.status === "ready" ? "Checked" : pusdView.status === "loading" ? "Checking" : pusdView.status === "error" ? "Unavailable" : "Not checked"}</b></div>
-              {pusdView.status === "ready" && <p>{pusdView.providerConfidence} providers · block {pusdView.tipHeight.toLocaleString()} · {pusdView.utxoCount} PUSD coins.</p>}
+              {pusdView.status === "ready" && <p>Latest check: block {pusdView.tipHeight.toLocaleString()} · {pusdView.utxoCount} PUSD coins.</p>}
               {pusdView.status !== "ready" && <p>{pusdView.detail}</p>}
               <div className="asset-detail-row"><span>PUSD transfer</span><b>{PUSD_MAINNET_SPENDING_ENABLED ? "Available after wallet checks" : "Locked pending release approval"}</b></div>
               <div className="asset-detail-row"><span>PUSD asset identifier</span><code>{PUSD_ASSET.categoryId}</code></div>
@@ -2101,7 +2369,7 @@ export default function App() {
               <summary>PUSD transfer tools</summary>
               <div className="pusd-transfer-box">
                 <div><span className="section-kicker">TRANSFER PREVIEW</span><h3>Prepare a PUSD transfer</h3>
-                  <p>Review a transfer using the PUSD coins in your wallet and the latest network fee estimate. Nothing is sent from this preview.</p></div>
+                  <p>Review your PUSD transfer and fee. Nothing is sent yet.</p></div>
                 <label>Recipient Bitcoin Cash address
                   <input value={pusdRecipient} onChange={(event) => { setPusdRecipient(event.target.value); setPusdTransferPlan(null); setPusdSignatureMessage(""); setPusdPlanError(""); }} placeholder="bitcoincash:…" autoComplete="off" />
                 </label>
@@ -2116,7 +2384,11 @@ export default function App() {
                 <button type="button" className="secondary-button" onClick={() => void preparePusdTransfer()} disabled={pusdPlanBusy || pusdView.status !== "ready" || network !== "mainnet"}>
                   {pusdPlanBusy ? "Preparing preview…" : "Prepare transfer preview"}
                 </button>
-                {pusdPlanError && <p className="classic-error" role="alert">{pusdPlanError}</p>}
+                {pusdPlanError && <div className="classic-error" role="alert">
+                  <span>{plainErrorSummary(pusdPlanError)}</span>
+                  <details className="technical-details"><summary>Details</summary><p>{pusdPlanError}</p></details>
+                  <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setPusdPlanError("")}>×</button>
+                </div>}
                 {pusdTransferPlan && (
                   <div className="pusd-plan-summary" role="status">
                     <b>Transfer plan ready · review only</b>
@@ -2125,7 +2397,7 @@ export default function App() {
                     <div><span>Estimated BCH miner fee</span><strong>{pusdTransferPlan.minerFeeSatoshis.toString()} sats</strong></div>
                     <div><span>BCH needed for delivery</span><strong>{pusdTransferPlan.recipientCarrierSatoshis.toString()} sats</strong></div>
                     <div><span>Coins selected</span><strong>{pusdTransferPlan.selectedUtxos.length}</strong></div>
-                    <details className="technical-details"><summary>Technical details</summary><p>Estimated size {pusdTransferPlan.estimatedSizeBytes} bytes · fee rate {pusdTransferPlan.feeRateSatoshisPerKb.toString()} sats/kB. The plan must be rebuilt from fresh chain data before any signature.</p></details>
+                    <details className="technical-details"><summary>Details</summary><p>Estimated size {pusdTransferPlan.estimatedSizeBytes} bytes · fee rate {pusdTransferPlan.feeRateSatoshisPerKb.toString()} sats/kB. The plan must be rebuilt from fresh chain data before any signature.</p></details>
                   </div>
                 )}
                 <button type="button" className="secondary-button" disabled={!pusdTransferPlan || pusdSignatureBusy || !connected || network !== "mainnet"}
@@ -2133,24 +2405,31 @@ export default function App() {
                   {pusdSignatureBusy ? "Test signing…" : "Test sign · no money sent"}
                 </button>
                 {pusdSignatureMessage && <p className="classic-notice" role="status">{pusdSignatureMessage}</p>}
+                {pusdSignatureError && <div className="classic-error" role="alert">
+                  <span>{plainErrorSummary(pusdSignatureError)}</span>
+                  <details className="technical-details"><summary>Details</summary><p>{pusdSignatureError}</p></details>
+                  <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setPusdSignatureError("")}>×</button>
+                </div>}
                 <button type="button" className="primary-button" disabled={!PUSD_MAINNET_SPENDING_ENABLED || !pusdTransferPlan}
                   title="PUSD Mainnet spending is not yet approved by the security release gate">
                   Send PUSD · Mainnet locked
                 </button>
-                <small className="field-hint">PUSD sending stays locked until raw transaction inspection, independent wallet testing, fee/carrier validation, and security review are completed. This preview is not a payment.</small>
+                <small className="field-hint">PUSD sending remains locked. This preview sends nothing.</small>
               </div>
             </details>
           </section>
         )}
 
         {page === "activity" && (
-          <Suspense fallback={<section className="page-section"><p className="classic-empty">Loading chain-backed activity…</p></section>}>
+          <Suspense fallback={<section className="page-section"><p className="classic-empty">Loading your activity…</p></section>}>
             <ActivityRecords network={network} key={"activity-" + network} />
           </Suspense>
         )}
       </div>
 
-      {walletView.error && <div className="global-wallet-error" role="alert"><ShieldCheck size={17} /><span>{walletView.error}</span><div className="global-wallet-error-actions">
+      {walletView.error && <div className="global-wallet-error" role="alert"><ShieldCheck size={17} /><span>{walletErrorSummary(walletView.error)}</span>
+        <details className="technical-details"><summary>Details</summary><p>{walletView.error}</p></details>
+        <div className="global-wallet-error-actions">
         <button onClick={() => {
           if (!walletClient) return;
           if (walletClient.retrySavedSession()) return;
@@ -2158,152 +2437,294 @@ export default function App() {
           else if (walletClient.state === "idle") walletClient.connect();
         }}>Reconnect</button>
         <button onClick={() => walletClient?.startFreshPairing()}>Fresh pairing</button>
+        <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setWalletView((view) => ({ ...view, error: null }))}>×</button>
       </div></div>}
 
       {showWallet && (
         <div className="modal-backdrop wallet-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowWallet(false); }}>
           <section className="create-modal wallet-modal" role="dialog" aria-modal="true" aria-labelledby="wallet-title">
             <div className="modal-heading">
-              <div><span className="section-kicker">WIZARDCONNECT · SELENE</span><h2 id="wallet-title">{connected ? "Wallet details" : "Connect your wallet"}</h2>
-                <p>{connected ? "Your public receive address for the selected BCH network." : "Pair with Selene. Your seed phrase and private keys stay in your wallet."}</p></div>
+              <div><h2 id="wallet-title">Wallet</h2>
+                {!connected && <p>Connect Selene. Your keys never leave your phone.</p>}</div>
               <button className="modal-close" onClick={() => setShowWallet(false)} aria-label="Close"><X size={19} /></button>
             </div>
             {connected ? (
               <div className="wallet-detail-body">
-                <div className="wallet-address-card"><span>{NETWORKS[network].label}</span><code>{walletAddress ?? "Address not available yet"}</code>{walletAddress && <button type="button" className="secondary-button wallet-copy-address" onClick={() => { void navigator.clipboard.writeText(walletAddress).catch(() => undefined); }}><Copy size={14} /> Copy address</button>}{walletAddress
-                  ? <small>Derived receive address · index {walletView.receiveIndex}. Receive and change addresses are derived from this connected Selene wallet. Choose the address Selene is currently showing before creating or managing a Mainnet circle.</small>
-                  : <small className="wallet-match-message">WizardConnect is connected, but no valid live receive key is available yet. Check the Selene session and reconnect if needed.</small>}</div>
+                <section className="wallet-modal-balance" aria-label="Wallet balances">
+                  <div>
+                    <span className="section-kicker">{NETWORKS[network].label.toUpperCase()}</span>
+                    <strong>{walletBchBalanceSummary.balanceLabel}</strong>
+                    <small>Bitcoin Cash</small>
+                  </div>
+                  <div>
+                    <strong>{network === "mainnet" && walletPusdTotal !== null
+                      ? formatAssetAmount("PUSD", walletPusdTotal) + " PUSD"
+                      : network !== "mainnet" ? "Mainnet only" : walletPusdError ? "Not available" : "Checking…"}</strong>
+                    <small>ParyonUSD</small>
+                  </div>
+                  <div className="wallet-modal-balance-footer">
+                    <small>{walletBalanceUpdatedAt ? "Updated " + formatUpdatedAgo(walletBalanceUpdatedAt) : "Not checked yet"}</small>
+                    <button type="button" className="text-action" disabled={walletBalanceRefreshing}
+                      onClick={() => {
+                        setWalletBalanceRefreshRun((value) => value + 1);
+                        if (network === "mainnet") setPusdRefresh((value) => value + 1);
+                      }}>
+                      <RefreshCw size={14} /> {walletBalanceRefreshing ? "Refreshing…" : "Refresh"}
+                    </button>
+                  </div>
+                  {walletPusdError && <div className="wallet-pusd-warning" role="alert">
+                    {walletPusdTotal !== null ? "PUSD refresh failed. Showing the last balance." : "PUSD balance unavailable."}
+                    <button type="button" className="inline-dismiss" aria-label="Close PUSD balance warning" onClick={() => setWalletPusdError("")}>×</button>
+                  </div>}
+                </section>
+                <div className="wallet-address-card">
+                  <span>{NETWORKS[network].label}</span>
+                  {walletAddress ? (
+                    <button type="button" className="wallet-address-toggle" onClick={() => setExpandedWalletAddress((value) => !value)}>
+                      {expandedWalletAddress ? walletAddress : shortAddress(walletAddress)}
+                    </button>
+                  ) : <small>Selene is still loading. Reconnect if this stays.</small>}
+                  <div className="wallet-address-actions">
+                    <button type="button" className="secondary-button wallet-copy-address" disabled={!walletAddress}
+                      onClick={() => { if (walletAddress) void navigator.clipboard.writeText(walletAddress).catch(() => undefined); }}>
+                      <Copy size={14} /> Copy address
+                    </button>
+                    <button type="button" className="secondary-button" disabled={!walletAddress}
+                      onClick={() => setShowWalletAddressQr((value) => !value)}>
+                      {showWalletAddressQr ? "Hide QR" : "QR code"}
+                    </button>
+                    {network === "mainnet" && <button type="button" className="secondary-button"
+                      onClick={() => setReceiveAddressPickerExpanded((value) => !value)}>
+                      Change address
+                    </button>}
+                  </div>
+                  {showWalletAddressQr && walletAddressQrDataUrl &&
+                    <img className="wallet-qr" src={walletAddressQrDataUrl} alt="Wallet address QR code" />}
+                  {network === "mainnet" && <small>{walletClient?.isReceiveAddressConfirmed("mainnet")
+                    ? "Address confirmed ✓"
+                    : "Address not confirmed yet."}</small>}
+                </div>
+
                 {network === "mainnet" && <section className="receive-address-picker" aria-labelledby="receive-address-picker-title">
                   <div className="receive-address-picker-heading">
-                    <div>
-                      <b id="receive-address-picker-title">Mainnet receive address</b>
-                      <small>All choices are derived from the connected Selene wallet and checked against its public key.</small>
-                    </div>
-                    {receiveAddressScanLoading && <span className="receive-address-scan-state">Scanning…</span>}
+                    <div><b id="receive-address-picker-title">Wallet addresses</b><small>Pick the address shown in Selene.</small></div>
+                    {receiveAddressScanLoading && <span className="receive-address-scan-state">Updating…</span>}
                   </div>
-                  {receiveAddressScanError && <p className="classic-error" role="alert">{receiveAddressScanError}</p>}
-                  {!receiveAddressScanLoading && !receiveAddressScanError && receiveAddressChoices.length === 0 && <p className="field-hint">No derived receive addresses were returned by Selene. Reconnect the wallet and scan again.</p>}
-                  {selectedMainnetReceiveAddress && !receiveAddressPickerExpanded && walletClient?.isReceiveAddressConfirmed("mainnet") ? (
-                    <div className="receive-address-selected-card">
-                      <div className="receive-address-selected-copy">
-                        <span>Selected address · index {selectedMainnetReceiveAddress.index}</span>
-                        <code>{selectedMainnetReceiveAddress.address}</code>
-                        <strong>{formatBchSatoshis(BigInt(selectedMainnetReceiveAddress.confirmedSatoshis) + BigInt(selectedMainnetReceiveAddress.unconfirmedSatoshis))}</strong>
-                        <small>{selectedMainnetReceiveAddress.status === "confirmed" ? "Confirmed balance" : selectedMainnetReceiveAddress.status === "pending" ? "Pending activity only" : "Unused receive address"}</small>
-                      </div>
-                      <button type="button" className="receive-address-change" onClick={() => setReceiveAddressPickerExpanded(true)}>Change address</button>
-                    </div>
-                  ) : (
+                  {receiveAddressScanError && <div className="classic-error" role="alert">
+                    <span>{plainErrorSummary(receiveAddressScanError)}</span>
+                    <details className="technical-details"><summary>Details</summary><p>{receiveAddressScanError}</p></details>
+                    <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setReceiveAddressScanError("")}>×</button>
+                  </div>}
+                  {currentNetworkAddressChoices.length === 0 && !receiveAddressScanLoading && !receiveAddressScanError &&
+                    <p className="field-hint">Couldn't load your addresses. Reconnect and try again.</p>}
+                  {receiveAddressPickerExpanded && (
                     <div className="receive-address-picker-list-wrap">
-                      {selectedMainnetReceiveAddress && <p className="field-hint">Choose the receive address shown in Selene. The selection is verified against this wallet before it can be used.</p>}
                       <div className="receive-address-choice-list">
-                        {receiveAddressChoices.map((choice) => {
-                          const total = BigInt(choice.confirmedSatoshis) + BigInt(choice.unconfirmedSatoshis);
-                          const displayTotal = total > 0n ? total : 0n;
-                          const selected = walletView.receiveIndex === choice.index && walletClient?.isReceiveAddressConfirmed("mainnet");
-                          return <button type="button" key={choice.index} className={selected ? "receive-address-choice selected" : "receive-address-choice"}
-                            aria-pressed={Boolean(selected)} onClick={() => {
-                              try {
-                                const chosen = walletClient?.selectReceiveAddressIndex(choice.index, "mainnet");
-                                if (!chosen) throw new Error("Reconnect Selene before choosing a receive address.");
-                                setGatherPlan(null); setGatherResult(null); setBchBalanceScan(null);
-                                setAddressMatchMessage("Selected Selene receive address " + shortAddress(chosen) + " (index " + choice.index + "). Gather and circle creation will use this address.");
-                                setReceiveAddressPickerExpanded(false);
-                              } catch (cause) { setAddressMatchMessage(cause instanceof Error ? cause.message : "Could not select this receive address."); }
-                            }}>
-                            <span className="receive-address-choice-copy"><b>{shortAddress(choice.address)}</b><small>{formatBchSatoshis(displayTotal)} · {choice.status === "confirmed" ? "Confirmed" : choice.status === "pending" ? "Pending" : "Unused"}</small></span>
-                            <span className="receive-address-choice-tags">{choice.newest && <small className="receive-address-newest">Newest in Selene</small>}{selected && <small className="receive-address-selected">Selected</small>}</span>
-                          </button>;
-                        })}
+                        {currentNetworkAddressChoices
+                          .filter((choice) => walletAddressPickerShowAll ||
+                            BigInt(choice.confirmedSatoshis) + BigInt(choice.unconfirmedSatoshis) > 0n)
+                          .map((choice) => {
+                            const total = BigInt(choice.confirmedSatoshis) + BigInt(choice.unconfirmedSatoshis);
+                            const displayTotal = total > 0n ? total : 0n;
+                            const isReceive = (choice.branch ?? "receive") === "receive";
+                            const selected = isReceive && walletView.receiveIndex === choice.index &&
+                              walletClient?.isReceiveAddressConfirmed("mainnet");
+                            const content = <>
+                              <span className="receive-address-choice-copy">
+                                <b>{shortAddress(choice.address)}</b>
+                                <small>{formatBchSatoshis(displayTotal)} · {isReceive ? "Receive" : "Change"}</small>
+                              </span>
+                              <span className="receive-address-choice-tags">
+                                {selected && <small className="receive-address-selected">Selected</small>}
+                                {!isReceive && <small className="receive-address-newest">Change</small>}
+                              </span>
+                            </>;
+                            return isReceive ? (
+                              <button type="button" key={choice.branch + ":" + choice.index}
+                                className={selected ? "receive-address-choice selected" : "receive-address-choice"}
+                                aria-pressed={Boolean(selected)} onClick={() => {
+                                  try {
+                                    const chosen = walletClient?.selectReceiveAddressIndex(choice.index, "mainnet");
+                                    if (!chosen) throw new Error("Reconnect Selene first.");
+                                    try { window.localStorage.setItem(WALLET_SELECTED_RECEIVE_INDEX_KEY + ":mainnet", String(choice.index)); } catch { /* choice remains active for this connection */ }
+                                    setGatherPlan(null);
+                                    setGatherResult(null);
+                                    setBchBalanceScan(null);
+                                    setAddressMatchMessage("Address confirmed ✓");
+                                    setReceiveAddressPickerExpanded(false);
+                                    setExpandedWalletAddress(false);
+                                  } catch (cause) {
+                                    setReceiveAddressScanError(cause instanceof Error ? cause.message : "Couldn't select this address.");
+                                  }
+                                }}>{content}</button>
+                            ) : (
+                              <div key={choice.branch + ":" + choice.index} className="receive-address-choice receive-address-choice-static">{content}</div>
+                            );
+                          })}
                       </div>
+                      <button type="button" className="text-action wallet-show-all"
+                        onClick={() => setWalletAddressPickerShowAll((value) => !value)}>
+                        {walletAddressPickerShowAll ? "Hide empty addresses" : "Show all"}
+                      </button>
                     </div>
                   )}
-                  {selectedAddressPendingOnly && <p className="receive-address-pending-warning" role="alert">Wait for confirmation before creating a circle.</p>}
+                  {selectedAddressPendingOnly && <p className="receive-address-pending-warning" role="alert">Wait 1 confirmation, then create.</p>}
+                  {addressMatchMessage && <p className="wallet-match-message" role="status">{addressMatchMessage}</p>}
                 </section>}
+
                 {network === "chipnet" && <>
-                  <label className="field-label" htmlFor="selene-address">Match the address currently shown on Selene's {NETWORKS[network].label} Receive screen</label>
-                  <input id="selene-address" className="form-control" value={seleneAddress} onChange={(event) => setSeleneAddress(event.target.value)} placeholder="Paste the current Selene receive address" autoComplete="off" />
+                  <button type="button" className="secondary-button"
+                    onClick={() => setReceiveAddressPickerExpanded((value) => !value)}>
+                    Change address
+                  </button>
+                  {receiveAddressPickerExpanded && (
+                    <section className="receive-address-picker" aria-label="Chipnet wallet addresses">
+                      <div className="receive-address-picker-heading">
+                        <div><b>Wallet addresses</b><small>Choose the address shown on Selene.</small></div>
+                        {receiveAddressScanLoading && <span className="receive-address-scan-state">Updating…</span>}
+                      </div>
+                      <div className="receive-address-choice-list">
+                        {currentNetworkAddressChoices
+                          .filter((choice) => walletAddressPickerShowAll ||
+                            BigInt(choice.confirmedSatoshis) + BigInt(choice.unconfirmedSatoshis) > 0n)
+                          .map((choice) => {
+                            const total = BigInt(choice.confirmedSatoshis) + BigInt(choice.unconfirmedSatoshis);
+                            const isReceive = (choice.branch ?? "receive") === "receive";
+                            const content = <>
+                              <span className="receive-address-choice-copy">
+                                <b>{shortAddress(choice.address)}</b>
+                                <small>{formatBchSatoshis(total > 0n ? total : 0n)} · {isReceive ? "Receive" : "Change"}</small>
+                              </span>
+                            </>;
+                            return isReceive ? (
+                              <button type="button" key={choice.branch + ":" + choice.index}
+                                className="receive-address-choice" onClick={() => {
+                                  const matched = walletClient?.matchReceiveAddress(choice.address, "chipnet", 50);
+                                  if (matched === null || matched === undefined) throw new Error("This address isn't in your wallet.");
+                                  try { window.localStorage.setItem(WALLET_SELECTED_RECEIVE_INDEX_KEY + ":chipnet", String(choice.index)); } catch { /* choice remains active for this connection */ }
+                                  setSeleneAddress(choice.address);
+                                  setReceiveAddressPickerExpanded(false);
+                                }}>{content}</button>
+                            ) : (
+                              <div key={choice.branch + ":" + choice.index}
+                                className="receive-address-choice receive-address-choice-static">{content}</div>
+                            );
+                          })}
+                      </div>
+                      <button type="button" className="text-action wallet-show-all"
+                        onClick={() => setWalletAddressPickerShowAll((value) => !value)}>
+                        {walletAddressPickerShowAll ? "Hide empty addresses" : "Show all"}
+                      </button>
+                    </section>
+                  )}
+                  <label className="field-label" htmlFor="selene-address">Paste the address shown on Selene</label>
+                  <input id="selene-address" className="form-control" value={seleneAddress}
+                    onChange={(event) => setSeleneAddress(event.target.value)} placeholder="bitcoincash:…" autoComplete="off" />
                   <button className="primary-button" onClick={() => {
                     try {
                       const index = walletClient?.confirmReceiveAddress(seleneAddress, network, 250) ?? null;
-                      setAddressMatchMessage(index === null
-                        ? "No match in receive indices 0–250 of this connected receive key. Check Selene's Receive screen and network. If it still does not match, this session may expose a different receive path; do not create a circle with the stale address."
-                        : "Confirmed Selene's current receive address (index " + index + "). Circle creation will now use this exact address as Member 1.");
-                    } catch (cause) { setAddressMatchMessage(cause instanceof Error ? cause.message : "Could not match address."); }
-                  }}>Confirm Selene address</button>
+                      if (index === null) {
+                        setAddressMatchMessage("");
+                        setReceiveAddressScanError("This address isn't in your wallet. Check Selene is on Chipnet and reconnect.");
+                      } else {
+                        try { window.localStorage.setItem(WALLET_SELECTED_RECEIVE_INDEX_KEY + ":chipnet", String(index)); } catch { /* confirmation remains active for this connection */ }
+                        setReceiveAddressScanError("");
+                        setAddressMatchMessage("Address confirmed ✓");
+                      }
+                    } catch (cause) {
+                      setReceiveAddressScanError(cause instanceof Error ? cause.message : "Couldn't confirm this address.");
+                    }
+                  }}>Confirm address</button>
+                  {addressMatchMessage && <p className="wallet-match-message" role="status">{addressMatchMessage}</p>}
+                  {receiveAddressScanError && <div className="classic-error" role="alert">
+                    <span>{plainErrorSummary(receiveAddressScanError)}</span>
+                    <details className="technical-details"><summary>Details</summary><p>{receiveAddressScanError}</p></details>
+                    <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setReceiveAddressScanError("")}>×</button>
+                  </div>}
                 </>}
-                {addressMatchMessage && <p className="wallet-match-message" role="status">{addressMatchMessage}</p>}
-                <small className="field-hint">
-                  {walletClient?.isReceiveAddressConfirmed(network)
-                    ? "Current Selene receive address confirmed for this wallet connection."
-                    : network === "mainnet"
-                      ? "Choose a Mainnet receive address from the verified Selene address picker."
-                      : "This connection's current receive address is not confirmed yet."}
-                </small>
-                {(network === "chipnet" || network === "mainnet") && walletAddress && <>
-                  <section className="gather-card" aria-labelledby="gather-title">
-                    <div className="gather-card-heading">
-                      <span className="section-kicker">WALLET CLEAN-UP</span>
-                      <h3 id="gather-title">Gather BCH coins</h3>
-                      <p>Bring your available BCH into one coin in your own wallet. PUSD and other tokens are left untouched.</p>
-                    </div>
-                    {!gatherPlan && (
-                      <button className="secondary-button gather-scan-button"
-                        disabled={gatherBusy || (network === "mainnet" && !walletClient?.isReceiveAddressConfirmed("mainnet"))}
-                        onClick={() => void gatherWalletCoins()}>
-                        {gatherBusy ? "Checking your coins…" : network === "mainnet" && !walletClient?.isReceiveAddressConfirmed("mainnet")
-                          ? "Choose Mainnet address before checking coins"
-                          : "Find BCH coins in my wallet"}
-                      </button>
-                    )}
-                    {gatherPlan && (
-                      <div className="gather-review" aria-live="polite">
-                        <div className="gather-review-row"><span>Total BCH found</span><strong>{formatBchSatoshis(gatherPlan.plan.totalSatoshis)}</strong></div>
-                        <div className="gather-review-row gather-destination"><span>Goes to your wallet</span><code>{gatherPlan.plan.destination}</code></div>
-                        <div className="gather-review-row"><span>Network fee</span><strong>{formatBchSatoshis(gatherPlan.plan.fee)}</strong></div>
-                        <div className="gather-review-row"><span>After the fee</span><strong>{formatBchSatoshis(gatherPlan.plan.outputSatoshis)}</strong></div>
-                        <details className="technical-details">
-                          <summary>Technical details</summary>
-                          <p>{gatherPlan.plan.inputCount} BCH inputs are used. The fee is the existing estimated miner fee. Nothing has been signed or sent yet.</p>
-                        </details>
-                        <button type="button" className="primary-button gather-confirm-button" disabled={gatherBusy} onClick={() => void gatherWalletCoins()}>
-                          {gatherBusy ? "Waiting for Selene…" : "Gather to my wallet"}
+ 
+                <section className="wallet-discovery-actions" aria-label="Find saved circles">
+                  <button type="button" className="secondary-button" disabled={discoveryBusy}
+                    onClick={() => setDiscoveryRun((run) => run + 1)}>
+                    {discoveryBusy ? "Checking circles…" : "Check again"}
+                  </button>
+                  {discoveryMessage && <p className="wallet-match-message" role="status">{discoveryMessage}</p>}
+                </section>
+
+                <details className="wallet-tools-disclosure">
+                  <summary>Advanced</summary>
+                  {(network === "chipnet" || network === "mainnet") && walletAddress && (
+                    <section className="gather-card" aria-labelledby="gather-title">
+                      <div className="gather-card-heading">
+                        <h3 id="gather-title">Combine BCH</h3>
+                        <p>Combine your BCH into one coin. Tokens aren't touched.</p>
+                      </div>
+                      {!gatherPlan && (
+                        <button className="secondary-button gather-scan-button"
+                          disabled={gatherBusy || (network === "mainnet" && !walletClient?.isReceiveAddressConfirmed("mainnet"))}
+                          onClick={() => void gatherWalletCoins()}>
+                          {gatherBusy ? "Checking your coins…" : network === "mainnet" && !walletClient?.isReceiveAddressConfirmed("mainnet")
+                            ? "Pick an address first."
+                            : "Find BCH coins in my wallet"}
                         </button>
-                        <button type="button" className="secondary-button gather-cancel-button" disabled={gatherBusy} onClick={() => { setGatherPlan(null); setGatherMessage(""); }}>
-                          Cancel
-                        </button>
-                      </div>
-                    )}
-                    {gatherBusy && gatherMessage && <p className="wallet-match-message" role="status">{gatherMessage}</p>}
-                    {gatherResult?.status === "success" && (
-                      <div className="gather-result gather-success" role="status">
-                        <b>BCH gathered successfully</b>
-                        <span>Your BCH is on its way back to your wallet. The transaction may take time to confirm.</span>
-                        <a href={gatherExplorerUrl(gatherResult.network, gatherResult.txid)} target="_blank" rel="noreferrer">View transaction <code>{gatherResult.txid}</code></a>
-                      </div>
-                    )}
-                    {gatherResult?.status === "error" && (
-                      <div className="gather-result gather-error" role="alert">
-                        <b>We couldn't gather your BCH</b>
-                        <span>{gatherResult.message}</span>
-                        <button type="button" className="secondary-button" onClick={() => { setGatherResult(null); setGatherPlan(null); }}>Try again</button>
-                      </div>
-                    )}
-                    {network === "mainnet" && <small className="field-hint">Check the total and fee before asking Selene to approve. The coins return to your wallet.</small>}
-                  </section>
-                </>}
-                <button className="secondary-button" disabled={discoveryBusy} onClick={() => setDiscoveryRun((run) => run + 1)}>{discoveryBusy ? "Checking circles…" : discoveryMessage ? "Retry discovery" : "Check for my circles"}</button>
-                {discoveryMessage && <p className="wallet-match-message" role="status">{discoveryMessage}</p>}
-                <button className="secondary-button" onClick={() => void walletClient?.disconnect()}>Disconnect wallet</button>
+                      )}
+                      {gatherPlan && (
+                        <div className="gather-review" aria-live="polite">
+                          <div className="gather-review-row"><span>Total BCH found</span><strong>{formatBchSatoshis(gatherPlan.plan.totalSatoshis)}</strong></div>
+                          <div className="gather-review-row gather-destination"><span>Goes to your wallet</span><code>{gatherPlan.plan.destination}</code></div>
+                          <div className="gather-review-row"><span>Network fee</span><strong>{formatBchSatoshis(gatherPlan.plan.fee)}</strong></div>
+                          <div className="gather-review-row"><span>After the fee</span><strong>{formatBchSatoshis(gatherPlan.plan.outputSatoshis)}</strong></div>
+                          <details className="technical-details">
+                            <summary>Details</summary>
+                            <p>{gatherPlan.plan.inputCount} BCH inputs. The estimate uses the current miner fee. Nothing is signed or sent yet.</p>
+                          </details>
+                          <button type="button" className="primary-button gather-confirm-button" disabled={gatherBusy} onClick={() => void gatherWalletCoins()}>
+                            {gatherBusy ? "Waiting for Selene…" : "Gather to my wallet"}
+                          </button>
+                          <button type="button" className="secondary-button gather-cancel-button" disabled={gatherBusy} onClick={() => { setGatherPlan(null); setGatherMessage(""); }}>
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                      {gatherBusy && gatherMessage && <p className="wallet-match-message" role="status">{gatherMessage}</p>}
+                      {gatherResult?.status === "success" && (
+                        <div className="gather-result gather-success" role="status">
+                          <b>BCH combined</b>
+                          <span>Done. Confirms in a few minutes.</span>
+                          <a href={gatherExplorerUrl(gatherResult.network, gatherResult.txid)} target="_blank" rel="noreferrer">View transaction <code>{gatherResult.txid}</code></a>
+                        </div>
+                      )}
+                      {gatherResult?.status === "error" && (
+                        <div className="gather-result gather-error" role="alert">
+                          <b>Couldn't combine your BCH. Try again.</b>
+                          <span>{plainErrorSummary(gatherResult.message)}</span>
+                          <details className="technical-details"><summary>Details</summary><p>{gatherResult.message}</p></details>
+                          <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setGatherResult(null)}>×</button>
+                        </div>
+                      )}
+                    </section>
+                  )}
+                </details>
+
+                <div className="wallet-bottom-actions">
+                  <button className="secondary-button" onClick={() => {
+                    void walletClient?.disconnect();
+                    setShowWallet(false);
+                  }}>Disconnect</button>
+                </div>
               </div>
             ) : (
               <div className="wallet-detail-body">
-                {qrDataUrl && <img className="wallet-qr" src={qrDataUrl} alt="WizardConnect pairing QR code" />}
+                {qrDataUrl && <img className="wallet-qr" src={qrDataUrl} alt="Wallet connection QR code" />}
                 {walletView.uri && <a className="primary-button wallet-open-link" href={walletView.uri}>Open in Selene <ArrowRight size={15} /></a>}
-                {walletView.state === "connecting" && <p className="wallet-match-message">Connecting to Selene. Approve the session in Selene, then return here.</p>}
-                {walletView.state === "reconnecting" && <p className="wallet-match-message" role="status">Reconnecting to Selene. Keep this page open while the relay recovers.</p>}
-                {walletView.state === "disconnected" && <p className="wallet-match-message" role="status">Wallet disconnected. Tap Reconnect to try again.</p>}
-                {walletView.error && <p className="wallet-match-message" role="alert">{walletView.error}</p>}
+                {walletView.state === "connecting" && <p className="wallet-match-message">Approve in Selene, then come back.</p>}
+                {walletView.state === "reconnecting" && <p className="wallet-match-message" role="status">Reconnecting…</p>}
+                {walletView.state === "disconnected" && <p className="wallet-match-message" role="status">Disconnected.</p>}
+                {walletView.error && <div className="classic-error" role="alert">
+                  <span>{walletErrorSummary(walletView.error)}</span>
+                  <details className="technical-details"><summary>Details</summary><p>{walletView.error}</p></details>
+                  <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setWalletView((view) => ({ ...view, error: null }))}>×</button>
+                </div>}
                 <div className="wallet-modal-actions">
                   <button className="primary-button" onClick={() => {
                     if (!walletClient) { openWallet(); return; }
@@ -2312,7 +2733,6 @@ export default function App() {
                       else if (walletClient.state === "disconnected") walletClient.startFreshPairing();
                     }
                   }}>Reconnect</button>
-                  <button className="secondary-button" onClick={() => walletClient?.startFreshPairing()}>Start fresh pairing</button>
                   <button className="secondary-button" onClick={() => setShowWallet(false)}>Close</button>
                 </div>
               </div>
@@ -2320,7 +2740,7 @@ export default function App() {
           </section>
         </div>
       )}
-      <footer className="app-footer"><span>© 2026 AjoChain</span><a href="https://github.com/Afar88/ajochain-blaze/blob/main/docs/MAINNET_PROOF.md" style={{ color: "var(--primary)", fontWeight: 800, textDecoration: "underline" }}>On-chain proof</a><span><span className="footer-dot" /> {network === "chipnet" ? "Chipnet testing" : "Mainnet · wallet-authorized transactions"}</span></footer>
+      <footer className="app-footer"><span>© 2026 AjoChain</span><a href="https://github.com/Afar88/ajochain-blaze/blob/main/docs/MAINNET_PROOF.md" style={{ color: "var(--primary)", fontWeight: 800, textDecoration: "underline" }}>Mainnet transaction record</a><span><span className="footer-dot" /> {network === "chipnet" ? "Chipnet testing" : "Mainnet · approve in Selene"}</span></footer>
     </main>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { plainErrorSummary } from "./error-copy";
 import { Copy, RefreshCw } from "lucide-react";
 import { parseAssetAmount } from "../core/assets";
 import { CashTokensGenesisUtxoMissingError, classicAddressToPkh, getClassicProvider, planClassicGenesisSetup } from "../core/classic-bch";
@@ -102,6 +103,12 @@ export default function V2FeeBchWorkspace({
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  useEffect(() => {
     onBusyChange?.(busy);
     return () => onBusyChange?.(false);
   }, [busy, onBusyChange]);
@@ -145,7 +152,7 @@ export default function V2FeeBchWorkspace({
       const result = await readV2FeeCircle(params);
       setSnapshot(result);
       if (selected) persistChainProgress(params, selected, result);
-      setNotice("V2 fee-circle state and every member receipt were read from Chipnet.");
+      setNotice("Circle details and member balances were updated.");
     } catch (cause) {
       setSnapshot(null);
       setError(errorText(cause));
@@ -230,7 +237,7 @@ export default function V2FeeBchWorkspace({
       return;
     }
     const initiator = wallet.address("chipnet");
-    if (!initiator) { setError("No verified Chipnet receive address is available for this wallet."); return; }
+    if (!initiator) { setError("No Chipnet address is available for this wallet."); return; }
     setBusy(true);
     try {
       const additionalMembers = membersText.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean);
@@ -298,12 +305,12 @@ export default function V2FeeBchWorkspace({
         } else {
           const setup = await planClassicGenesisSetup(initiator);
           if (!window.confirm(
-            "Step 1 of 2 · Prepare the CashTokens genesis coin on Chipnet?\n\n" +
-            "AjoChain will send " + setup.outputSatoshis.toString() + " sats to your wallet as output 0. " +
-            "The remaining BCH returns to your wallet as change, minus an estimated " + setup.fee.toString() +
-            "-sat miner fee, with " + setup.changeSatoshis.toString() + " sats returned as wallet change.\n\n" +
-            "This does not create the circle NFT yet. After output 0 appears in your wallet, a second " +
-            "Selene approval will create the circle. No new deposit is requested.",
+            "Step 1 of 2 · Prepare your small Chipnet setup coin?\n\n" +
+            "AjoChain will send " + setup.outputSatoshis.toString() + " sats to your wallet. " +
+            "The rest returns to your wallet, minus an estimated " + setup.fee.toString() +
+            "-sat miner fee.\n\n" +
+            "This does not create your circle yet. After the setup coin appears, approve again in Selene. " +
+            "You won't need to make another deposit.",
           )) return;
 
           try {
@@ -320,7 +327,7 @@ export default function V2FeeBchWorkspace({
             signedSetup = await wallet.signAndVerify(
               setup.wc,
               setup.walletInputs,
-              "Prepare CashTokens genesis output for AjoChain",
+              "Prepare your Chipnet setup coin for AjoChain",
             );
           } catch (cause) {
             try { window.localStorage.removeItem(pendingKey); } catch { /* best effort */ }
@@ -380,15 +387,15 @@ export default function V2FeeBchWorkspace({
       if (!window.confirm(
         "Create new automatic-reserve circle on Chipnet?\\n\\n" +
         plan.contract.address + "\\n" +
-        members.length + " member receipts will be created.\\n" +
+        members.length + " members will be included in the circle.\\n" +
         "Contribution: " + formatBch(draft.contribution) + " per member, per scheduled payout.\\n" +
         "Each member funds one current-round contribution: " + formatBch(draft.contribution) + ".\\n" +
-        "When a member receives a payout, exactly one next contribution is withheld and credited to their own on-chain receipt.\\n" +
+        "When a member collects, one next contribution is set aside for their next round.\\n" +
         "Gross round pot: " + formatBch(grossPot) + ".\\n" +
         "Project fee: " + formatBch(projectFee) + " (1%), paid to " + draft.treasury + ".\\n" +
         "Miner fee is separate and capped at " + draft.maxFee.toString() + " sats.\\n\\n" +
         "No one must pre-fund the entire cycle. Each recipient carries one next contribution forward from their payout to cover the following round.\\n\\n" +
-        "Public on-chain discovery notice: this transaction permanently links every member BCH address to this circle in public Chipnet history. Each member receives a 546-sat marker; circle settings are public, but the circle name is not. Only proceed if every listed address owner agrees to this public association.\\n" +
+        "Public record notice: this transaction permanently links every member BCH address to this circle on Chipnet. Each member receives a 546-sat marker. Circle settings are public, but the circle name is hidden. Continue only if every address owner agrees.\\n" +
         "Experimental Chipnet software only; no real funds.",
       )) return;
       const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Create AjoChain V2 fee circle: " + draft.name);
@@ -410,7 +417,7 @@ export default function V2FeeBchWorkspace({
       return;
     }
     const address = wallet.address("chipnet");
-    if (!address) { setError("No verified Chipnet receive address is available."); return; }
+    if (!address) { setError("No Chipnet address is available."); return; }
     setBusy(true);
     try {
       const units = parseAssetAmount("BCH", depositAmount);
@@ -426,6 +433,7 @@ export default function V2FeeBchWorkspace({
       const txid = await provider.sendRawTransaction(signed.signedTransaction);
       setNotice("Member credit deposit broadcast. Transaction: " + txid);
       await refresh(active);
+      window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
     } catch (cause) { setError(errorText(cause)); }
     finally { setBusy(false); }
   };
@@ -452,7 +460,7 @@ export default function V2FeeBchWorkspace({
         "Member receives: " + formatBch(plan.payout) + "\\n" +
         "Separate miner fee paid by your wallet: up to " + plan.minerFee.toString() + " sats\\n\\n" +
         (plan.hasAutomaticFutureReserve
-          ? "Every receipt is debited by one current-round contribution. Exactly one next contribution is then reserved in the recipient’s own receipt for the following round. After that reserve is consumed, the member must fund later installments again."
+          ? "Every member's balance pays one current contribution. When a member collects, one future contribution is set aside. Members add money for later rounds as usual."
           : "This circle follows its original versioned member-credit rules. Its funding and payout terms have not been changed."),
       )) return;
       const signed = await wallet.signAndVerify(
@@ -463,6 +471,7 @@ export default function V2FeeBchWorkspace({
       const txid = await provider.sendRawTransaction(signed.signedTransaction);
       setNotice("V2 fee payout broadcast. The 1% project fee and member payout were paid from the circle pot; miner fee came from the connected wallet. Transaction: " + txid);
       await refresh(active);
+      window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
     } catch (cause) { setError(errorText(cause)); }
     finally { setBusy(false); }
   };
@@ -499,7 +508,7 @@ export default function V2FeeBchWorkspace({
       const params = decodeCircle(match[1]);
       persist(params);
       setRestoreInput("");
-      setNotice("V2 fee-circle invite restored locally. Chain state still has to be independently read.");
+      setNotice("Circle invite restored. Check the latest circle details before continuing.");
     } catch (cause) { setError(errorText(cause)); }
   };
 
@@ -530,7 +539,7 @@ export default function V2FeeBchWorkspace({
         </div>
         <span className="classic-network">Chipnet · test coins</span>
       </div>
-      <p className="circle-education-copy">For each non-final payout, one next contribution is held for the recipient's following round. Members make later contributions as usual.</p>
+      <p className="circle-education-copy">Non-final recipients hold one next-round contribution.</p>
 
       {view === "create" && (<>
       <div className="circle-workspace-grid">
@@ -538,7 +547,7 @@ export default function V2FeeBchWorkspace({
           <div className="circle-panel-heading">
             <span className="section-kicker">NEW GROUP</span>
             <h3>Create a circle</h3>
-            <p>Set the contribution and register your group members. Your connected Selene wallet is added first automatically.</p>
+            <p>Set your contribution and add members. Selene is Member 1.</p>
           </div>
           <form onSubmit={create}>
             <label>Circle name<input value={name} onChange={(event) => setName(event.target.value)} maxLength={60} required /></label>
@@ -552,12 +561,15 @@ export default function V2FeeBchWorkspace({
                 : "Connect your Selene wallet and it will be registered automatically."}
             </div>
             <label>Other members' Chipnet BCH addresses · one per line<textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder="bchtest:…\nbchtest:…" required /></label>
-            <p className="field-hint">The circle setup permanently links each member BCH address to this circle on the public Chipnet blockchain. Each member receives a small marker; the settings are public, but the circle name is not. Only add addresses whose owners agree to this public association.</p>
+            <details className="technical-details">
+              <summary>Details</summary>
+              <p>The circle setup links each member's BCH address to this circle on the public Chipnet blockchain. Each member receives a small marker. The settings and addresses are public, but the circle name is not. Only add addresses with their owners' agreement.</p>
+            </details>
             <button className="primary-button" type="submit" disabled={busy || network !== "chipnet" || !walletConnected}>
               {busy ? "Creating circle…" : network !== "chipnet" ? "Switch to Chipnet" : !walletConnected ? "Connect wallet first" : "Create fee circle"}
             </button>
           </form>
-          <small className="field-hint">Add 1–4 other unique Chipnet addresses in payout order (2–5 members total). Each member funds the current round; a non-final recipient carries one next contribution forward.</small>
+          <small className="field-hint">Add 1–4 other Chipnet addresses in payout order.</small>
         </div>
       </div>
       <form className="classic-restore-form circle-restore-form" onSubmit={restore}>
@@ -584,8 +596,11 @@ export default function V2FeeBchWorkspace({
             <div><b>Member accountability ledger</b><span>What each member has paid, what is still due, and who has collected</span></div>
             <span className={snapshot.ready || snapshot.completed ? "fee-accounting-status safe" : "fee-accounting-status blocked"}>{snapshot.completed ? "Circle closed" : snapshot.ready ? "Payout unlocked" : "Payout locked"}</span>
           </div>
-          {(active.covenant === "fee-v1" || active.covenant === "fee-v1-guarded") && <p className="classic-error">Older circle rules: the circle checks one contribution at a time. If a member stops contributing after collecting, later rounds may be blocked. New circles hold aside the next contribution before a payout.</p>}
-          {(active.covenant === "fee-v2-escrow" || active.covenant === "fee-v2-escrow-guarded") && <p className="field-hint">This older circle uses its original full-cycle payment rule. New circles hold aside one next contribution before a payout. Existing circles are not changed automatically.</p>}
+          {(active.covenant === "fee-v1" || active.covenant === "fee-v1-guarded") && <p className="classic-error">Older circles keep their original rules.</p>}
+          {(active.covenant === "fee-v2-escrow" || active.covenant === "fee-v2-escrow-guarded") && <>
+            <p className="field-hint">This circle keeps its original payout rules.</p>
+            <small>Missed payments can block later rounds.</small>
+          </>}
           <div className="fee-accounting-table">
             <div className="fee-accounting-row fee-accounting-header"><span>Member</span><span>Paid directly</span><span>Locked now / required</span><span>Payout received</span><span>Still due</span><span>Status</span></div>
             {snapshot.memberAccounting.map((account) => (
@@ -605,16 +620,16 @@ export default function V2FeeBchWorkspace({
             ? <p className="classic-recipient"><b>Circle completed.</b> Every registered member received their scheduled payout. No further deposits or payouts are accepted.{snapshot.closedAs === "completed" ? " The circle tokens were closed and their BCH backing returned to the initiator, so nothing remains locked." : ""}</p>
             : <p className="classic-recipient">Next payout recipient: <b>Member {snapshot.round + 1}</b> · {snapshot.recipient}</p>}
           <p className="field-hint">{snapshot.closedAs ? "This circle is closed. No further actions are possible." : snapshot.hasPaid ? "The first payout has happened. Cancellation is permanently locked; remaining escrow cannot be withdrawn." : "No payout has happened yet. Only the initiator may cancel and refund recorded member credit."}</p>
-        </> : <p className="classic-empty">Reading the state NFT and all member receipts from Chipnet. Refresh if the transaction is still confirming.</p>}
+        </> : <p className="classic-empty">Checking this circle. Refresh if it hasn't updated.</p>}
         <div className="member-payment-status">
           {memberIndex >= 0
-            ? <p><b>Your wallet is registered as Member {memberIndex + 1}.</b> You can pay your own share below.</p>
+            ? <p><b>You're Member {memberIndex + 1}.</b> Pay your share below.</p>
             : walletConnected
-              ? <><p><b>This wallet is not registered in this circle.</b> Connect the Selene account that owns one of the member addresses, or create a new circle with the correct member list.</p><code>{wallet.address("chipnet") ?? "Address unavailable"}</code></>
-              : <p>Connect Selene with the BCH address registered for your member slot to pay your share.</p>}
+              ? <><p><b>This wallet isn't a member.</b> Connect the registered wallet.</p><code>{wallet.address("chipnet") ?? "Address unavailable"}</code></>
+              : <p>Connect the wallet registered for your share.</p>}
         </div>
         <label className="classic-deposit-field">Your BCH contribution deposit<input value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} inputMode="decimal" /></label>
-        {memberIndex >= 0 && snapshot?.memberAccounting[memberIndex] && <p className="field-hint">Your receipt holds {formatBch(snapshot.memberAccounting[memberIndex].currentCredit)}. Amount needed for your next contribution reserve or current round: <b>{formatBch(snapshot.memberAccounting[memberIndex].shortfallForNextPayout)}</b>. <button type="button" className="fee-exact-amount-button" onClick={() => setDepositAmount(bchInputAmount(snapshot.memberAccounting[memberIndex].shortfallForNextPayout))}>Use exact amount due</button></p>}
+        {memberIndex >= 0 && snapshot?.memberAccounting[memberIndex] && <p className="field-hint">Your balance: {formatBch(snapshot.memberAccounting[memberIndex].currentCredit)}. Amount due: <b>{formatBch(snapshot.memberAccounting[memberIndex].shortfallForNextPayout)}</b>. <button type="button" className="fee-exact-amount-button" onClick={() => setDepositAmount(bchInputAmount(snapshot.memberAccounting[memberIndex].shortfallForNextPayout))}>Use exact amount due</button></p>}
         <div className="classic-actions">
           <button type="button" className="secondary-button" disabled={busy} onClick={() => void refresh()}><RefreshCw size={14} /> Refresh</button>
           <button type="button" className="secondary-button" disabled={busy || memberIndex < 0 || network !== "chipnet" || Boolean(snapshot?.completed)} onClick={() => void deposit()}>
@@ -626,7 +641,11 @@ export default function V2FeeBchWorkspace({
       </div>}
       {busy && <p className="classic-feedback" role="status">Preparing or verifying a Chipnet transaction…</p>}
       {notice && <p className="classic-feedback" role="status">{notice}</p>}
-      {error && <p className="classic-error" role="alert">{error}</p>}
+      {error && <div className="classic-error" role="alert">
+        <span>{plainErrorSummary(error)}</span>
+        <details className="technical-details"><summary>Details</summary><p>{error}</p></details>
+        <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setError("")}>×</button>
+      </div>}
     </section>
   );
 }

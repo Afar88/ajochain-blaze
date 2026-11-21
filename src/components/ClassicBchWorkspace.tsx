@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { plainErrorSummary } from "./error-copy";
 import { CashTokensGenesisUtxoMissingError, decodeClassicCircle, getClassicProvider, planClassicContribution, planClassicGenesis, planClassicGenesisSetup, planClassicPayout, readClassicCircle, type ClassicCircleParams, type ClassicCircleStatus } from "../core/classic-bch";
 import { assertBchTransactionBroadcastAllowed } from "../core/bch-mainnet-guard";
 import { buildClassicInviteRoute, loadSavedClassicCircles, restoreClassicCircleFromInvite, saveClassicCircle, type SavedClassicCircle } from "../core/circle-account";
@@ -33,6 +34,12 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   useEffect(() => {
     onBusyChange?.(busy);
@@ -88,7 +95,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
       setStatus(snapshot.status);
       saveChainProgress(params, snapshot.status, selected);
       setContractAddress(snapshot.contract.address);
-      setNotice("Chain data refreshed from " + params.network + ". For Mainnet, the app checks the circle details with independent blockchain providers.");
+      setNotice("Chain data refreshed from " + params.network + ". Mainnet circle details are checked against the blockchain.");
     } catch (cause) {
       setStatus(null);
       setError(message(cause));
@@ -131,12 +138,12 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
     setNotice("");
     if (!walletConnected || wallet.state !== "connected") {
       connect();
-      setError("Connect Selene through WizardConnect, then submit the circle again.");
+      setError("Connect Selene in Selene, then submit the circle again.");
       return;
     }
     const walletAddress = wallet.address(network);
     if (!walletAddress) {
-      setError("The connected wallet does not have a verified receive address for this network.");
+      setError("No wallet address is available for this network. Reconnect Selene first.");
       return;
     }
     const members = membersText.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean);
@@ -198,12 +205,12 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
         } else {
           const setup = await planClassicGenesisSetup(walletAddress);
           if (!window.confirm(
-            "Step 1 of 2 · Prepare the CashTokens genesis coin on Chipnet?\n\n" +
-            "AjoChain will send " + setup.outputSatoshis.toString() + " sats to your wallet as output 0. " +
-            "The remaining BCH returns to your wallet as change, minus an estimated " + setup.fee.toString() +
-            "-sat miner fee, with " + setup.changeSatoshis.toString() + " sats returned as wallet change.\n\n" +
-            "This does not create the circle NFT yet. After output 0 appears in your wallet, a second " +
-            "Selene approval will create the circle. No new deposit is requested.",
+            "Step 1 of 2 · Prepare your small Chipnet setup coin?\n\n" +
+            "AjoChain will send " + setup.outputSatoshis.toString() + " sats to your wallet. " +
+            "The rest returns to your wallet, minus an estimated " + setup.fee.toString() +
+            "-sat miner fee.\n\n" +
+            "This does not create your circle yet. After the setup coin appears, approve again in Selene. " +
+            "You won't need to make another deposit.",
           )) return;
 
           // Reserve this wallet/network operation before requesting a signature so
@@ -222,7 +229,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
             signedSetup = await wallet.signAndVerify(
               setup.wc,
               setup.walletInputs,
-              "Prepare CashTokens genesis output for AjoChain",
+              "Prepare your Chipnet setup coin for AjoChain",
             );
           } catch (cause) {
             try { window.localStorage.removeItem(pendingKey); } catch { /* best effort */ }
@@ -346,6 +353,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
       const txid = await plan.provider.sendRawTransaction(signed.signedTransaction);
       setNotice("Contribution broadcast. Transaction ID: " + txid);
       await refresh(activeCircle);
+      window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -371,6 +379,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
       const txid = await plan.provider.sendRawTransaction(plan.builder.build());
       setNotice("Payout broadcast. Transaction ID: " + txid);
       await refresh(activeCircle);
+      window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -414,23 +423,23 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
         <div>
           <span className="section-kicker">CLASSIC BCH · OLDER SAVINGS</span>
           <h2 id="classic-workspace-title">Create and manage circles</h2>
-          <p>Create Chipnet circles, contribute, collect payouts, and restore with an invite.</p>
+          <p>Create circles, pay in and collect payouts.</p>
         </div>
         <span className={network === "mainnet" ? "classic-network mainnet" : "classic-network"}>
-          {network === "mainnet" ? "Mainnet · read-only" : "Chipnet · test"}
+          {network === "mainnet" ? "Mainnet" : "Chipnet · test"}
         </span>
       </div>
 
       <div className="classic-account-summary">
         <div><b>{networkSavedCount}</b><span>Circles on this network</span></div>
-        <div><b>{walletConnected ? "Connected" : "Not connected"}</b><span>WizardConnect wallet</span></div>
-        <p>Local account index only. It does not create a cloud login or synchronize data across devices; keep invite links as a recovery method.</p>
+        <div><b>{walletConnected ? "Connected" : "Not connected"}</b><span>Selene wallet</span></div>
+        <p>Circles stay on this phone. Save invite links for recovery.</p>
       </div>
 
       <div className="classic-workspace-grid">
         <div className="classic-create-panel">
           <h3>Start a Classic BCH circle</h3>
-          <p>2–5 unique BCH member addresses in payout order. This older circle uses one shared BCH pot and a fixed payout order; it does not track who made each contribution.</p>
+          <p>2–5 unique BCH addresses, in payout order.</p><small>One shared pot. Individual deposits aren't tracked.</small>
           <form onSubmit={startCircle}>
             <label>Circle name
               <input value={name} onChange={(event) => setName(event.target.value)} maxLength={60} required />
@@ -458,7 +467,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
             </label>
             <button type="submit" className="secondary-button">Restore circle</button>
           </form>
-          <p className="classic-empty">Your saved circles are listed in My circles, grouped by the selected network.</p>
+          <p className="classic-empty">Saved circles appear in My circles for this network.</p>
         </div>
       </div>
 
@@ -478,14 +487,14 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
             <>
               <div className="classic-account-summary classic-chain-stats">
                 <div><b>{status.round === null ? "Not started" : status.completed ? "Complete" : (status.round + 1) + " / " + activeCircle.members.length}</b><span>Current round</span></div>
-                <div><b>{formatBch(status.available)}</b><span>Observed pot (single provider)</span></div>
+                <div><b>{formatBch(status.available)}</b><span>Observed pot</span></div>
                 <div><b>{status.ready ? "Ready" : formatBch(status.shortfall) + " short"}</b><span>Next payout condition</span></div>
               </div>
               {status.issues.length > 0 && <ul className="classic-issues">{status.issues.map((item) => <li key={item}>{item}</li>)}</ul>}
               {status.recipient && <p className="classic-recipient">Next payout recipient: <b>{status.recipient}</b></p>}
             </>
           ) : (
-            <p className="classic-empty">Reading circle state from its original network. Use refresh to retry if the Electrum provider is unavailable.</p>
+            <p className="classic-empty">Checking the circle. Refresh if the network is unavailable.</p>
           )}
           <div className="classic-actions">
             <button type="button" className="secondary-button" onClick={() => void refresh()} disabled={busy}>Refresh chain state</button>
@@ -496,13 +505,18 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
               {status?.completed ? "Circle complete" : "Pay out next round"}
             </button>
           </div>
-          <p className="classic-disclaimer">Classic V1 does not track individual member credit or late payments. Chain state, not this browser's saved list, determines whether a payout is possible. The Mainnet transaction kill-switch remains closed in this build.</p>
+          <p className="classic-disclaimer">Classic V1 uses one shared pot. Member deposits aren't tracked.</p>
+          <p className="classic-disclaimer">Mainnet payments are disabled in this build.</p>
         </div>
       )}
 
       {busy && <p className="classic-feedback" role="status">Working with the selected BCH network…</p>}
       {notice && <p className="classic-feedback" role="status">{notice}</p>}
-      {error && <p className="classic-error" role="alert">{error}</p>}
+      {error && <div className="classic-error" role="alert">
+        <span>{plainErrorSummary(error)}</span>
+        <details className="technical-details"><summary>Details</summary><p>{error}</p></details>
+        <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setError("")}>×</button>
+      </div>}
     </section>
   );
 }

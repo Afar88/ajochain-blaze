@@ -3,11 +3,13 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { circleRiskNoticeText } from "../App";
+import { plainErrorSummary } from "./error-copy";
 const here = dirname(fileURLToPath(import.meta.url));
 const stylesSource = readFileSync(resolve(here, "../styles.css"), "utf8");
 const appSource = readFileSync(resolve(here, "../App.tsx"), "utf8");
 const bchSource = readFileSync(resolve(here, "BchMainnetCircleWorkspace.tsx"), "utf8");
 const controlSource = readFileSync(resolve(here, "TestSignControl.tsx"), "utf8");
+const activitySource = readFileSync(resolve(here, "ActivityRecords.tsx"), "utf8");
 const pusdSource = readFileSync(resolve(here, "PusdMainnetCircleWorkspace.tsx"), "utf8");
 
 export function isInsideAdvancedToggle(source: string, label: string, from = 0): boolean {
@@ -59,7 +61,7 @@ describe("activity records follow the selected network", () => {
   it("passes the selected network to every ActivityRecords and filters refs by it", () => {
     const activitySource = readFileSync(resolve(here, "ActivityRecords.tsx"), "utf8");
     expect(appSource).not.toContain("<ActivityRecords />");
-    expect((appSource.match(/<ActivityRecords network=\{network\}/g) ?? [])).toHaveLength(2);
+    expect((appSource.match(/<ActivityRecords network=\{network\}/g) ?? [])).toHaveLength(1);
     expect((activitySource.match(/loadCircleRefs\(\)\.filter\(\(ref\) => ref\.network === network\)/g) ?? [])).toHaveLength(2);
   });
 });
@@ -105,5 +107,128 @@ describe("phone-width layout guardrails", () => {
     expect(stylesSource).toContain("max-width:1280px");
     expect(stylesSource.split("overflow-x:auto").length - 1).toBe(1);
     expect(stylesSource.split("overflow-x: auto").length - 1).toBe(1);
+  });
+});
+
+
+describe("saved circle and homepage guardrails", () => {
+  it("restores fresh circle results before starting another blockchain scan", () => {
+    const restoreIndex = appSource.indexOf("restoreCachedCircles");
+    const scanIndex = appSource.indexOf('const provider = await getClassicProvider("chipnet");', restoreIndex);
+    expect(restoreIndex).toBeGreaterThanOrEqual(0);
+    expect(scanIndex).toBeGreaterThan(restoreIndex);
+    expect(appSource).toContain("isWalletDiscoveryCacheFresh(chipnetCache)");
+    expect(appSource).toContain("isWalletDiscoveryCacheFresh(mainnetCache)");
+    expect(appSource).toContain("skipChipnetScan");
+    expect(appSource).toContain("skipMainnetScan");
+  });
+
+  it("loads saved BCH and PUSD Mainnet circles into Activity", () => {
+    expect(activitySource).toContain("ajochain-blaze:bch-mainnet-circles-deployed:v1");
+    expect(activitySource).toContain("ajochain-blaze:pusd-mainnet-circles-deployed:v1");
+    expect(activitySource).toContain("readSavedBchMainnetCircles()");
+    expect(activitySource).toContain("readSavedPusdCircles()");
+    expect(activitySource).toContain("readStoredV2Circles()");
+    expect(activitySource).toContain("loadSavedClassicCircles(window.localStorage)");
+    expect(activitySource).toContain("new Map(refs.map((ref) => [ref.id, ref]))");
+    expect(activitySource).toContain("ajochain:bch-mainnet-circles-changed");
+    expect(activitySource).toContain("ajochain:saved-circles-changed");
+  });
+
+  it("defaults Chipnet to the funded receive address without auto-confirming it", () => {
+    expect(appSource).toContain("client.isReceiveAddressConfirmed(network)");
+    expect(appSource).toContain('client.matchReceiveAddress(defaultChoice.address, "chipnet")');
+    expect(appSource).toContain('client.selectReceiveAddressIndex(defaultChoice.index, "mainnet")');
+    expect(appSource).toContain('WALLET_SELECTED_RECEIVE_INDEX_KEY + ":chipnet"');
+    expect(appSource).toContain('"This address isn\'t in your wallet. Check Selene is on Chipnet and reconnect."');
+  });
+
+  it("never displays a BCH scan from a different selected network", () => {
+    expect(appSource).toContain("receiveAddressChoicesNetwork === network");
+    expect(appSource).toContain("receiveAddressChoices: currentNetworkAddressChoices");
+    expect(appSource).toContain("const selectedReceiveAddressChoice = currentNetworkAddressChoices.find");
+  });
+
+  it("refreshes wallet balances on foreground, every minute and after circle payments", () => {
+    expect(appSource).toContain("window.setInterval(refresh, 60_000)");
+    expect(appSource).toContain('document.addEventListener("visibilitychange", refresh)');
+    expect(appSource).toContain('window.addEventListener("ajochain:wallet-balances-changed", refresh)');
+    for (const source of [
+      readFileSync(resolve(here, "BchMainnetCircleWorkspace.tsx"), "utf8"),
+      readFileSync(resolve(here, "PusdMainnetCircleWorkspace.tsx"), "utf8"),
+      readFileSync(resolve(here, "V2FeeBchWorkspace.tsx"), "utf8"),
+      readFileSync(resolve(here, "ClassicBchWorkspace.tsx"), "utf8"),
+    ]) expect(source).toContain("ajochain:wallet-balances-changed");
+  });
+
+  it("keeps the Home page limited to the notice, hero and two actions", () => {
+    const start = appSource.indexOf('{page === "overview" && (');
+    const end = appSource.indexOf('{page === "create-circle" && (', start);
+    const home = appSource.slice(start, end);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    for (const removed of [
+      "overview-my-circles",
+      "overview-activity",
+      "overview-status-grid",
+      "asset-preview",
+      "how-ajo-works",
+    ]) expect(home).not.toContain(removed);
+    expect(home).toContain("{renderCircleRiskNotice()}");
+    expect(home).toContain("Your Ajo savings circle,");
+    expect(home).toContain("on Bitcoin Cash.");
+    expect(home).toContain("Create a circle");
+    expect(home).toContain("My circles");
+  });
+
+  it("keeps Wallet detail helper lines short and free of internal terms", () => {
+    const start = appSource.indexOf("{showWallet && (");
+    const end = appSource.indexOf('<footer className="app-footer"', start);
+    const walletDetails = appSource.slice(start, end);
+    const plainHelpers = ["p", "small", "label"].flatMap((tag) =>
+      [...walletDetails.matchAll(new RegExp("<" + tag + "\\b[^>]*>([\\s\\S]*?)</" + tag + ">", "g"))]
+        .map((match) => match[1].replace(/\{[^{}]*\}/g, " ").replace(/<[^>]*>/g, " ").trim())
+        .filter(Boolean),
+    );
+    for (const helper of plainHelpers) {
+      const words = helper.split(/\s+/).filter(Boolean);
+      expect(words.length, helper).toBeLessThanOrEqual(15);
+    }
+    const visibleHelpers = plainHelpers.join(" ").toLowerCase();
+    for (const forbidden of ["derived", "receive key", "indices", "xpub", "verified picker", "relay", "session", "provider", "proof checks", "WizardConnect"]) {
+      expect(visibleHelpers).not.toContain(forbidden.toLowerCase());
+    }
+    for (const expected of [
+      "Connect Selene. Your keys never leave your phone.",
+      "Approve in Selene, then come back.",
+      "Reconnecting…",
+      "Disconnected.",
+      "Pick the address shown in Selene.",
+      "Address confirmed ✓",
+      "Address not confirmed yet.",
+      "Reconnect Selene first.",
+      "Couldn't load your addresses. Reconnect and try again.",
+      // Mainnet uses the address picker; the old manual mismatch warning is no longer shown.
+      "Wait 1 confirmation, then create.",
+      "Combine your BCH into one coin. Tokens aren't touched.",
+      "Done. Confirms in a few minutes.",
+      "Couldn't combine your BCH. Try again.",
+    ]) expect(walletDetails).toContain(expected);
+  });
+});
+
+
+describe("plain error copy", () => {
+  it("keeps technical messages behind a simple user-facing summary", () => {
+    const cases = [
+      ["Wallet address could not be confirmed by the Electrum provider.", "Check your wallet and try again."],
+      ["Network request timed out while reading the transaction.", "Can't connect right now. Try again."],
+      ["Signed transaction broadcast verification failed.", "This step couldn't be completed. Check details."],
+      ["Unclassified failure.", "Something went wrong. Try again."],
+    ] as const;
+    for (const [technical, summary] of cases) {
+      expect(plainErrorSummary(technical)).toBe(summary);
+      expect(summary.split(/\s+/).length).toBeLessThanOrEqual(10);
+    }
   });
 });

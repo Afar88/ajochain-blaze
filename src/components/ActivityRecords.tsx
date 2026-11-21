@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { plainErrorSummary } from "./error-copy";
 import { RefreshCw, ShieldCheck } from "lucide-react";
 import { decodeClassicCircle, getClassicProvider, readClassicCircle } from "../core/classic-bch";
 import { loadSavedClassicCircles } from "../core/circle-account";
@@ -12,6 +13,8 @@ import { formatAssetAmount } from "../core/assets";
 import { formatBch } from "../core/network";
 
 const V2_STORAGE_KEY = "ajochain-blaze:v2-fee-circles:v1";
+const BCH_MAINNET_CIRCLES_KEY = "ajochain-blaze:bch-mainnet-circles-deployed:v1";
+const PUSD_MAINNET_CIRCLES_KEY = "ajochain-blaze:pusd-mainnet-circles-deployed:v1";
 const BCH_MAINNET_ACTIVE_KEY = "ajochain-blaze:bch-mainnet-circle-active:v1";
 const PUSD_ACTIVE_KEY = "ajochain-blaze:pusd-mainnet-circle-active:v1";
 
@@ -61,6 +64,67 @@ function readStoredV2Circles(): CircleRef[] {
           kind: "fee" as const,
           name: params.name,
           network: params.network,
+          params,
+        }];
+      } catch { return []; }
+    });
+  } catch { return []; }
+}
+
+function readSavedBchMainnetCircles(): CircleRef[] {
+  try {
+    const raw: unknown = JSON.parse(window.localStorage.getItem(BCH_MAINNET_CIRCLES_KEY) || "[]");
+    if (!Array.isArray(raw)) return [];
+    return raw.flatMap((encoded) => {
+      if (typeof encoded !== "string") return [];
+      try {
+        const params = decodeV2FeeCircle(encoded);
+        if (params.network !== "mainnet") return [];
+        return [{
+          id: "fee:mainnet:" + params.stateCategory,
+          kind: "fee" as const,
+          name: params.name,
+          network: "mainnet" as const,
+          params,
+        }];
+      } catch { return []; }
+    });
+  } catch { return []; }
+}
+
+function readSavedPusdCircles(): CircleRef[] {
+  try {
+    const raw: unknown = JSON.parse(window.localStorage.getItem(PUSD_MAINNET_CIRCLES_KEY) || "[]");
+    if (!Array.isArray(raw)) return [];
+    return raw.flatMap((encoded) => {
+      if (typeof encoded !== "string") return [];
+      try {
+        const value: unknown = JSON.parse(encoded);
+        if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+        const item = value as Record<string, unknown>;
+        if (item.version !== 3 || item.network !== "mainnet" ||
+            typeof item.name !== "string" || typeof item.stateCategory !== "string" ||
+            typeof item.contribution !== "string" || !/^[0-9]+$/.test(item.contribution) ||
+            typeof item.maxFee !== "string" || !/^[0-9]+$/.test(item.maxFee) ||
+            typeof item.initiator !== "string" || typeof item.treasury !== "string" ||
+            !Array.isArray(item.members) || !item.members.every((member) => typeof member === "string")) return [];
+        const params: PusdMainnetCircleParams = {
+          version: 3,
+          network: "mainnet",
+          name: item.name,
+          members: item.members as string[],
+          contribution: BigInt(item.contribution),
+          maxFee: BigInt(item.maxFee),
+          initiator: item.initiator,
+          stateCategory: item.stateCategory,
+          treasury: item.treasury,
+        };
+        validatePusdMainnetCircleParams(params);
+        return [{
+          id: "pusd:mainnet:" + params.stateCategory.toLowerCase(),
+          kind: "pusd" as const,
+          name: params.name,
+          network: "mainnet" as const,
           params,
         }];
       } catch { return []; }
@@ -129,9 +193,15 @@ function loadCircleRefs(): CircleRef[] {
       });
     } catch { /* Invalid local bookmarks are ignored; chain state is never inferred. */ }
   }
-  refs.push(...readStoredV2Circles(), ...readActiveBchMainnet(), ...readActivePusd());
+  refs.push(
+    ...readStoredV2Circles(),
+    ...readSavedBchMainnetCircles(),
+    ...readSavedPusdCircles(),
+    ...readActiveBchMainnet(),
+    ...readActivePusd(),
+  );
   const unique = new Map(refs.map((ref) => [ref.id, ref]));
-  return [...unique.values()].slice(0, 30);
+  return [...unique.values()];
 }
 
 
@@ -158,12 +228,12 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
       const stateVerified = status.stateVerified || status.completed;
       return {
         ref, status: stateVerified ? "ready" : "unavailable",
-        stateLabel: status.completed ? "Rotation complete" : stateVerified ? "Chain state verified" : "State needs review",
+        stateLabel: status.completed ? "Rotation complete" : stateVerified ? "Active" : "Not confirmed",
         roundLabel: status.round === null ? "Round unavailable" : status.completed
           ? status.round + " / " + ref.params.members.length
           : (status.round + 1) + " / " + ref.params.members.length,
         recipient: status.recipient,
-        details: "Classic V1 uses an aggregate pot. The chain cannot identify which member funded an individual contribution.",
+        details: "This circle uses one shared pot.",
         aggregatePool: {
           available: status.available,
           required: status.required,
@@ -180,11 +250,11 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
       );
       return {
         ref, status: "ready",
-        stateLabel: snapshot.completed ? "Rotation complete" : snapshot.ready ? "Payout ready" : "Awaiting member credits",
+        stateLabel: snapshot.completed ? "Circle complete" : snapshot.ready ? "Payout ready" : "Waiting for contributions",
         roundLabel: snapshot.completed ? snapshot.round + " / " + ref.params.members.length
           : (snapshot.round + 1) + " / " + ref.params.members.length,
         recipient: snapshot.recipient,
-        details: "Member credits and receipt state are read from the circle contract. The figures below are current on-chain credits, not browser-entered payment claims.",
+        details: "Member balances are checked for this circle.",
         memberRecords: snapshot.memberAccounting.map((member) => ({
           address: member.address,
           credit: member.currentCredit,
@@ -216,7 +286,7 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
         stateLabel: "Closed",
         roundLabel: "Closed",
         recipient: null,
-        details: "No circle state remains on-chain: the circle was closed by its final payout or by cancellation.",
+        details: "This circle is closed.",
         ...historyResult,
       };
     }
@@ -227,11 +297,11 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
     );
     return {
       ref, status: "ready",
-      stateLabel: snapshot.completed ? "Rotation complete" : snapshot.ready ? "Payout ready" : "Awaiting member credits",
+      stateLabel: snapshot.completed ? "Circle complete" : snapshot.ready ? "Payout ready" : "Waiting for contributions",
       roundLabel: snapshot.completed ? snapshot.round + " / " + ref.params.members.length
         : (snapshot.round + 1) + " / " + ref.params.members.length,
       recipient: snapshot.recipient,
-      details: "PUSD credits are read from the state receipts and independently matched to each member's escrow sidecar.",
+      details: "PUSD balances are checked for each member.",
       memberRecords: snapshot.credits.map((credit, index) => ({
         address: ref.params.members[index],
         credit,
@@ -257,8 +327,8 @@ function txStatusLabel(record: CircleTransactionRecord) {
   if (record.status === "confirmed") {
     return "Confirmed · " + (record.confirmations ?? 0).toLocaleString() + " confirmations";
   }
-  if (record.status === "pending") return "Pending · not confirmed";
-  return "Not verified";
+  if (record.status === "pending") return "Waiting for confirmation";
+  return "Not confirmed";
 }
 
 export default function ActivityRecords({ network, compact = false }: { network: "chipnet" | "mainnet"; compact?: boolean }) {
@@ -287,6 +357,16 @@ export default function ActivityRecords({ network, compact = false }: { network:
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  useEffect(() => {
+    const refreshSavedRecords = () => { void refresh(); };
+    window.addEventListener("ajochain:bch-mainnet-circles-changed", refreshSavedRecords);
+    window.addEventListener("ajochain:saved-circles-changed", refreshSavedRecords);
+    return () => {
+      window.removeEventListener("ajochain:bch-mainnet-circles-changed", refreshSavedRecords);
+      window.removeEventListener("ajochain:saved-circles-changed", refreshSavedRecords);
+    };
+  }, [refresh]);
+
   const transactionCount = results.reduce((sum, item) =>
     sum + (item.history?.records.length ?? 0), 0,
   );
@@ -297,36 +377,40 @@ export default function ActivityRecords({ network, compact = false }: { network:
   return (
     <section className="page-section activity-records-page">
       {!compact && <div className="page-intro">
-        <span className="section-kicker">CHAIN-BACKED HISTORY</span>
-        <h1>Activity and records</h1>
-        <p>Transaction history comes from the circle and escrow scripts. Current member credits come from on-chain receipts, not local payment notes.</p>
+        <span className="section-kicker">YOUR ACTIVITY</span>
+        <h1>Activity</h1>
+        <p>See your circle activity and payments.</p>
       </div>}
 
       <div className="activity-summary-grid">
         <article className="overview-status-card">
           <div className="status-card-icon"><ShieldCheck size={18} /></div>
-          <div><span className="status-label">ON-CHAIN CIRCLES</span><b>{results.filter((item) => item.status === "ready").length}</b><small>Successfully read from their original networks</small></div>
+          <div><span className="status-label">SAVED CIRCLES</span><b>{results.filter((item) => item.status === "ready").length}</b><small>Found and saved on this network</small></div>
         </article>
         <article className="overview-status-card">
           <div className="status-card-icon"><RefreshCw size={18} /></div>
-          <div><span className="status-label">TRANSACTION RECORDS</span><b>{transactionCount}</b><small>{confirmedCount} confirmed by the provider's proof checks</small></div>
+          <div><span className="status-label">TRANSACTION RECORDS</span><b>{transactionCount}</b><small>{confirmedCount} confirmed payments</small></div>
         </article>
       </div>
 
       <div className="activity-toolbar">
         <div>
-          <b>Circle records</b>
-          <small>{lastRefreshed ? "Last chain refresh: " + new Date(lastRefreshed).toLocaleString() : "Checking original networks…"}</small>
+          <b>Circle activity</b>
+          <small>{lastRefreshed ? "Updated " + new Date(lastRefreshed).toLocaleString() : "Checking circle details…"}</small>
         </div>
         <button type="button" className="secondary-button" onClick={() => void refresh()} disabled={busy}>
-          <RefreshCw size={15} className={busy ? "activity-spin" : ""} /> {busy ? "Refreshing…" : "Refresh records"}
+          <RefreshCw size={15} className={busy ? "activity-spin" : ""} /> {busy ? "Refreshing…" : "Refresh"}
         </button>
       </div>
-      {refreshError && <p className="classic-error" role="alert">{refreshError}</p>}
+      {refreshError && <div className="classic-error" role="alert">
+        <span>{plainErrorSummary(refreshError)}</span>
+        <details className="technical-details"><summary>Details</summary><p>{refreshError}</p></details>
+        <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setRefreshError("")}>×</button>
+      </div>}
       {circles.length === 0 ? (
         <article className="asset-detail-card activity-empty">
-          <h2>No saved circles found</h2>
-          <p>Create or restore a circle first. A local saved circle is only an address bookmark; this page will read its live state and transaction history from the blockchain after it is saved.</p>
+          <h2>No circles saved yet</h2>
+          <p>Create a circle or add an invite.</p>
         </article>
       ) : (
         <div className="activity-circle-list">
@@ -336,44 +420,44 @@ export default function ActivityRecords({ network, compact = false }: { network:
                 <div>
                   <span className="section-kicker">{result.ref.kind === "pusd" ? "PUSD" : "BCH"} · {result.ref.network.toUpperCase()}</span>
                   <h2>{result.ref.name}</h2>
-                  <small>{result.ref.kind === "classic" ? "Classic BCH circle" : result.ref.kind === "fee" ? "Member-receipt BCH circle" : "PUSD member-escrow circle"}</small>
+                  <small>{result.ref.kind === "classic" ? "Classic BCH savings circle" : result.ref.kind === "fee" ? "BCH savings circle" : "PUSD savings circle"}</small>
                 </div>
                 <span className={"activity-state-pill " + result.status}>
-                  {result.status === "loading" ? "Reading chain…" : result.status === "ready" ? "Chain read OK" : "Unavailable"}
+                  {result.status === "loading" ? "Checking…" : result.status === "ready" ? "Available" : "Unavailable"}
                 </span>
               </div>
               {result.status === "loading" ? (
-                <p className="classic-empty">Reading contract state and transaction history from {result.ref.network}…</p>
+                <p className="classic-empty">Checking circle details and recent payments…</p>
               ) : result.status === "unavailable" ? (
                 <div className="activity-unavailable">
-                  <b>No verified live record returned</b>
-                  <p>{result.error}</p>
-                  <small>This entry is saved locally. It is not counted as a confirmed circle or transaction.</small>
+                  <b>Couldn't confirm this circle yet</b>
+                  <details className="technical-details"><summary>Details</summary><p>{result.error}</p></details>
+                  <small>This saved circle hasn't been confirmed yet.</small>
                 </div>
               ) : (
                 <>
                   <div className="activity-state-grid">
-                    <div><span>Circle state</span><b>{result.stateLabel}</b></div>
+                    <div><span>Circle status</span><b>{result.stateLabel}</b></div>
                     <div><span>Current round</span><b>{result.roundLabel}</b></div>
-                    <div><span>Next recipient</span><b>{result.recipient ?? "None"}</b></div>
-                    <div><span>Transaction source</span><b>{!result.history ? "History unavailable" : result.history.network === "mainnet" ? "Independent Mainnet Electrum quorum" : "Single Chipnet Electrum provider"}</b></div>
+                    <div><span>Next to collect</span><b>{result.recipient ?? "None"}</b></div>
+                    <div><span>Network</span><b>{result.ref.network === "mainnet" ? "Mainnet" : "Chipnet"}</b></div>
                   </div>
-                  {result.details && <p className="activity-source-note">{result.details}</p>}
+                  {result.details && <details className="technical-details activity-source-note"><summary>Details</summary><p>{result.details}</p></details>}
                   {result.aggregatePool && (
                     <div className="activity-state-grid">
-                      <div><span>On-chain aggregate pot</span><b>{formatBch(result.aggregatePool.available)}</b></div>
+                      <div><span>Circle balance</span><b>{formatBch(result.aggregatePool.available)}</b></div>
                       <div><span>Required for payout</span><b>{formatBch(result.aggregatePool.required)}</b></div>
                       <div><span>Pot shortfall</span><b>{formatBch(result.aggregatePool.shortfall)}</b></div>
                     </div>
                   )}
                   {result.memberRecords && (
                     <div className="activity-member-records">
-                      <div className="activity-subheading"><b>Member receipts and accounting</b><small>Live values derived from on-chain receipts</small></div>
+                      <div className="activity-subheading"><b>Member balances</b><small>Current member balances</small></div>
                       {result.memberRecords.map((member, index) => (
                         <div className="activity-member-row" key={member.address}>
                           <span><b>Member {index + 1}</b><small>{member.address}</small></span>
                           <span>
-                            <b>Current credit: {result.ref.kind === "pusd" ? formatAssetAmount("PUSD", member.credit) + " PUSD" : formatBch(member.credit)}</b>
+                            <b>Member balance: {result.ref.kind === "pusd" ? formatAssetAmount("PUSD", member.credit) + " PUSD" : formatBch(member.credit)}</b>
                             <small>{member.due > 0n ? "Still due: " + (result.ref.kind === "pusd" ? formatAssetAmount("PUSD", member.due) + " PUSD" : formatBch(member.due)) : member.status}</small>
                             {member.totalPaidIn !== undefined && member.totalPaidIn !== null && (
                               <small>Total paid in: {formatBch(member.totalPaidIn)}</small>
@@ -389,14 +473,14 @@ export default function ActivityRecords({ network, compact = false }: { network:
                   )}
                   <div className="activity-history">
                     <div className="activity-subheading">
-                      <b>Recent on-chain activity</b>
-                      <small>{result.historyError ? "Provider lookup failed" : result.history?.truncated ? "Showing the latest 20 records" : "All returned records for this script set"}</small>
+                      <b>Recent payments</b>
+                      <small>{result.historyError ? "Payment history unavailable" : result.history?.truncated ? "Latest 20 payments" : "Payment history"}</small>
                     </div>
                     {result.historyError ? (
                       <div className="activity-unavailable">
-                        <b>Transaction history could not be loaded</b>
-                        <p>{result.historyError}</p>
-                        <small>Circle state above was read separately. No transaction is assumed from this failed history request.</small>
+                        <b>Couldn't load payment history</b>
+                        <details className="technical-details"><summary>Details</summary><p>{result.historyError}</p></details>
+                        <small>Circle details are available, but payment history isn't.</small>
                       </div>
                     ) : result.history?.records.length ? (
                       result.history.records.map((record) => (
@@ -404,18 +488,18 @@ export default function ActivityRecords({ network, compact = false }: { network:
                           <span className="activity-transaction-icon"><ShieldCheck size={15} /></span>
                           <span className="activity-transaction-main">
                             <b>{result.ref.kind === "pusd" && record.scriptIndexes.some((index) => index > 0)
-                              ? "Member " + record.scriptIndexes.filter((index) => index > 0).map((index) => index).join(", ") + " escrow transaction"
-                              : "Circle contract transaction"}</b>
+                              ? "Member " + record.scriptIndexes.filter((index) => index > 0).map((index) => index).join(", ") + " payment"
+                              : "Circle payment"}</b>
                             <code>{shortTxid(record.txid)}</code>
                             <small>{record.status === "confirmed" && record.blockTimestamp
                               ? new Date(record.blockTimestamp).toLocaleString() + " · block " + record.height
-                              : record.status === "pending" ? "Seen in mempool · awaiting confirmation" : record.reason ?? "Provider history could not be verified"}</small>
+                              : record.status === "pending" ? "Waiting for confirmation" : record.reason ?? "Payment couldn't be confirmed"}</small>
                           </span>
                           <span className={"activity-state-pill " + record.status}>{txStatusLabel(record)}</span>
                         </div>
                       ))
                     ) : (
-                      <p className="classic-empty">No transaction history was returned for this contract script.</p>
+                      <p className="classic-empty">No payments found yet.</p>
                     )}
                   </div>
                   {result.history?.truncated && <small className="activity-truncation">This circle has older transactions than the latest 20 displayed.</small>}
@@ -425,7 +509,7 @@ export default function ActivityRecords({ network, compact = false }: { network:
           ))}
         </div>
       )}
-      <p className="activity-footnote">Saved circles and draft timestamps are not transactions. Mainnet history requires agreement from independent Electrum providers and a valid block-inclusion proof. Chipnet history uses one provider and a merkle proof, so its source confidence is lower.</p>
+      <p className="activity-footnote">Confirmed payments are final. Pending payments may still change.</p>
     </section>
   );
 }
