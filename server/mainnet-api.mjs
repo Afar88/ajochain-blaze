@@ -42,6 +42,11 @@ const FIRST_ANSWER_TIMEOUT_MS = 5_000;
 const ELECTRUM_SELECTION_ATTEMPTS = 2;
 const ELECTRUM_QUORUM_UNAVAILABLE = "ELECTRUM_QUORUM_UNAVAILABLE";
 const ELECTRUM_TIP_DISAGREEMENT = "ELECTRUM_TIP_DISAGREEMENT";
+const ELECTRUM_TIP_RECHECK_DELAY_MS = 2_000;
+const BUILT_IN_ELECTRUM_BACKUPS = Object.freeze([
+  { endpoint: "wss://fulcrum.greyh.at:50004", operatorId: "greyh-at" },
+  { endpoint: "wss://bch.soul-dev.com:50004", operatorId: "soul-dev" },
+]);
 // BCH blocks are random; gaps over 30 minutes happen. 90 minutes avoids false "unavailable".
 const MAX_TIP_AGE_MS = 90 * 60 * 1000;
 const MAX_UTXOS_PER_ADDRESS = 1_000;
@@ -82,21 +87,40 @@ export function parseMainnetElectrumProviderConfig(
   if (new Set(operators).size < 2) {
     throw new Error("Electrum provider configuration must declare at least two distinct operators for quorum.");
   }
-  const hostnames = new Set();
-  const providers = servers.map((endpoint, index) => {
+
+  const providers = servers.map((endpoint, index) => ({
+    endpoint,
+    operatorId: operators[index],
+  }));
+  const hostnameOf = (endpoint) => {
     let url;
     try { url = new URL(endpoint); }
     catch { throw new Error("An ELECTRUM_SERVERS endpoint is not a valid URL."); }
     if (url.protocol !== "wss:" || !url.hostname || url.username || url.password || url.hash) {
       throw new Error("Mainnet Electrum endpoints must use secure wss:// URLs without embedded credentials or fragments.");
     }
-    const hostname = url.hostname.toLowerCase();
+    return url.hostname.toLowerCase();
+  };
+
+  // Validate the caller-supplied manifest before adding built-ins. Backups
+  // augment a valid environment config; they never rescue an empty or invalid one.
+  const hostnames = new Set();
+  for (const provider of providers) {
+    const hostname = hostnameOf(provider.endpoint);
     if (hostnames.has(hostname)) {
       throw new Error("Electrum quorum endpoints must use at least two different hostnames.");
     }
     hostnames.add(hostname);
-    return { endpoint, operatorId: operators[index] };
-  });
+  }
+
+  for (const backup of BUILT_IN_ELECTRUM_BACKUPS) {
+    if (providers.length >= 6) break;
+    const hostname = hostnameOf(backup.endpoint);
+    if (hostnames.has(hostname)) continue;
+    providers.push(backup);
+    hostnames.add(hostname);
+  }
+
   return providers;
 }
 
@@ -254,10 +278,50 @@ class ElectrumSession {
   }
 }
 
+function tipsMatchExactly(left, right) {
+  return left.height === right.height &&
+    left.hash === right.hash &&
+    left.headerHex === right.headerHex;
+}
+
+function findMatchingElectrumPair(answers) {
+  // Answers are stored in arrival order. The first pair that becomes possible
+  // wins, but two endpoints with the same declared operator never form quorum.
+  for (let left = 0; left < answers.length; left += 1) {
+    for (let right = left + 1; right < answers.length; right += 1) {
+      const first = answers[left];
+      const second = answers[right];
+      if (first.session.operatorId !== second.session.operatorId &&
+          tipsMatchExactly(first.tip, second.tip)) {
+        return [first.session, second.session];
+      }
+    }
+  }
+  return null;
+}
+
+function withDeadline(promise, timeoutMs, message) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    Promise.resolve(promise).then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 async function selectElectrumProviderSessions(providers, {
   timeoutMs,
+  firstAnswerTimeoutMs = FIRST_ANSWER_TIMEOUT_MS,
   sessionFactory,
   readTip,
+  sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
 }) {
   for (let attempt = 0; attempt < ELECTRUM_SELECTION_ATTEMPTS; attempt += 1) {
     // Construct every socket before awaiting any one provider, so endpoint
@@ -270,71 +334,96 @@ async function selectElectrumProviderSessions(providers, {
       }
     });
     const sessions = created.filter(Boolean);
-    for (const session of sessions) session.providersConfigured = providers.length;
+    const sessionSet = new Set(sessions);
 
-    const selection = await new Promise((resolve) => {
+    const firstPass = await new Promise((resolve) => {
       let completed = created.length - sessions.length;
       let finished = false;
-      const selected = [];
+      const answers = [];
       const finish = (result) => {
         if (finished) return;
         finished = true;
         resolve(result);
       };
+      const completeAttempt = () => {
+        if (completed !== providers.length) return;
+        finish({ type: "complete", answers });
+      };
 
-      if (sessions.length === 0 || completed === providers.length) {
-        finish({ type: "insufficient" });
+      if (completed === providers.length) {
+        finish({ type: "complete", answers });
         return;
       }
 
       for (const session of sessions) {
-        Promise.resolve()
-          .then(() => readTip(session))
-          .then((tip) => {
-            if (finished) return;
-            completed += 1;
-            session.firstTip = tip;
-            // The 5-second limit applies only through connection and this
-            // first chain-identity-checked answer. Later RPCs retain the
-            // configured timeout.
-            session.timeoutMs = timeoutMs;
-
-            // A second endpoint carrying the same declared operator label
-            // is a backup, not a second quorum vote.
-            if (!selected.some((candidate) => candidate.operatorId === session.operatorId)) {
-              selected.push(session);
-            }
-
-            if (selected.length === 2) {
-              try {
-                assertTipQuorum(selected.map((candidate) => candidate.firstTip));
-                finish({ type: "selected", sessions: selected });
-              } catch {
-                finish({ type: "disagree" });
-              }
-            } else if (completed === providers.length) {
-              finish({ type: "insufficient" });
-            }
-          })
-          .catch(() => {
-            if (finished) return;
-            completed += 1;
-            if (completed === providers.length) finish({ type: "insufficient" });
-          });
+        withDeadline(
+          Promise.resolve().then(() => readTip(session)),
+          firstAnswerTimeoutMs,
+          "Electrum first tip response timed out.",
+        ).then((tip) => {
+          if (finished) return;
+          completed += 1;
+          session.firstTip = tip;
+          session.timeoutMs = timeoutMs;
+          answers.push({ session, tip });
+          const pair = findMatchingElectrumPair(answers);
+          if (pair) {
+            finish({ type: "selected", pair, providersAnswered: answers.length, answers });
+            return;
+          }
+          completeAttempt();
+        }).catch(() => {
+          if (finished) return;
+          completed += 1;
+          completeAttempt();
+        });
       }
     });
 
-    if (selection.type === "selected") {
+    if (firstPass.type === "selected") {
       for (const session of sessions) {
-        if (!selection.sessions.includes(session)) session.close();
+        if (!firstPass.pair.includes(session)) session.close();
       }
-      return selection.sessions;
+      for (const session of firstPass.pair) {
+        session.providersConfigured = providers.length;
+        session.providersAnswered = firstPass.providersAnswered;
+      }
+      return firstPass.pair;
+    }
+
+    // All configured endpoints have answered, failed, or reached their
+    // five-second first-answer deadline. If no exact pair formed, briefly
+    // allow a just-arrived BCH block to settle, then sample every server that
+    // passed the initial identity and freshness checks exactly once more.
+    await sleep(ELECTRUM_TIP_RECHECK_DELAY_MS);
+    const rechecked = await Promise.all(firstPass.answers.map(async ({ session }) => {
+      try {
+        return { session, tip: await readTip(session) };
+      } catch {
+        return null;
+      }
+    }));
+    const recheckAnswers = rechecked.filter(Boolean);
+    const pair = findMatchingElectrumPair(recheckAnswers);
+
+    if (pair) {
+      for (const session of sessions) {
+        if (!pair.includes(session)) session.close();
+      }
+      for (const session of pair) {
+        session.providersConfigured = providers.length;
+        session.providersAnswered = firstPass.answers.length;
+      }
+      return pair;
     }
 
     sessions.forEach((session) => session.close());
-    if (selection.type === "disagree") {
+    const distinctInitialOperators = new Set(firstPass.answers.map(({ session }) => session.operatorId));
+    if (distinctInitialOperators.size >= 2) {
       throw new Error(ELECTRUM_TIP_DISAGREEMENT);
     }
+    // Fewer than two independently-labelled servers passed the first check:
+    // retry the complete connection/selection phase once, before callbacks.
   }
 
   throw new Error(ELECTRUM_QUORUM_UNAVAILABLE);
@@ -354,8 +443,10 @@ export async function withElectrumSessions(callback, options = {}) {
   const providers = options.providers ?? parseMainnetElectrumProviderConfig();
   const sessions = await selectElectrumProviderSessions(providers, {
     timeoutMs,
+    firstAnswerTimeoutMs: options.firstAnswerTimeoutMs ?? FIRST_ANSWER_TIMEOUT_MS,
     sessionFactory,
     readTip: options.readTip ?? getServerTip,
+    sleep: options.sleep,
   });
   try {
     // Selection and retry are complete before the callback starts. In
@@ -2998,7 +3089,7 @@ export function createMainnetApiServer() {
             providerId: "ajochain-electrum-quorum",
             providerConfidence: sessions.length,
             providersConfigured: sessions[0]?.providersConfigured ?? sessions.length,
-            providersAnswered: sessions.length,
+            providersAnswered: sessions[0]?.providersAnswered ?? sessions.length,
             providerOperatorsDeclared: sessions.map((session) => session.operatorId),
             providerOperatorLabelsUnique: new Set(sessions.map((session) => session.operatorId)).size === sessions.length,
             providerOperatorIndependenceVerified: false,
