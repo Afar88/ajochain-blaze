@@ -854,14 +854,14 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
           </details>
           <TestSignControl planCreatedAt={genesisSigningPlan?.createdAt ?? null} disabled={lifecycleBusy || !walletConnected}
             checked={testSignChecked === "genesis"} onTest={() => void verifyMainnetSignature("genesis")} />
-          <small>Nothing has been created yet. The circle is saved only after the Mainnet broadcast returns a transaction ID.</small>
+          <small>Saved after Mainnet returns a transaction ID.</small>
         </div>
       )}
       </>}
       {creationResult && (
         <div className="pusd-mainnet-breakdown mainnet-create-success" role="status">
           <b>Circle created</b>
-          <p>Selene approved the transaction and the Mainnet returned a transaction ID.</p>
+          <p>Selene approved. Mainnet returned a transaction ID.</p>
           <div><span>Transaction ID</span><strong><a href={creationResult.explorerUrl} target="_blank" rel="noreferrer">{creationResult.txid}</a></strong></div>
           <div className="mainnet-create-invite">
             <span>Invite link to share</span>
@@ -924,7 +924,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
               <div><span>Estimated miner fee</span><strong>{actionPreview.feeEstimate} sats</strong></div>
               <div><span>Transaction size</span><strong>{actionPreview.size}</strong></div>
               <div><span>Wallet-owned inputs requiring signatures</span><strong>{actionPreview.walletInputCount}</strong></div>
-              <small>Sign and send uses real BCH. Re-read state before each new action; inputs must be confirmed.</small>
+              <small>Uses real BCH. Confirm inputs before signing.</small>
               <TestSignControl planCreatedAt={actionSigningPlan?.createdAt ?? null} disabled={lifecycleBusy || !walletConnected}
                 checked={testSignChecked === "action"} onTest={() => void verifyMainnetSignature("action")} />
           {actionSigningPlan && BCH_MAINNET_CIRCLE_SEND_ENABLED && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action", true)}>Sign and send on Mainnet</button>}
@@ -955,7 +955,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
 
       <div className="pusd-mainnet-build-status">
         <LockKeyhole size={16} />
-        <span><b>Real BCH on Mainnet</b><small>Transactions are checked before broadcast. Confirm each amount and fee in Selene before approving.</small></span>
+        <span><b>Real BCH on Mainnet</b><small>Confirm each amount and fee in Selene.</small></span>
       </div>
     </section>
   );
