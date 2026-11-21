@@ -13,6 +13,7 @@ import type { AuthenticatedPusdUtxo } from "./core/pusd-utxo";
 import type { NetworkProvider } from "cashscript";
 import type { WalletConsolidationPlan } from "./core/wallet-consolidation";
 import { PUSD_MAINNET_SPENDING_ENABLED } from "./core/pusd-mainnet-guard";
+import { toCashTokenAddress } from "./core/bch-address";
 import {
   createWalletScanScheduler, readWalletBalanceCache, runTwoStepWalletScan, selectPusdScanAddresses,
   settleWithConcurrency, sumSettledPusd, walletBalanceCacheKey, writeWalletBalanceCache,
@@ -1335,7 +1336,7 @@ export default function App() {
       return () => { active = false; };
     }
     void import("qrcode")
-      .then(({ default: QRCode }) => QRCode.toDataURL(walletAddress, {
+      .then(({ default: QRCode }) => QRCode.toDataURL(toCashTokenAddress(walletAddress), {
         errorCorrectionLevel: "M", margin: 1, width: 220,
       }))
       .then((url) => { if (active) setWalletAddressQrDataUrl(url); })
@@ -1997,8 +1998,16 @@ export default function App() {
   // Keep the derived address visible even before Selene's current Receive
   // screen has been explicitly matched. Users need to compare this candidate
   // with the address shown in Selene before confirming it in Wallet Details.
-  const shortAddress = (value: string | null) => {
-    if (!value) return "Address unavailable";
+  // The classic (q) form of the same address, for matching older wallets.
+  const shortClassicAddress = (value: string) => {
+    const prefix = value.startsWith("bitcoincash:") ? "bitcoincash:" : "";
+    const body = prefix ? value.slice(prefix.length) : value;
+    return prefix + body.slice(0, 4) + "…" + body.slice(-4);
+  };
+  const shortAddress = (raw: string | null) => {
+    if (!raw) return "Address unavailable";
+    // Show every wallet address in its CashTokens (z) form. Same coins.
+    const value = toCashTokenAddress(raw);
     const prefix = value.startsWith("bitcoincash:") ? "bitcoincash:" : "";
     const body = prefix ? value.slice(prefix.length) : value;
     return prefix + body.slice(0, 4) + "…" + body.slice(-4);
@@ -2106,7 +2115,7 @@ export default function App() {
           </button>
           {connected && walletAddress && (
             <button className="header-wallet-copy" type="button" aria-label="Copy wallet address"
-              onClick={() => { void navigator.clipboard.writeText(walletAddress).catch(() => undefined); }}>
+              onClick={() => { void navigator.clipboard.writeText(toCashTokenAddress(walletAddress)).catch(() => undefined); }}>
               <Copy size={15} />
             </button>
           )}
@@ -2579,15 +2588,16 @@ export default function App() {
                   <span>{NETWORKS[network].label}</span>
                   {walletAddress ? (
                     <button type="button" className="wallet-address-toggle" onClick={() => setExpandedWalletAddress((value) => !value)}>
-                      {expandedWalletAddress ? walletAddress : shortAddress(walletAddress)}
+                      {expandedWalletAddress ? toCashTokenAddress(walletAddress) : shortAddress(walletAddress)}
                     </button>
                   ) : <small>Selene is still loading. Reconnect if this stays.</small>}
+                  {walletAddress && <small className="wallet-classic-address">Same as {shortClassicAddress(walletAddress)}</small>}
                   {walletAddress && selectedWalletAddressBalance && <small className="wallet-selected-balance">
                     This address: {selectedWalletAddressBalance}
                   </small>}
                   <div className="wallet-address-actions">
                     <button type="button" className="secondary-button wallet-copy-address" disabled={!walletAddress}
-                      onClick={() => { if (walletAddress) void navigator.clipboard.writeText(walletAddress).catch(() => undefined); }}>
+                      onClick={() => { if (walletAddress) void navigator.clipboard.writeText(toCashTokenAddress(walletAddress)).catch(() => undefined); }}>
                       <Copy size={14} /> Copy address
                     </button>
                     <button type="button" className="secondary-button" disabled={!walletAddress}
