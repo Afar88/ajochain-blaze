@@ -151,7 +151,7 @@ export default function V2FeeBchWorkspace({
       const result = await readV2FeeCircle(params);
       setSnapshot(result);
       if (selected) persistChainProgress(params, selected, result);
-      setNotice("V2 fee-circle state and every member receipt were read from Chipnet.");
+      setNotice("Circle details and member balances were updated.");
     } catch (cause) {
       setSnapshot(null);
       setError(errorText(cause));
@@ -386,15 +386,15 @@ export default function V2FeeBchWorkspace({
       if (!window.confirm(
         "Create new automatic-reserve circle on Chipnet?\\n\\n" +
         plan.contract.address + "\\n" +
-        members.length + " member receipts will be created.\\n" +
+        members.length + " members will be included in the circle.\\n" +
         "Contribution: " + formatBch(draft.contribution) + " per member, per scheduled payout.\\n" +
         "Each member funds one current-round contribution: " + formatBch(draft.contribution) + ".\\n" +
-        "When a member receives a payout, exactly one next contribution is withheld and credited to their own on-chain receipt.\\n" +
+        "When a member collects, one next contribution is set aside for their next round.\\n" +
         "Gross round pot: " + formatBch(grossPot) + ".\\n" +
         "Project fee: " + formatBch(projectFee) + " (1%), paid to " + draft.treasury + ".\\n" +
         "Miner fee is separate and capped at " + draft.maxFee.toString() + " sats.\\n\\n" +
         "No one must pre-fund the entire cycle. Each recipient carries one next contribution forward from their payout to cover the following round.\\n\\n" +
-        "Public on-chain discovery notice: this transaction permanently links every member BCH address to this circle in public Chipnet history. Each member receives a 546-sat marker; circle settings are public, but the circle name is not. Only proceed if every listed address owner agrees to this public association.\\n" +
+        "Public record notice: this transaction permanently links every member BCH address to this circle on Chipnet. Each member receives a 546-sat marker. Circle settings are public, but the circle name is hidden. Continue only if every address owner agrees.\\n" +
         "Experimental Chipnet software only; no real funds.",
       )) return;
       const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Create AjoChain V2 fee circle: " + draft.name);
@@ -459,7 +459,7 @@ export default function V2FeeBchWorkspace({
         "Member receives: " + formatBch(plan.payout) + "\\n" +
         "Separate miner fee paid by your wallet: up to " + plan.minerFee.toString() + " sats\\n\\n" +
         (plan.hasAutomaticFutureReserve
-          ? "Every receipt is debited by one current-round contribution. Exactly one next contribution is then reserved in the recipient’s own receipt for the following round. After that reserve is consumed, the member must fund later installments again."
+          ? "Every member's balance pays one current contribution. When a member collects, one future contribution is set aside. Members add money for later rounds as usual."
           : "This circle follows its original versioned member-credit rules. Its funding and payout terms have not been changed."),
       )) return;
       const signed = await wallet.signAndVerify(
@@ -507,7 +507,7 @@ export default function V2FeeBchWorkspace({
       const params = decodeCircle(match[1]);
       persist(params);
       setRestoreInput("");
-      setNotice("V2 fee-circle invite restored locally. Chain state still has to be independently read.");
+      setNotice("Circle invite restored. Check the latest circle details before continuing.");
     } catch (cause) { setError(errorText(cause)); }
   };
 
