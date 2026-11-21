@@ -1995,83 +1995,16 @@ export default function App() {
         {page === "overview" && (
           <>
             {renderCircleRiskNotice()}
-
-            <section className="overview-my-circles section-card" aria-labelledby="overview-circles-title">
-              <div className="section-heading overview-circles-heading">
-                <div><span className="section-kicker">YOUR SAVINGS</span><h2 id="overview-circles-title">My circles</h2>
-                  <p>{NETWORKS[network].label} circles, classified from read-only chain status.</p></div>
-                <button type="button" className="text-action" onClick={() => navigate("my-circles")}>View all <ArrowRight size={14} /></button>
-              </div>
-              {renderCircleTabs()}
-              {visibleStatusCircles.length === 0 ? (
-                <div className="my-circles-empty overview-empty">
-                  <h2>{circleStatusTab === "active" ? "No active circles yet" : "No completed circles yet"}</h2>
-                  <p>{circleStatusTab === "active"
-                    ? "Create your first circle or restore an invite. New circles appear here after their status is checked."
-                    : "Completed payouts and confirmed cancellations appear here."}</p>
-                  <button type="button" className="secondary-button" onClick={() => navigate("my-circles")}>Open My circles</button>
-                </div>
-              ) : renderCircleRows(visibleStatusCircles.slice(0, 3), true)}
-              {visibleNetworkCircles.length > 3 && (
-                <button type="button" className="text-action overview-view-more" onClick={() => navigate("my-circles")}>
-                  View all {visibleNetworkCircles.length} circles <ArrowRight size={14} />
+            <section className="welcome-hero overview-clean-hero">
+              <h1>Your Ajo savings circle, on Bitcoin Cash.</h1>
+              <div className="hero-actions">
+                <button className="primary-button hero-cta" type="button" onClick={() => navigate("create-circle")}>
+                  Create a circle <ArrowRight size={16} />
                 </button>
-              )}
-              <span className="circle-scan-summary" role="status">✓ {NETWORKS[network].label}: {networkCircleCounts.active} active, {networkCircleCounts.completed} completed</span>
-            </section>
-
-            <section className="welcome-hero">
-              <div className="welcome-kicker"><span /> AJO · ESUSU · ON BITCOIN CASH</div>
-              <h1>Your Ajo savings circle,<br /><em>on Bitcoin Cash.</em></h1>
-              <p>Save with people you trust. Everyone puts in the same amount, one member collects each round, and the rules are kept by the blockchain, not a middleman.</p>
-              <button className="primary-button hero-cta" type="button" onClick={() => navigate("create-circle")}>
-                Create a circle <ArrowRight size={16} />
-              </button>
-            </section>
-
-            <section className="overview-activity section-card" aria-labelledby="overview-activity-title">
-              <div className="section-heading"><div><span className="section-kicker">LATEST RECORDS</span><h2 id="overview-activity-title">Activity</h2></div>
-                <button type="button" className="text-action" onClick={() => navigate("activity")}>All activity <ArrowRight size={14} /></button>
+                <button className="secondary-button hero-secondary-cta" type="button" onClick={() => navigate("my-circles")}>
+                  My circles
+                </button>
               </div>
-              <Suspense fallback={<p className="classic-empty">Loading chain-backed activity…</p>}>
-                <ActivityRecords network={network} compact key={"activity-overview-" + network} />
-              </Suspense>
-            </section>
-
-            <section className="how-ajo-works" aria-labelledby="how-ajo-works-title">
-              <div className="how-ajo-heading">
-                <span className="section-kicker">SIMPLE, TOGETHER</span>
-                <h2 id="how-ajo-works-title">How Ajo works</h2>
-              </div>
-              <ol className="how-ajo-steps">
-                <li><span className="how-ajo-number">01</span><div><b>Join</b><small>Join a circle with people you trust.</small></div></li>
-                <li><span className="how-ajo-number">02</span><div><b>Contribute each round</b><small>Everyone adds the agreed amount.</small></div></li>
-                <li><span className="how-ajo-number">03</span><div><b>Collect your turn</b><small>One member receives the pot each round.</small></div></li>
-              </ol>
-            </section>
-
-            <section className="overview-status-grid">
-              <article className="overview-status-card">
-                <div className="status-card-icon"><Wallet size={18} /></div>
-                <div><span className="status-label">WALLET</span><b>{connected ? walletView.walletName ?? "Connected" : "Not connected"}</b>
-                  <small>{connected ? shortAddress(walletAddress) : "Connect Selene to manage member contributions"}</small></div>
-                <button type="button" className="status-action" onClick={openWallet}>{connected ? "Details" : "Connect"} <ArrowRight size={13} /></button>
-              </article>
-              <article className="overview-status-card">
-                <div className="status-card-icon"><ShieldCheck size={18} /></div>
-                <div><span className="status-label">NETWORK</span><b>{NETWORKS[network].label}</b>
-                  <small>{network === "chipnet" ? "Chipnet testing environment" : "Mainnet · wallet approval required"}</small></div>
-                <button type="button" className="status-action" onClick={() => setMenuOpen(true)}>Change <ChevronDown size={13} /></button>
-              </article>
-            </section>
-
-            <section className="asset-preview">
-              <div><span className="section-kicker">SUPPORTED ASSETS</span><h2>BCH and PUSD</h2><p>Pick what your circle saves in. Fees are always shown up front.</p></div>
-              <div className="asset-preview-rows">
-                <div><span className="asset-symbol">B</span><span><b>Bitcoin Cash</b><small>Save in Bitcoin Cash · practise free on the test network first</small></span><span className="asset-state">Available</span></div>
-                <div><span className="asset-symbol pusd-symbol">P</span><span><b>ParyonUSD</b><small>Save in dollars with ParyonUSD · balances checked on the blockchain</small></span><span className="asset-state neutral">Read only</span></div>
-              </div>
-              <button type="button" className="text-action" onClick={() => navigate("assets")}>View asset details <ArrowRight size={14} /></button>
             </section>
           </>
         )}
@@ -2239,76 +2172,103 @@ export default function App() {
         {page === "assets" && (
           <section className="page-section wallet-page">
             <div className="page-intro">
-              <span className="section-kicker">YOUR WALLET</span>
-              <h1>Wallet</h1>
-              <p>Balances held in the wallet connected to Selene.</p>
+              <span className="section-kicker">SAVE YOUR WAY</span>
+              <h1>Bitcoin Cash or digital dollars</h1>
+              <p>Your circle, your currency. Fees are always shown before you sign.</p>
             </div>
+
+            <section className="asset-preview wallet-save-options">
+              <div className="asset-preview-rows">
+                <div>
+                  <span className="asset-symbol">B</span>
+                  <span>
+                    <b>Bitcoin Cash</b>
+                    <small>Fast, low-fee savings. Practise free on Chipnet, then save for real on Mainnet.</small>
+                  </span>
+                  <span className="asset-state">Live</span>
+                </div>
+                <div>
+                  <span className="asset-symbol pusd-symbol">P</span>
+                  <span>
+                    <b>ParyonUSD (PUSD)</b>
+                    <small>Save in steady dollars, no bank needed. Balances checked straight on the blockchain.</small>
+                  </span>
+                  <span className="asset-state neutral">Mainnet</span>
+                </div>
+              </div>
+            </section>
+
             <article className="asset-detail-card wallet-balance-card">
               <div className="wallet-balance-heading">
                 <div>
-                  <span className="section-kicker">CONNECTED WALLET</span>
-                  <h2>{connected ? walletView.walletName ?? "Selene wallet" : "No wallet connected"}</h2>
-                  <small>{connected ? shortAddress(walletAddress) : "Connect Selene to view your balances."}</small>
+                  <span className="section-kicker">WALLET</span>
+                  <h2>{connected ? walletView.walletName ?? "Selene wallet" : "Connect your wallet"}</h2>
+                  <small>{connected ? shortAddress(displayWalletAddress) : "Connect Selene to see your balances."}</small>
                 </div>
+              </div>
+              <div className="wallet-balance-total">
+                <span>BCH total</span>
+                <strong>{walletBchBalanceSummary.balanceLabel}</strong>
               </div>
               <div className="wallet-balance-list">
                 <div className="wallet-balance-row">
-                  <span className="asset-symbol">B</span>
-                  <div><b>Bitcoin Cash</b><small>{walletBchBalanceSummary.detailLabel}</small></div>
-                  <strong>{walletBchBalanceSummary.balanceLabel}</strong>
-                </div>
-                <div className="wallet-balance-row">
                   <span className="asset-symbol pusd-symbol">P</span>
-                  <div><b>ParyonUSD</b><small>Dollar balance on Mainnet</small></div>
-                  <strong>{!connected ? "Connect wallet" : network !== "mainnet" ? "Switch to Mainnet" : pusdView.status === "ready" ? formatAssetAmount("PUSD", pusdView.amount) + " PUSD" : pusdView.status === "loading" ? "Checking…" : "Not checked"}</strong>
+                  <div><b>ParyonUSD</b><small>Across your wallet addresses</small></div>
+                  <strong>{!connected ? "Connect wallet" : network !== "mainnet" ? "Mainnet only" : pusdView.status === "ready" ? formatAssetAmount("PUSD", pusdView.amount) + " PUSD" : pusdView.status === "loading" ? "Checking…" : "Not checked"}</strong>
                 </div>
               </div>
               <div className="wallet-balance-actions">
-                <button type="button" className="secondary-button" onClick={openWallet}>
-                  {connected ? "Open wallet details" : "Connect wallet"}
-                </button>
+                <span className="wallet-updated-age" role="status">{updatedAgeLabel(walletBalancesUpdatedAt)}</span>
                 <button type="button" className="secondary-button" onClick={() => {
                   if (!connected) { openWallet(); return; }
-                  if (network !== "mainnet") { changeNetwork("mainnet"); return; }
-                  setPusdRefresh((value) => value + 1);
-                }} disabled={pusdView.status === "loading"}>
-                  {pusdView.status === "loading" ? "Checking PUSD…" : network !== "mainnet" ? "Switch to Mainnet for PUSD" : "Refresh PUSD"}
+                  setWalletBalanceRefreshRequest((value) => value + 1);
+                }} disabled={walletBalancesBusy}>
+                  <RefreshCw size={15} className={walletBalancesBusy ? "activity-spin" : ""} />
+                  {walletBalancesBusy ? "Refreshing…" : "Refresh"}
+                </button>
+                <button type="button" className="secondary-button" onClick={openWallet}>
+                  {connected ? "Wallet details" : "Connect wallet"}
                 </button>
               </div>
+              {receiveAddressScanError && (
+                <div className="classic-error wallet-balance-error" role="alert">
+                  <span>{receiveAddressScanError}</span>
+                  <button type="button" aria-label="Close error" onClick={() => setReceiveAddressScanError("")}>×</button>
+                </div>
+              )}
             </article>
-            <p className="wallet-balance-explainer">Money in your connected wallet. Money in a circle shows on that circle's page.</p>
+
             <details className="technical-details wallet-technical-details">
-              <summary>Technical details</summary>
+              <summary>Details</summary>
               <div className="asset-detail-row"><span>Selected network</span><b>{NETWORKS[network].label}</b></div>
-              <div className="asset-detail-row"><span>Selene receive address</span><b>{connected && walletClient?.isReceiveAddressConfirmed(network) ? "Confirmed" : connected ? "Choose address" : "Wallet not connected"}</b></div>
-              <div className="asset-detail-row"><span>BCH balance source</span><b>{walletBchBalanceSummary.sourceLabel}</b></div>
-              <div className="asset-detail-row"><span>PUSD balance check</span><b>{pusdView.status === "ready" ? "Checked" : pusdView.status === "loading" ? "Checking" : pusdView.status === "error" ? "Unavailable" : "Not checked"}</b></div>
-              {pusdView.status === "ready" && <p>{pusdView.providerConfidence} providers · block {pusdView.tipHeight.toLocaleString()} · {pusdView.utxoCount} PUSD coins.</p>}
+              <div className="asset-detail-row"><span>Receive address</span><b>{connected && walletClient?.isReceiveAddressConfirmed(network) ? "Confirmed" : connected ? "Choose address" : "Wallet not connected"}</b></div>
+              <div className="asset-detail-row"><span>BCH balance check</span><b>{walletBalancesUpdatedAt ? "Updated" : "Not checked"}</b></div>
+              <div className="asset-detail-row"><span>PUSD balance check</span><b>{pusdView.status === "ready" ? "Updated" : pusdView.status === "loading" ? "Checking" : pusdView.status === "error" ? "Unavailable" : "Not checked"}</b></div>
+              {pusdView.status === "ready" && <p>{pusdView.providerConfidence} sources · block {pusdView.tipHeight.toLocaleString()} · {pusdView.utxoCount} PUSD coins.</p>}
               {pusdView.status !== "ready" && <p>{pusdView.detail}</p>}
-              <div className="asset-detail-row"><span>PUSD transfer</span><b>{PUSD_MAINNET_SPENDING_ENABLED ? "Available after wallet checks" : "Locked pending release approval"}</b></div>
-              <div className="asset-detail-row"><span>PUSD asset identifier</span><code>{PUSD_ASSET.categoryId}</code></div>
-              <div className="asset-detail-row"><span>PUSD display precision</span><b>{PUSD_ASSET.decimals} decimals</b></div>
+              <div className="asset-detail-row"><span>PUSD transfers</span><b>{PUSD_MAINNET_SPENDING_ENABLED ? "Available after wallet checks" : "Not available yet"}</b></div>
             </details>
+
             <details className="wallet-tools-disclosure">
-              <summary>PUSD transfer tools</summary>
+              <summary>Advanced</summary>
               <div className="pusd-transfer-box">
                 <div><span className="section-kicker">TRANSFER PREVIEW</span><h3>Prepare a PUSD transfer</h3>
                   <p>Review a transfer using the PUSD coins in your wallet and the latest network fee estimate. Nothing is sent from this preview.</p></div>
                 <label>Recipient Bitcoin Cash address
-                  <input value={pusdRecipient} onChange={(event) => { setPusdRecipient(event.target.value); setPusdTransferPlan(null); setPusdSignatureMessage(""); setPusdPlanError(""); }} placeholder="bitcoincash:…" autoComplete="off" />
+                  <input value={pusdRecipient} onChange={(event) => { setPusdRecipient(event.target.value); setPusdTransferPlan(null); setPusdSignatureMessage(""); setPusdPlanError(""); setPusdSignatureError(""); }} placeholder="bitcoincash:…" autoComplete="off" />
                 </label>
                 <div className="pusd-transfer-fields">
                   <label>Amount (PUSD)
-                    <input value={pusdAmount} onChange={(event) => { setPusdAmount(event.target.value); setPusdTransferPlan(null); setPusdSignatureMessage(""); setPusdPlanError(""); }} inputMode="decimal" placeholder="0.02" />
+                    <input value={pusdAmount} onChange={(event) => { setPusdAmount(event.target.value); setPusdTransferPlan(null); setPusdSignatureMessage(""); setPusdPlanError(""); setPusdSignatureError(""); }} inputMode="decimal" placeholder="0.02" />
                   </label>
                   <label>Maximum miner fee (sats)
-                    <input value={pusdMaxFee} onChange={(event) => { setPusdMaxFee(event.target.value); setPusdTransferPlan(null); setPusdSignatureMessage(""); setPusdPlanError(""); }} inputMode="numeric" />
+                    <input value={pusdMaxFee} onChange={(event) => { setPusdMaxFee(event.target.value); setPusdTransferPlan(null); setPusdSignatureMessage(""); setPusdPlanError(""); setPusdSignatureError(""); }} inputMode="numeric" />
                   </label>
                 </div>
                 <button type="button" className="secondary-button" onClick={() => void preparePusdTransfer()} disabled={pusdPlanBusy || pusdView.status !== "ready" || network !== "mainnet"}>
                   {pusdPlanBusy ? "Preparing preview…" : "Prepare transfer preview"}
                 </button>
-                {pusdPlanError && <p className="classic-error" role="alert">{pusdPlanError}</p>}
+                {pusdPlanError && <div className="classic-error" role="alert"><span>{pusdPlanError}</span><button type="button" aria-label="Close error" onClick={() => setPusdPlanError("")}>×</button></div>}
                 {pusdTransferPlan && (
                   <div className="pusd-plan-summary" role="status">
                     <b>Transfer plan ready · review only</b>
@@ -2317,7 +2277,7 @@ export default function App() {
                     <div><span>Estimated BCH miner fee</span><strong>{pusdTransferPlan.minerFeeSatoshis.toString()} sats</strong></div>
                     <div><span>BCH needed for delivery</span><strong>{pusdTransferPlan.recipientCarrierSatoshis.toString()} sats</strong></div>
                     <div><span>Coins selected</span><strong>{pusdTransferPlan.selectedUtxos.length}</strong></div>
-                    <details className="technical-details"><summary>Technical details</summary><p>Estimated size {pusdTransferPlan.estimatedSizeBytes} bytes · fee rate {pusdTransferPlan.feeRateSatoshisPerKb.toString()} sats/kB. The plan must be rebuilt from fresh chain data before any signature.</p></details>
+                    <details className="technical-details"><summary>Details</summary><p>Estimated size {pusdTransferPlan.estimatedSizeBytes} bytes · fee rate {pusdTransferPlan.feeRateSatoshisPerKb.toString()} sats/kB. The plan must be rebuilt from fresh chain data before any signature.</p></details>
                   </div>
                 )}
                 <button type="button" className="secondary-button" disabled={!pusdTransferPlan || pusdSignatureBusy || !connected || network !== "mainnet"}
@@ -2325,11 +2285,12 @@ export default function App() {
                   {pusdSignatureBusy ? "Test signing…" : "Test sign · no money sent"}
                 </button>
                 {pusdSignatureMessage && <p className="classic-notice" role="status">{pusdSignatureMessage}</p>}
+                {pusdSignatureError && <div className="classic-error" role="alert"><span>{pusdSignatureError}</span><button type="button" aria-label="Close error" onClick={() => setPusdSignatureError("")}>×</button></div>}
                 <button type="button" className="primary-button" disabled={!PUSD_MAINNET_SPENDING_ENABLED || !pusdTransferPlan}
                   title="PUSD Mainnet spending is not yet approved by the security release gate">
                   Send PUSD · Mainnet locked
                 </button>
-                <small className="field-hint">PUSD sending stays locked until raw transaction inspection, independent wallet testing, fee/carrier validation, and security review are completed. This preview is not a payment.</small>
+                <small className="field-hint">PUSD sending remains locked while its safety review is completed.</small>
               </div>
             </details>
           </section>
