@@ -2537,6 +2537,47 @@ export default function App() {
                 </section>}
 
                 {network === "chipnet" && <>
+                  <button type="button" className="secondary-button"
+                    onClick={() => setReceiveAddressPickerExpanded((value) => !value)}>
+                    Change address
+                  </button>
+                  {receiveAddressPickerExpanded && (
+                    <section className="receive-address-picker" aria-label="Chipnet wallet addresses">
+                      <div className="receive-address-picker-heading">
+                        <div><b>Wallet addresses</b><small>Choose the address shown on Selene.</small></div>
+                        {receiveAddressScanLoading && <span className="receive-address-scan-state">Updating…</span>}
+                      </div>
+                      <div className="receive-address-choice-list">
+                        {receiveAddressChoices
+                          .filter((choice) => walletAddressPickerShowAll ||
+                            BigInt(choice.confirmedSatoshis) + BigInt(choice.unconfirmedSatoshis) > 0n)
+                          .map((choice) => {
+                            const total = BigInt(choice.confirmedSatoshis) + BigInt(choice.unconfirmedSatoshis);
+                            const isReceive = (choice.branch ?? "receive") === "receive";
+                            const content = <>
+                              <span className="receive-address-choice-copy">
+                                <b>{shortAddress(choice.address)}</b>
+                                <small>{formatBchSatoshis(total > 0n ? total : 0n)} · {isReceive ? "Receive" : "Change"}</small>
+                              </span>
+                            </>;
+                            return isReceive ? (
+                              <button type="button" key={choice.branch + ":" + choice.index}
+                                className="receive-address-choice" onClick={() => {
+                                  setSeleneAddress(choice.address);
+                                  setReceiveAddressPickerExpanded(false);
+                                }}>{content}</button>
+                            ) : (
+                              <div key={choice.branch + ":" + choice.index}
+                                className="receive-address-choice receive-address-choice-static">{content}</div>
+                            );
+                          })}
+                      </div>
+                      <button type="button" className="text-action wallet-show-all"
+                        onClick={() => setWalletAddressPickerShowAll((value) => !value)}>
+                        {walletAddressPickerShowAll ? "Hide empty addresses" : "Show all"}
+                      </button>
+                    </section>
+                  )}
                   <label className="field-label" htmlFor="selene-address">Paste the address shown on Selene</label>
                   <input id="selene-address" className="form-control" value={seleneAddress}
                     onChange={(event) => setSeleneAddress(event.target.value)} placeholder="bitcoincash:…" autoComplete="off" />
