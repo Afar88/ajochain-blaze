@@ -585,7 +585,7 @@ export default function App() {
     const timer = window.setTimeout(() => {
       setGatherMessage("");
       if (!/connect|failed|could not|couldn't|not valid|must |changed|invalid|unavailable/i.test(pusdSignatureMessage)) setPusdSignatureMessage("");
-      setAddressMatchMessage("");
+      if (!/isn't in your wallet|couldn't|could not|reconnect|not confirmed|unavailable|failed/i.test(addressMatchMessage)) setAddressMatchMessage("");
       setMainnetInviteNotice("");
     }, 4_000);
     return () => window.clearTimeout(timer);
@@ -1092,7 +1092,7 @@ export default function App() {
           };
         });
         setReceiveAddressChoices(choices);
-        setReceiveAddressScanError("");
+  
 
         const networkFirstReceive = entries.find((entry) => entry.branch === "receive" && entry.index === 0);
         if (networkFirstReceive) {
@@ -1754,8 +1754,16 @@ export default function App() {
   // Keep the derived address visible even before Selene's current Receive
   // screen has been explicitly matched. Users need to compare this candidate
   // with the address shown in Selene before confirming it in Wallet Details.
-  const shortAddress = (value: string | null) =>
-    value ? value.slice(0, 10) + "…" + value.slice(-6) : "Address unavailable…";
+  const shortAddress = (value: string | null) => {
+    if (!value) return "Address unavailable";
+    const separator = value.indexOf(":");
+    if (separator > 0) {
+      const prefix = value.slice(0, separator + 1);
+      const body = value.slice(separator + 1);
+      return prefix + body.slice(0, 4) + "…" + body.slice(-4);
+    }
+    return value.slice(0, 10) + "…" + value.slice(-6);
+  };
   const currentBchBalanceScan = bchBalanceScan && walletAddress &&
     bchBalanceScan.network === network &&
     bchBalanceScan.address.toLowerCase() === walletAddress.toLowerCase()
@@ -2314,7 +2322,32 @@ export default function App() {
                   {!walletShowAllAddresses && sortedWalletAddressChoices.some((choice) => BigInt(choice.confirmedSatoshis) + BigInt(choice.unconfirmedSatoshis) === 0n) && <button type="button" className="text-action" onClick={() => setWalletShowAllAddresses(true)}>Show all addresses</button>}
                   {walletShowAllAddresses && <button type="button" className="text-action" onClick={() => setWalletShowAllAddresses(false)}>Hide empty addresses</button>}
                 </section>}
-                {(network === "chipnet" || network === "mainnet") && walletAddress && <details className="wallet-tools-disclosure wallet-advanced-tools"><summary>Advanced</summary><div>
+                {(network === "chipnet" || network === "mainnet") && walletAddress &&                 {network === "chipnet" && (
+                  <section className="receive-address-picker chipnet-address-confirm" aria-label="Confirm your Chipnet address">
+                    <label className="field-label" htmlFor="selene-address">Pick the address shown in Selene</label>
+                    <input id="selene-address" className="form-control" value={seleneAddress}
+                      onChange={(event) => setSeleneAddress(event.target.value)}
+                      placeholder="Paste the address shown in Selene" autoComplete="off" />
+                    <button type="button" className="primary-button" onClick={() => {
+                      try {
+                        const index = walletClient?.confirmReceiveAddress(seleneAddress, "chipnet", 250) ?? null;
+                        setAddressMatchMessage(index === null
+                          ? "This address isn't in your wallet. Check Selene's network and reconnect."
+                          : "Address confirmed ✓");
+                      } catch (cause) {
+                        setAddressMatchMessage(cause instanceof Error ? cause.message : "Couldn't confirm this address.");
+                      }
+                    }}>Confirm address</button>
+                    {addressMatchMessage && <p className={/isn't in your wallet|couldn't|could not|reconnect|not confirmed|unavailable|failed/i.test(addressMatchMessage) ? "classic-error" : "wallet-match-message"}
+                      role={/isn't in your wallet|couldn't|could not|reconnect|not confirmed|unavailable|failed/i.test(addressMatchMessage) ? "alert" : "status"}>
+                      {addressMatchMessage}<button type="button" aria-label="Dismiss message" onClick={() => setAddressMatchMessage("")}><X size={14} /></button>
+                    </p>}
+                  </section>
+                )}
+                {network === "mainnet" && selectedAddressPendingOnly && (
+                  <p className="receive-address-pending-warning" role="alert">Wait 1 confirmation, then create.</p>
+                )}
+<details className="wallet-tools-disclosure wallet-advanced-tools"><summary>Advanced</summary><div>
                   <section className="gather-card" aria-labelledby="gather-title">
                     <div className="gather-card-heading">
                       <span className="section-kicker">WALLET CLEAN-UP</span>
@@ -2365,7 +2398,7 @@ export default function App() {
                     )}
 
                   </section>
-                </>}
+                  </div></details>
                 <button className="secondary-button" disabled={discoveryBusy} onClick={() => setDiscoveryRun((run) => run + 1)}>{discoveryBusy ? "Checking…" : "Check again"}</button>
                 {discoveryMessage && <p className="wallet-match-message" role="status">{discoveryMessage}</p>}
                 <button className="secondary-button" onClick={() => void walletClient?.disconnect()}>Disconnect</button>
