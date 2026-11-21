@@ -1013,28 +1013,34 @@ export default function App() {
   }, [walletView.qrUri]);
 
   useEffect(() => {
-    let cancelled = false;
-    if (!showWallet || network !== "mainnet" || walletView.state !== "connected" || !walletClient || walletClient.state !== "connected") {
-      setReceiveAddressChoices([]);
-      setReceiveAddressPickerExpanded(true);
-      setReceiveAddressScanError("");
+    if (!(showWallet || page === "assets") ||
+        walletView.state !== "connected" || !walletClient || walletClient.state !== "connected") {
+      if (walletView.state !== "connected") {
+        setReceiveAddressChoices([]);
+        setWalletPusdTotal(null);
+        setWalletPusdError("");
+      }
       setReceiveAddressScanLoading(false);
-      return () => { cancelled = true; };
+      return;
     }
+
+    let cancelled = false;
     const client = walletClient;
     const identity = client.getSessionIdentity();
     const revision = client.addressSetRevision;
     setReceiveAddressScanLoading(true);
+    setWalletBalanceRefreshing(true);
     setReceiveAddressScanError("");
+
     void (async () => {
       try {
-        const [{ getClassicProvider }, { getNextUnusedReceiveAddressIndex, selectDefaultReceiveAddressIndex }] = await Promise.all([
+        const [{ getClassicProvider }, { fetchPusdWalletBalance }] = await Promise.all([
           import("./core/classic-bch"),
-          import("./core/wizard-wallet"),
+          import("./core/pusd-api"),
         ]);
-        const derived = client.listReceiveAddresses("mainnet", 49);
-        if (derived.length === 0) throw new Error("Selene has not supplied a usable Mainnet receive xpub yet.");
-        const provider = await getClassicProvider("mainnet");
+        const walletAddresses = client.listWalletAddresses(network, 49, 20);
+        if (walletAddresses.length === 0) throw new Error("Couldn't load your wallet addresses. Reconnect and try again.");
+        const provider = await getClassicProvider(network);
         const activityProvider = provider as typeof provider & {
           getAddressActivityForAddresses?: (addresses: readonly string[]) => Promise<Array<{
             address: string; hasHistory: boolean; hasPendingHistory: boolean;
@@ -1042,65 +1048,128 @@ export default function App() {
           }>>;
         };
         if (typeof activityProvider.getAddressActivityForAddresses !== "function") {
-          throw new Error("The verified Mainnet provider does not support receive-address activity scanning.");
+          throw new Error("Your wallet balances could not be checked right now.");
         }
-        const scanned = await activityProvider.getAddressActivityForAddresses(derived.map((entry) => entry.address));
+        const scanned = await activityProvider.getAddressActivityForAddresses(
+          walletAddresses.map((entry) => entry.address),
+        );
         if (cancelled || client.state !== "connected" || client.getSessionIdentity() !== identity ||
             client.addressSetRevision !== revision) return;
         const byAddress = new Map(scanned.map((entry) => [entry.address.toLowerCase(), entry]));
-        const activity = derived.map((entry) => {
+        const choices: ReceiveAddressChoice[] = walletAddresses.map((entry) => {
           const result = byAddress.get(entry.address.toLowerCase());
-          if (!result) throw new Error("Mainnet activity scan omitted a derived Selene receive address.");
-          return { ...result, index: entry.index };
+          if (!result) throw new Error("The wallet balance scan did not return every address.");
+          return {
+            index: entry.index,
+            branch: entry.branch,
+            address: entry.address,
+            confirmedSatoshis: result.confirmedSatoshis.toString(),
+            unconfirmedSatoshis: result.unconfirmedSatoshis.toString(),
+            hasHistory: result.hasHistory,
+            hasPendingHistory: result.hasPendingHistory,
+            status: result.confirmedSatoshis > 0n || (result.hasHistory && !result.hasPendingHistory)
+              ? "confirmed"
+              : result.hasPendingHistory || result.unconfirmedSatoshis > 0n
+                ? "pending"
+                : "unused",
+            newest: false,
+          };
+        }).sort((left, right) => {
+          const leftTotal = BigInt(left.confirmedSatoshis) + BigInt(left.unconfirmedSatoshis);
+          const rightTotal = BigInt(right.confirmedSatoshis) + BigInt(right.unconfirmedSatoshis);
+          return leftTotal === rightTotal
+            ? left.branch === right.branch ? left.index - right.index : left.branch === "receive" ? -1 : 1
+            : leftTotal > rightTotal ? -1 : 1;
         });
-        const nextUnusedIndex = getNextUnusedReceiveAddressIndex(activity);
-        const newestEntry = derived.find((entry) => entry.index === nextUnusedIndex) ??
-          client.listReceiveAddresses("mainnet", nextUnusedIndex).find((entry) => entry.index === nextUnusedIndex);
-        if (!newestEntry) throw new Error("Could not derive the next unused Mainnet receive address from this Selene xpub.");
-        // Keep every one of the first 50 derived receive addresses selectable.
-        // A currently displayed Selene address can be unused and therefore have
-        // no history; hiding unused indexes would force a second manual sync step.
-        const choices: ReceiveAddressChoice[] = activity.map((entry) => ({
-          index: entry.index,
-          address: entry.address,
-          confirmedSatoshis: entry.confirmedSatoshis.toString(),
-          unconfirmedSatoshis: entry.unconfirmedSatoshis.toString(),
-          hasHistory: entry.hasHistory,
-          hasPendingHistory: entry.hasPendingHistory,
-          status: entry.confirmedSatoshis > 0n || (entry.hasHistory && !entry.hasPendingHistory)
-            ? "confirmed"
-            : entry.hasPendingHistory || entry.unconfirmedSatoshis > 0n
-              ? "pending"
-              : "unused",
-          newest: false,
-        }));
-        if (!choices.some((choice) => choice.index === newestEntry.index)) {
-          choices.push({
-            index: newestEntry.index, address: newestEntry.address,
-            confirmedSatoshis: "0", unconfirmedSatoshis: "0",
-            hasHistory: false, hasPendingHistory: false, status: "unused", newest: true,
-          });
-        } else {
-          const newestChoice = choices.find((choice) => choice.index === newestEntry.index);
-          if (newestChoice) newestChoice.newest = true;
-        }
-        choices.sort((left, right) => left.index - right.index);
         setReceiveAddressChoices(choices);
-        if (!client.isReceiveAddressConfirmed("mainnet")) {
-          const defaultIndex = selectDefaultReceiveAddressIndex(activity, nextUnusedIndex);
-          client.selectReceiveAddressIndex(defaultIndex, "mainnet");
-          setReceiveAddressPickerExpanded(false);
-        } else {
-          setReceiveAddressPickerExpanded(false);
+
+        if (network === "mainnet" && !client.isReceiveAddressConfirmed("mainnet")) {
+          const defaultIndex = getDefaultWalletReceiveIndex(choices);
+          if (defaultIndex !== null) client.selectReceiveAddressIndex(defaultIndex, "mainnet");
         }
+        setReceiveAddressPickerExpanded(false);
+        setWalletBalanceUpdatedAt(Date.now());
+        setBchBalanceScan({
+          address: client.address(network) ?? walletAddresses.find((entry) => entry.branch === "receive")?.address ?? "",
+          network,
+          totalSatoshis: choices.reduce((total, entry) => {
+            const amount = BigInt(entry.confirmedSatoshis) + BigInt(entry.unconfirmedSatoshis);
+            return total + (amount > 0n ? amount : 0n);
+          }, 0n),
+        });
+
+        if (network === "mainnet") {
+          const allMainnetAddresses = client.listWalletAddresses("mainnet", 49, 20);
+          const balances: Awaited<ReturnType<typeof fetchPusdWalletBalance>>[] = [];
+          for (let offset = 0; offset < allMainnetAddresses.length; offset += 4) {
+            const batch = allMainnetAddresses.slice(offset, offset + 4);
+            const batchResults = await Promise.all(batch.map((entry) => fetchPusdWalletBalance(entry.address)));
+            balances.push(...batchResults);
+            if (cancelled || client.state !== "connected" ||
+                client.getSessionIdentity() !== identity || client.addressSetRevision !== revision) return;
+          }
+          const uniqueUtxos = new Map<string, bigint>();
+          for (const result of balances) {
+            for (const utxo of result.utxos) {
+              uniqueUtxos.set(utxo.txid + ":" + utxo.vout, utxo.token?.amount ?? 0n);
+            }
+          }
+          setWalletPusdTotal([...uniqueUtxos.values()].reduce((sum, amount) => sum + amount, 0n));
+          setWalletPusdError("");
+        } else {
+          setWalletPusdTotal(null);
+          setWalletPusdError("");
+        }
+        if (page === "assets") setPusdRefresh((value) => value + 1);
       } catch (cause) {
-        if (!cancelled) setReceiveAddressScanError(cause instanceof Error ? cause.message : "Could not scan Selene receive addresses.");
+        if (!cancelled) {
+          setReceiveAddressScanError(cause instanceof Error ? cause.message : "Your wallet balances couldn't be loaded.");
+          if (network === "mainnet") {
+            setWalletPusdError(cause instanceof Error ? cause.message : "PUSD balance unavailable.");
+          }
+        }
       } finally {
-        if (!cancelled) setReceiveAddressScanLoading(false);
+        if (!cancelled) {
+          setReceiveAddressScanLoading(false);
+          setWalletBalanceRefreshing(false);
+        }
       }
     })();
+
     return () => { cancelled = true; };
-  }, [showWallet, network, walletClient, walletView.state, walletView.addressSetRevision]);
+  }, [showWallet, page, network, walletClient, walletView.state, walletView.addressSetRevision, walletBalanceRefreshRun]);
+
+  useEffect(() => {
+    if (!(showWallet || page === "assets")) return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") {
+        setWalletBalanceRefreshRun((value) => value + 1);
+      }
+    };
+    const interval = window.setInterval(refresh, 60_000);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("ajochain:wallet-balances-changed", refresh);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("ajochain:wallet-balances-changed", refresh);
+    };
+  }, [showWallet, page]);
+
+  useEffect(() => {
+    let active = true;
+    if (!showWallet || !connected || !walletAddress) {
+      setWalletAddressQrDataUrl("");
+      return () => { active = false; };
+    }
+    void import("qrcode")
+      .then(({ default: QRCode }) => QRCode.toDataURL(walletAddress, {
+        errorCorrectionLevel: "M", margin: 1, width: 220,
+      }))
+      .then((url) => { if (active) setWalletAddressQrDataUrl(url); })
+      .catch(() => { if (active) setWalletAddressQrDataUrl(""); });
+    return () => { active = false; };
+  }, [showWallet, connected, walletAddress]);
 
   useEffect(() => {
     let active = true;
