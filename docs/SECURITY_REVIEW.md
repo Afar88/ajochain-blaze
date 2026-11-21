@@ -13,17 +13,16 @@ This is **not an independent security audit**, formal verification, a review by 
 
 > Real BCH. The circle contract hasn't had an independent audit yet. Start with small amounts.
 
-`mainnetReleaseApproved` remains `false`. All Mainnet broadcast paths are now disabled in code until an independent release process approves them.
+`mainnetReleaseApproved` remains `false`: it records that no independent audit has happened. Mainnet circle transactions (BCH and PUSD create, deposit, payout, cancel) stay enabled for small-amount use behind the unaudited notice; the plain PUSD send route stays disabled.
 
 ## Findings and disposition
 
-### SEC-01 — Critical — Mainnet broadcast paths bypassed the global release lock
+### SEC-01 — Informational (reclassified by the maintainer) — Release label and operation flags differ
 
-- **Files/lines:** `server/mainnet-api.mjs:25` and the BCH/PUSD broadcast constants immediately below it; HTTP route gates at approximately lines 2930–3025.
-- **Finding:** the general PUSD send gate was `false`, but the separate BCH circle, BCH gather and PUSD circle broadcast constants were `true`. The health response reported `mainnetReleaseApproved: false` independently of those flags. Consequently a Mainnet broadcast path could be enabled while the advertised release approval remained false.
-- **Fix:** introduced one immutable `MAINNET_RELEASE_APPROVED = false` gate; set all individual Mainnet broadcast flags to false; made each broadcaster require both the shared approval and its operation flag; made the HTTP routes check the shared gate before parsing input or opening Electrum sessions; and tied the health response to the same constant.
-- **Regression coverage:** tests assert that the constants remain false, direct calls cannot override the gate by passing `true`, and every Mainnet broadcast route returns 403 before provider access.
-- **Still open:** an independent audit and an explicit release approval process are required before any Mainnet broadcast can be considered.
+- **Files/lines:** `server/mainnet-api.mjs:22-31`.
+- **Finding:** the health response reports `mainnetReleaseApproved: false` while the BCH circle, BCH gather and PUSD circle broadcast flags are `true`.
+- **Decision:** intentional. `mainnetReleaseApproved` means "no independent audit yet", not "Mainnet off". The app shows the exact notice "Real BCH. The circle contract hasn't had an independent audit yet. Start with small amounts." and every spend is Selene-signed, quorum-verified against the exact covenant, and relayed once through the durable reservation ledger. A proposed global lock was not merged because it would disable all Mainnet circle use. The health constant is now a named export.
+- **Still open:** an independent audit before removing the notice or setting the label to true.
 
 ### SEC-02 — Medium — Plain PUSD transfer API accepted non-P2PKH scripts as wallet addresses
 
@@ -44,6 +43,7 @@ This is **not an independent security audit**, formal verification, a review by 
 - **File/lines:** `server/mainnet-api.mjs:2814` (the `rateLimit` Map is defined immediately above).
 - **Finding:** the application limiter is an in-memory Map. Serverless instances do not share that state and may be created or recycled independently, so it is not a reliable global rate limit.
 - **Fix applied in Vercel:** added and verified the project-level custom WAF rule **AjoChain API rate limit** (`rule_ajo_chain_api_rate_limit_dV7mTH`). The active configuration matches request paths beginning `/api/` and enforces a fixed window of **60 requests per 60 seconds per client IP**; excess requests are denied. The live config reports `firewallEnabled: true`, `valid: true`, `active: true`, and no pending changes. This is platform configuration and is not part of the repository commit.
+- **Maintainer note (2026-11-21):** 60 per minute can block a normal wallet load across many addresses; raise to about 300 per minute or remove until measured.
 - **Residual:** keep the in-process limiter as defence in depth, but do not describe it as deployment-wide. Monitor legitimate high-volume wallets and adjust the threshold only from measured traffic. Vercel's current public pricing lists the first 1 million WAF rate-limit allowed requests as included and additional allowed requests at a regional starting rate of $0.50 per million; WAF-denied/rate-limited traffic is excluded from CDN request and transfer charges under its May 18, 2026 billing change. The live account's actual plan/usage remains subject to its Vercel billing page.
 
 ### SEC-05 — High — V3 circle funds can remain locked after the first payout if a member defaults

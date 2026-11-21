@@ -232,15 +232,11 @@ test("Mainnet BCH gather accepts only one token-free output back to a wallet-der
   ), /wallet's derived P2PKH addresses/i);
 });
 
-test("Mainnet BCH gather remains disabled until the shared independent release approval", async () => {
-  assert.equal(BCH_MAINNET_GATHER_BROADCAST_ENABLED, false);
+test("Mainnet BCH gather has a separate explicit broadcast gate", async () => {
+  assert.equal(BCH_MAINNET_GATHER_BROADCAST_ENABLED, true);
   await assert.rejects(
     broadcastBchMainnetGatherTransaction([], {}, {}, false),
-    /disabled until the independent release review is approved/i,
-  );
-  await assert.rejects(
-    broadcastBchMainnetGatherTransaction([], {}, {}, true),
-    /disabled until the independent release review is approved/i,
+    /wallet gathering is disabled/i,
   );
 });
 
@@ -1340,33 +1336,38 @@ test("PUSD Mainnet verifier requires initiator-only cancellation before first pa
   ), /initiator-only/);
 });
 
-test("Mainnet release approval blocks all BCH and PUSD circle broadcasts even when callers pass an override", async () => {
-  assert.equal(MAINNET_RELEASE_APPROVED, false);
-  assert.equal(MAINNET_BROADCAST_ENABLED, false);
-  assert.equal(BCH_MAINNET_CIRCLE_BROADCAST_ENABLED, false);
-  assert.equal(BCH_MAINNET_GATHER_BROADCAST_ENABLED, false);
-  assert.equal(PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED, false);
+test("BCH Mainnet circle broadcast is gated and refuses before any verification or relay", async () => {
+  assert.equal(BCH_MAINNET_CIRCLE_BROADCAST_ENABLED, true);
   let called = false;
   const sessions = [{ call: async () => { called = true; } }, { call: async () => { called = true; } }];
-
   await assert.rejects(
-    broadcastBchMainnetCircleTransaction(sessions, { height: 1, hash: "00".repeat(32) }, { operation: "payout" }, true),
-    /disabled until the independent release review is approved/,
+    broadcastBchMainnetCircleTransaction(sessions, { height: 1, hash: "00" }, { operation: "payout" }, false),
+    /disabled until the release is approved/,
   );
   await assert.rejects(
-    broadcastBchMainnetGatherTransaction(sessions, { height: 1, hash: "00".repeat(32) }, {}, true),
-    /disabled until the independent release review is approved/,
-  );
-  await assert.rejects(
-    broadcastPusdMainnetCircleTransaction(
-      sessions, { height: 1, hash: "00".repeat(32) }, { operation: "payout" }, true,
-    ),
-    /disabled until the independent release review is approved/,
+    broadcastBchMainnetCircleTransaction(sessions, { height: 1, hash: "00" }, { operation: "bogus" }, true),
+    /Unsupported BCH Mainnet circle verification operation/,
   );
   assert.equal(called, false);
 });
 
-test("Mainnet HTTP broadcast routes are disabled before request parsing or Electrum access", async () => {
+test("PUSD Mainnet V3 circle broadcast has its own gate and refuses before verification when disabled", async () => {
+  assert.equal(PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED, true);
+  let called = false;
+  const sessions = [{ call: async () => { called = true; } }, { call: async () => { called = true; } }];
+  await assert.rejects(
+    broadcastPusdMainnetCircleTransaction(
+      sessions,
+      { height: 1, hash: "00" },
+      { operation: "payout" },
+      false,
+    ),
+    /PUSD Mainnet circle broadcast is disabled/,
+  );
+  assert.equal(called, false);
+});
+
+test("Plain PUSD Mainnet send route stays disabled before request parsing or Electrum access", async () => {
   const server = createMainnetApiServer();
   try {
     await new Promise((resolve, reject) => {
@@ -1375,7 +1376,7 @@ test("Mainnet HTTP broadcast routes are disabled before request parsing or Elect
     });
     const address = server.address();
     assert.ok(address && typeof address === "object");
-    for (const path of ["/api/bch/gather", "/api/bch/broadcast", "/api/pusd/circle/broadcast", "/api/pusd/broadcast"]) {
+    for (const path of ["/api/pusd/broadcast"]) {
       const response = await fetch("http://127.0.0.1:" + address.port + path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

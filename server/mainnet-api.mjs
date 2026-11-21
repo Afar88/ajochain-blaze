@@ -19,15 +19,17 @@ import {
 const PUSD_CATEGORY = "2469acc5afa4b10cb5b5c04afb89c3a3ffd61c5da9c01e26d00951cae2a02544";
 // Hard release gate: runtime environment variables must never activate real-value broadcasts.
 export const MAINNET_BROADCAST_ENABLED = false;
-// A single approval gate protects every real-value Mainnet broadcast path.
-// AI/static review is not an independent audit; this stays false until the
-// independent release process explicitly approves Mainnet spending.
+// Reported in /api/health. It means "no independent audit yet", not "Mainnet
+// off". AI/static review is not an independent audit, so this stays false.
+// The app shows the matching unaudited notice; users start with small amounts.
 export const MAINNET_RELEASE_APPROVED = false;
-// Individual operation flags remain separately visible in health responses,
-// but none can override the global release approval.
-export const BCH_MAINNET_CIRCLE_BROADCAST_ENABLED = false;
-export const BCH_MAINNET_GATHER_BROADCAST_ENABLED = false;
-export const PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED = false;
+// Circle transactions run on Mainnet behind their own gates. Every spend is
+// Selene-signed, quorum-verified against the exact covenant, and relayed once
+// through the shared durable input-reservation ledger.
+export const BCH_MAINNET_CIRCLE_BROADCAST_ENABLED = true;
+// Wallet-only BCH consolidation (UI not shipped). Kept on for parity with main.
+export const BCH_MAINNET_GATHER_BROADCAST_ENABLED = true;
+export const PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED = true;
 export const MAINNET_GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f";
 export const BCH_MAINNET_FORK_CHECKPOINT_HEIGHT = 478_559;
 export const BCH_MAINNET_FORK_CHECKPOINT_HASH =
@@ -2578,8 +2580,8 @@ export async function broadcastBchMainnetGatherTransaction(
   body,
   enabled = BCH_MAINNET_GATHER_BROADCAST_ENABLED,
 ) {
-  if (MAINNET_RELEASE_APPROVED !== true || enabled !== true) {
-    throw new Error("BCH Mainnet wallet gathering is disabled until the independent release review is approved.");
+  if (enabled !== true) {
+    throw new Error("BCH Mainnet wallet gathering is disabled.");
   }
   const verification = await verifyBchMainnetGatherTransaction(sessions, tip, body);
   let relay;
@@ -2645,8 +2647,8 @@ export async function broadcastPusdMainnetCircleTransaction(
   body,
   enabled = PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED,
 ) {
-  if (MAINNET_RELEASE_APPROVED !== true || enabled !== true) {
-    throw new Error("PUSD Mainnet circle broadcast is disabled until the independent release review is approved.");
+  if (enabled !== true) {
+    throw new Error("PUSD Mainnet circle broadcast is disabled until the release is approved.");
   }
   let verification;
   try {
@@ -2756,8 +2758,8 @@ export async function broadcastBchMainnetCircleTransaction(
   body,
   enabled = BCH_MAINNET_CIRCLE_BROADCAST_ENABLED,
 ) {
-  if (MAINNET_RELEASE_APPROVED !== true || enabled !== true) {
-    throw new Error("BCH Mainnet circle broadcast is disabled until the independent release review is approved.");
+  if (enabled !== true) {
+    throw new Error("BCH Mainnet circle broadcast is disabled until the release is approved.");
   }
   const verification = await verifyBchMainnetCircleTransaction(sessions, tip, body);
   const relay = await broadcastPusdTransactionOnce(sessions, body.signedTransactionHex, verification.txid);
@@ -2944,7 +2946,7 @@ export function createMainnetApiServer() {
         return;
       }
       if (request.method === "POST" && url.pathname === "/api/bch/gather") {
-        if (!MAINNET_RELEASE_APPROVED || !BCH_MAINNET_GATHER_BROADCAST_ENABLED) {
+        if (!BCH_MAINNET_GATHER_BROADCAST_ENABLED) {
           sendJson(response, 403, { error: "BCH Mainnet wallet gathering is disabled until the release review is approved." });
           return;
         }
@@ -2957,7 +2959,7 @@ export function createMainnetApiServer() {
         return;
       }
       if (request.method === "POST" && url.pathname === "/api/bch/broadcast") {
-        if (!MAINNET_RELEASE_APPROVED || !BCH_MAINNET_CIRCLE_BROADCAST_ENABLED) {
+        if (!BCH_MAINNET_CIRCLE_BROADCAST_ENABLED) {
           sendJson(response, 403, { error: "BCH Mainnet circle broadcast is disabled until the release is approved." });
           return;
         }
@@ -3016,7 +3018,7 @@ export function createMainnetApiServer() {
         return;
       }
       if (request.method === "POST" && url.pathname === "/api/pusd/circle/broadcast") {
-        if (!MAINNET_RELEASE_APPROVED || !PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED) {
+        if (!PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED) {
           sendJson(response, 403, { error: "PUSD Mainnet circle broadcast is disabled until the release is approved." });
           return;
         }
