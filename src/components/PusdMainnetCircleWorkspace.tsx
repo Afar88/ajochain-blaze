@@ -458,6 +458,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       };
       if (send) {
         const relayed = await broadcastPusdMainnetCircleSignedTransaction(circleRequest);
+        window.dispatchEvent(new Event("ajochain:wallet-balances-refresh"));
         if (target === "genesis") setGenesisSigningPlan(null);
         else setActionSigningPlan(null);
         const sent =
