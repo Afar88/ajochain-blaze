@@ -232,11 +232,15 @@ test("Mainnet BCH gather accepts only one token-free output back to a wallet-der
   ), /wallet's derived P2PKH addresses/i);
 });
 
-test("Mainnet BCH gather has a separate explicit broadcast gate", async () => {
-  assert.equal(BCH_MAINNET_GATHER_BROADCAST_ENABLED, true);
+test("Mainnet BCH gather remains disabled until the shared independent release approval", async () => {
+  assert.equal(BCH_MAINNET_GATHER_BROADCAST_ENABLED, false);
   await assert.rejects(
     broadcastBchMainnetGatherTransaction([], {}, {}, false),
-    /wallet gathering is disabled/i,
+    /disabled until the independent release review is approved/i,
+  );
+  await assert.rejects(
+    broadcastBchMainnetGatherTransaction([], {}, {}, true),
+    /disabled until the independent release review is approved/i,
   );
 });
 
@@ -996,7 +1000,10 @@ test("PUSD submission-status route returns 503 when private ledger credentials a
       mockApiRequest("GET", "/api/pusd/submission?txid=" + "ab".repeat(32)),
     );
     assert.equal(response.statusCode, 503);
-    assert.match(JSON.parse(response.body).error, /ledger is not configured/);
+    assert.equal(
+      JSON.parse(response.body).error,
+      "Mainnet service is temporarily unavailable. Check transaction status before retrying.",
+    );
   } finally {
     if (originalUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
     else process.env.UPSTASH_REDIS_REST_URL = originalUrl;
