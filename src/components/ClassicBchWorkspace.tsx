@@ -35,6 +35,12 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  useEffect(() => {
     onBusyChange?.(busy);
     return () => onBusyChange?.(false);
   }, [busy, onBusyChange]);
@@ -131,7 +137,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
     setNotice("");
     if (!walletConnected || wallet.state !== "connected") {
       connect();
-      setError("Connect Selene through WizardConnect, then submit the circle again.");
+      setError("Connect Selene in Selene, then submit the circle again.");
       return;
     }
     const walletAddress = wallet.address(network);
@@ -425,7 +431,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
 
       <div className="classic-account-summary">
         <div><b>{networkSavedCount}</b><span>Circles on this network</span></div>
-        <div><b>{walletConnected ? "Connected" : "Not connected"}</b><span>WizardConnect wallet</span></div>
+        <div><b>{walletConnected ? "Connected" : "Not connected"}</b><span>Selene wallet</span></div>
         <p>Local account index only. It does not create a cloud login or synchronize data across devices; keep invite links as a recovery method.</p>
       </div>
 
@@ -504,7 +510,9 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
 
       {busy && <p className="classic-feedback" role="status">Working with the selected BCH network…</p>}
       {notice && <p className="classic-feedback" role="status">{notice}</p>}
-      {error && <p className="classic-error" role="alert">{error}</p>}
+      {error && <p className="classic-error" role="alert">{error}
+        <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setError("")}>×</button>
+      </p>}
     </section>
   );
 }
