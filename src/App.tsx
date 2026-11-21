@@ -2817,8 +2817,8 @@ export default function App() {
                     <button type="button" className="secondary-button" onClick={() => { walletClient.cancelConnectionAttempt(); }}>
                       Cancel
                     </button>
-                    <button type="button" className="secondary-button" onClick={() => { void walletClient.disconnect(); }}>
-                      Disconnect
+                    <button type="button" className="secondary-button" onClick={() => { walletClient.startFreshPairing(); }}>
+                      New connection
                     </button>
                   </div>}
                 <div className="wallet-modal-actions">
@@ -2829,6 +2829,11 @@ export default function App() {
                       else if (walletClient.state === "disconnected") walletClient.startFreshPairing();
                     }
                   }}>Reconnect</button>
+                  {walletClient && walletView.state !== "connecting" && walletView.state !== "reconnecting" &&
+                    <button type="button" className="secondary-button" onClick={() => {
+                      // Forget the old pairing and show a fresh QR code.
+                      walletClient.startFreshPairing();
+                    }}>New connection</button>}
                   <button className="secondary-button" onClick={() => setShowWallet(false)}>Close</button>
                 </div>
               </div>

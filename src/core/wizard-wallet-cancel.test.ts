@@ -23,3 +23,15 @@ describe("wallet connect cancel", () => {
     expect(source.match(/this\.autoResumePaused = false;/g)?.length).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe("fresh wallet connection", () => {
+  it("clears the saved pairing even when no manager is running", () => {
+    expect(source).toContain("try { clearSavedWizardSession(); } catch");
+  });
+
+  it("timeout stops the relay so the page cannot flip back to reconnecting", () => {
+    const body = source.slice(source.indexOf("private startConnectionWatchdog("), source.indexOf("private isCurrent("));
+    expect(body).toContain("this.cleanup(mgr, relay, false)");
+    expect(body).toContain("this.mgr = null");
+  });
+});
