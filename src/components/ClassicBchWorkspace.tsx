@@ -344,6 +344,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
         "Contribute to AjoChain circle: " + activeCircle.name,
       );
       const txid = await plan.provider.sendRawTransaction(signed.signedTransaction);
+      window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
       setNotice("Contribution broadcast. Transaction ID: " + txid);
       await refresh(activeCircle);
     } catch (cause) {
