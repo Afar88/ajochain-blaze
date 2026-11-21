@@ -350,9 +350,9 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
         "Contribute to AjoChain circle: " + activeCircle.name,
       );
       const txid = await plan.provider.sendRawTransaction(signed.signedTransaction);
-      window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
       setNotice("Contribution broadcast. Transaction ID: " + txid);
       await refresh(activeCircle);
+      window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -376,9 +376,9 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
         "The circle rules send this payout to the selected member. It cannot be redirected here.",
       )) return;
       const txid = await plan.provider.sendRawTransaction(plan.builder.build());
-      window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
       setNotice("Payout broadcast. Transaction ID: " + txid);
       await refresh(activeCircle);
+      window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
     } catch (cause) {
       setError(message(cause));
     } finally {
