@@ -424,6 +424,7 @@ export default function V2FeeBchWorkspace({
       const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Pay my AjoChain member share");
       const provider = await getClassicProvider("chipnet");
       const txid = await provider.sendRawTransaction(signed.signedTransaction);
+      window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
       setNotice("Member credit deposit broadcast. Transaction: " + txid);
       await refresh(active);
     } catch (cause) { setError(errorText(cause)); }
