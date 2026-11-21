@@ -497,7 +497,7 @@ export default function ActivityRecords({ network, compact = false }: { network:
                             <code>{shortTxid(record.txid)}</code>
                             <small>{record.status === "confirmed" && record.blockTimestamp
                               ? new Date(record.blockTimestamp).toLocaleString() + " · block " + record.height
-                              : record.status === "pending" ? "Seen in mempool · awaiting confirmation" : record.reason ?? "Provider history could not be verified"}</small>
+                              : record.status === "pending" ? "Waiting for confirmation" : "Transaction details unavailable"}</small>
                           </span>
                           <span className={"activity-state-pill " + record.status}>{txStatusLabel(record)}</span>
                         </div>
