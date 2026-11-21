@@ -8,6 +8,7 @@ const stylesSource = readFileSync(resolve(here, "../styles.css"), "utf8");
 const appSource = readFileSync(resolve(here, "../App.tsx"), "utf8");
 const bchSource = readFileSync(resolve(here, "BchMainnetCircleWorkspace.tsx"), "utf8");
 const controlSource = readFileSync(resolve(here, "TestSignControl.tsx"), "utf8");
+const activitySource = readFileSync(resolve(here, "ActivityRecords.tsx"), "utf8");
 const pusdSource = readFileSync(resolve(here, "PusdMainnetCircleWorkspace.tsx"), "utf8");
 
 export function isInsideAdvancedToggle(source: string, label: string, from = 0): boolean {
@@ -105,5 +106,69 @@ describe("phone-width layout guardrails", () => {
     expect(stylesSource).toContain("max-width:1280px");
     expect(stylesSource.split("overflow-x:auto").length - 1).toBe(1);
     expect(stylesSource.split("overflow-x: auto").length - 1).toBe(1);
+  });
+});
+
+
+describe("saved circle and homepage guardrails", () => {
+  it("loads saved BCH and PUSD Mainnet circles into Activity", () => {
+    expect(activitySource).toContain("ajochain-blaze:bch-mainnet-circles-deployed:v1");
+    expect(activitySource).toContain("ajochain-blaze:pusd-mainnet-circles-deployed:v1");
+    expect(activitySource).toContain("readSavedBchMainnetCircles()");
+    expect(activitySource).toContain("readSavedPusdCircles()");
+    expect(activitySource).toContain("ajochain:bch-mainnet-circles-changed");
+    expect(activitySource).toContain("ajochain:saved-circles-changed");
+  });
+
+  it("keeps the Home page limited to the notice, hero and two actions", () => {
+    const start = appSource.indexOf('{page === "overview" && (');
+    const end = appSource.indexOf('{page === "create-circle" && (', start);
+    const home = appSource.slice(start, end);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    for (const removed of [
+      "overview-my-circles",
+      "overview-activity",
+      "overview-status-grid",
+      "asset-preview",
+      "how-ajo-works",
+    ]) expect(home).not.toContain(removed);
+    expect(home).toContain("{renderCircleRiskNotice()}");
+    expect(home).toContain("Your Ajo savings circle,");
+    expect(home).toContain("on Bitcoin Cash.");
+    expect(home).toContain("Create a circle");
+    expect(home).toContain("My circles");
+  });
+
+  it("keeps Wallet detail helper lines short and free of internal terms", () => {
+    const start = appSource.indexOf("{showWallet && (");
+    const end = appSource.indexOf('<footer className="app-footer"', start);
+    const walletDetails = appSource.slice(start, end);
+    const plainHelpers = [...walletDetails.matchAll(/<(?:p|small)\\b[^>]*>([^<{]+)<\\/(?:p|small)>/g)]
+      .map((match) => match[1].trim())
+      .filter(Boolean);
+    for (const helper of plainHelpers) {
+      const words = helper.split(/\\s+/).filter(Boolean);
+      expect(words.length, helper).toBeLessThanOrEqual(15);
+    }
+    for (const forbidden of ["derived", "receive key", "indices", "xpub", "verified picker", "relay", "session", "provider", "proof checks", "WizardConnect"]) {
+      expect(walletDetails.toLowerCase()).not.toContain(forbidden.toLowerCase());
+    }
+    for (const expected of [
+      "Connect Selene. Your keys never leave your phone.",
+      "Approve in Selene, then come back.",
+      "Reconnecting…",
+      "Disconnected.",
+      "Pick the address shown in Selene.",
+      "Address confirmed ✓",
+      "Address not confirmed yet.",
+      "Reconnect Selene first.",
+      "Couldn't load your addresses. Reconnect and try again.",
+      "This address isn't in your wallet. Check Selene is on Mainnet and reconnect.",
+      "Wait 1 confirmation, then create.",
+      "Combine your BCH into one coin. Tokens aren't touched.",
+      "Done. Confirms in a few minutes.",
+      "Couldn't combine your BCH. Try again.",
+    ]) expect(walletDetails).toContain(expected);
   });
 });
