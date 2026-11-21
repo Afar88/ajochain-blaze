@@ -1538,6 +1538,21 @@ export default function App() {
     }
   };
 
+  // While the wallet window is open, an old saved connection gets 8 seconds.
+  // If it hasn't connected by then, show a fresh QR code and Open in Selene.
+  useEffect(() => {
+    if (!showWallet || !walletClient) return;
+    const waitingOnSaved = (walletView.state === "connecting" || walletView.state === "reconnecting") && !walletView.uri;
+    if (!waitingOnSaved) return;
+    const client = walletClient;
+    const timer = window.setTimeout(() => {
+      if ((client.state === "connecting" || client.state === "reconnecting") && !client.uri) {
+        client.startFreshPairing();
+      }
+    }, 8_000);
+    return () => window.clearTimeout(timer);
+  }, [showWallet, walletClient, walletView.state, walletView.uri]);
+
   const openWallet = () => {
     setMenuOpen(false);
     setShowWallet(true);
