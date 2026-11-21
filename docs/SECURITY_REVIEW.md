@@ -49,18 +49,25 @@ This is **not an independent security audit**, formal verification, a review by 
 ### SEC-05 — High — V3 circle funds can remain locked after the first payout if a member defaults
 
 - **Files/lines:** `contracts/AjoCircleV3AutoReserve.cash:230–247`; `contracts/AjoCirclePUSDV3Mainnet.cash:290–303`; comparable pre-first-payout cancellation restrictions exist in the V2 fee/escrow contract sources.
-- **Finding:** the V3 BCH and PUSD cancellation paths are limited to round zero before the first payout. Once a cycle advances, if a member never funds a later installment, remaining member credits/escrow can remain locked indefinitely. This is a lifecycle/design risk, not a problem that an API-side check can repair.
-- **Fix:** no covenant change was made. Adding a timeout, member-default path or emergency exit safely requires a new reviewed covenant version, a clear refund policy and adversarial tests; changing an existing contract would alter its spending rules/address and is not safe as a quick patch.
-- **Still open:** design and independently review a post-payout default/recovery path, including exact PUSD refunds and BCH carrier handling. Existing circles cannot be retrofitted by changing source.
+- **Finding:** the V3 BCH and PUSD cancellation paths are limited to round zero before the first payout. Once a cycle advances, if a member never funds a later installment, remaining member credits/escrow can remain locked indefinitely. This is a lifecycle/design risk, not a problem that an API-side check can repair. The older `AjoCircleV2` prototype also has no `cancel` branch. The Chipnet-only `AjoCirclePUSDV2` prototype has no `cancel` branch and advances the state round modulo `memberCount` (`contracts/AjoCirclePUSDV2.cash:115–205`), so it is a repeating cycle without a terminal close.
+- **Fix:** no covenant change was made. Adding a timeout, member-default path or emergency exit safely requires a new reviewed covenant version, a clear refund policy and adversarial tests; changing an existing contract would alter its spending rules/address and is not safe as a quick patch. The PUSD V2 prototype is explicitly Chipnet-test-only and must not be deployed to Mainnet.
+- **Still open:** design and independently review a post-payout default/recovery path, including exact PUSD refunds and BCH carrier handling. Keep the PUSD V2 and older V2 sources out of Mainnet deployment; existing circles cannot be retrofitted by changing source.
 
-### SEC-06 — Medium — Timed-out WizardConnect sessions can retain a stale manager during automatic retry
+### SEC-06 — Medium — PUSD V3 maxFee has no practical absolute satoshi ceiling
+
+- **Files/lines:** `server/mainnet-api.mjs:1855–1860`; `contracts/AjoCirclePUSDV3Mainnet.cash:146–147, 279–282`; client circle policy at `src/core/pusd-mainnet-circle.ts:132–136`.
+- **Finding:** PUSD V3 validates `maxFee` against the CashScript signed-integer ceiling, but not against a practical absolute BCH miner-fee ceiling or a fee-rate-derived policy. The covenant allows a payout/deposit/cancel sponsor's signed BCH input to lose up to the circle's immutable `maxFee`. Because any connected wallet may sponsor a payout, a circle created with an extreme fee cap can expose a later sponsor to a very large BCH fee.
+- **Fix:** no numeric fee ceiling was guessed in this PR. Choosing it changes circle economics and may make existing circles unspendable if enforced retroactively.
+- **Still open:** define a documented satoshi and/or fee-rate cap with the product owner and independent reviewer; enforce it at circle creation, plan construction and server verification, and add exact boundary tests. Until then, keep Mainnet broadcast approval false.
+
+### SEC-07 — Medium — Timed-out WizardConnect sessions can retain a stale manager during automatic retry
 
 - **File/lines:** `src/core/wizard-wallet.ts:601–614` and `629–647`.
 - **Finding:** the connection watchdog moves the state to `disconnected` but keeps the manager/relay references. A later automatic `tryResume()` can call `connect(existing)`, which replaces the manager reference without first cleaning up the timed-out manager/relay. Generation checks reject stale callbacks, but cleanup of the replaced relay is not explicit on this path.
 - **Fix:** not changed in this PR because safely changing wallet lifecycle ownership needs an integration test with the real WizardConnect manager/relay and mobile suspend/resume behaviour. The existing code's generation guard prevents a stale manager from being considered current for completed signing operations, but it does not prove the remote session is fully disposed.
 - **Still open:** add a mocked manager/relay lifecycle test, then make reconnection cleanup explicit while preserving the encrypted saved session for retry.
 
-### SEC-07 — High — Contract and Mainnet lifecycle assurance remains incomplete
+### SEC-08 — High — Contract and Mainnet lifecycle assurance remains incomplete
 
 - **Files:** `contracts/*.cash`, corresponding generated artifacts, `server/mainnet-api.mjs`, `src/core/*`.
 - **Finding:** automated unit tests and local BCH 2026 VM checks do not constitute independent contract review or real-wallet/Mainnet lifecycle evidence. The V2/V3 sources include prototypes and multiple covenant generations; they must not be treated as interchangeable.
@@ -70,7 +77,7 @@ This is **not an independent security audit**, formal verification, a review by 
 ## Areas reviewed with no new code change
 
 - **BCH contract spend rules:** reviewed Classic, V2 fee/escrow and V3 auto-reserve source. Input/output ordering, state-round transitions, receipt order and fee outputs are checked in the covenant sources and/or server verifier. Legacy and prototype variants have different guarantees; do not conflate them.
-- **PUSD conservation and destinations:** reviewed V3 deposit, payout and cancel layouts and member escrow sidecar. The server verifier checks exact PUSD category/amounts, escrow scripts, recipient/treasury outputs, BCH carrier backing, dust, wallet sighash and BCH 2026 VM. The release gate is now closed pending independent review.
+- **PUSD conservation and destinations:** reviewed V3 deposit, payout and cancel layouts and member escrow sidecar. The server verifier checks exact PUSD category/amounts, escrow scripts, recipient/treasury outputs, BCH carrier backing, dust, wallet sighash and BCH 2026 VM. Amount arithmetic preserves the full input credit: the 1% fee uses integer floor division and the remaining units go to the scheduled recipient; no token amount is silently rounded away. The separate high-risk `maxFee` exposure is tracked in SEC-06. The release gate is now closed pending independent review.
 - **Transaction signing:** reviewed the WizardConnect signing request and returned-transaction checks. Input outpoints/sequences, transaction version/locktime, outputs/CashTokens, required wallet sighashes and BCH 2026 VM checks are present.
 - **Stale data and replay:** Mainnet verification obtains quorum previous transactions and UTXO snapshots; PUSD broadcast uses a durable input/transaction reservation when configured. These controls still depend on the configured Electrum trust model. BCH circle relay does not yet have the same durable cross-operation input reservation as the PUSD path.
 - **Balance display:** the UI uses verified UTXO and raw previous-transaction evidence for PUSD. Client display remains dependent on provider quorum and must not be described as an independent on-chain proof.
