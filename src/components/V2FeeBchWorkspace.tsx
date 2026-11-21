@@ -470,6 +470,7 @@ export default function V2FeeBchWorkspace({
       const txid = await provider.sendRawTransaction(signed.signedTransaction);
       setNotice("V2 fee payout broadcast. The 1% project fee and member payout were paid from the circle pot; miner fee came from the connected wallet. Transaction: " + txid);
       await refresh(active);
+      window.dispatchEvent(new Event("ajochain:wallet-balances-refresh"));
     } catch (cause) { setError(errorText(cause)); }
     finally { setBusy(false); }
   };
