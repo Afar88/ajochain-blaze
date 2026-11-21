@@ -1573,6 +1573,16 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
     .dropdown-wallet,
     .section-heading,
     .verification-strip,
+    .page-section,
+    .section-card,
+    .circle-panel,
+    .circle-workspace,
+    .classic-workspace,
+    .wallet-address-card,
+    .creator-member-preview,
+    .asset-preview,
+    .asset-detail-card,
+    .page-body,
     .overview-status-grid,
     .circle-choice-grid,
     .circle-workspace-grid,
@@ -1604,7 +1614,8 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
     gap: 5px;
   }
 
-  .header-network-pill {
+  .app-shell .header-network-pill,
+  .compact-app .header-network-pill {
     flex: 0 1 auto;
     min-width: 0;
     max-width: 92px;
@@ -1715,7 +1726,8 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
     font-size: 15px;
   }
 
-  .header-network-pill {
+  .app-shell .header-network-pill,
+  .compact-app .header-network-pill {
     max-width: 84px;
     padding-inline: 6px;
   }
