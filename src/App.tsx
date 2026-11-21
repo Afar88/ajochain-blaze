@@ -1309,7 +1309,7 @@ export default function App() {
   };
 
   const verifyPusdTransferSignature = async () => {
-    setPusdSignatureError("");
+    setPusdSignatureMessage("");
     setPusdSignatureError("");
     if (!walletClient || walletClient.state !== "connected" || !connected) {
       setPusdSignatureError("Connect Selene before checking this transfer.");
@@ -2534,7 +2534,7 @@ export default function App() {
                       {gatherResult?.status === "success" && (
                         <div className="gather-result gather-success" role="status">
                           <b>Done. Confirms in a few minutes.</b>
-                          <a href={gatherExplorerUrl(gatherResult.network, gatherResult.txid)} target="_blank" rel="noreferrer">View transaction <code>{shortTxid(gatherResult.txid)}</code></a>
+                          <a href={gatherExplorerUrl(gatherResult.network, gatherResult.txid)} target="_blank" rel="noreferrer">View transaction <code>{gatherResult.txid.slice(0, 10) + "…" + gatherResult.txid.slice(-6)}</code></a>
                         </div>
                       )}
                       {gatherResult?.status === "error" && (
