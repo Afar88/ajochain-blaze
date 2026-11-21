@@ -295,7 +295,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         throw new Error("Enter a circle name between 1 and 60 characters.");
       }
       if (!initiatorAddress || !initiatorMemberAddress || !walletConnected || wallet.state !== "connected" || !wallet.isReceiveAddressConfirmed("mainnet")) {
-        throw new Error("Choose a receive address derived from your connected Selene wallet in Wallet Details before saving this draft.");
+        throw new Error("Pick the address shown in Selene in Wallet details first.");
       }
       if (selectedAddressPendingOnly) throw new Error("Wait 1 confirmation, then create.");
       if (memberAddresses.length < 1 || memberAddresses.length > 4) {
@@ -351,7 +351,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     }
     const initiatorAddress = wallet.address("mainnet");
     if (!initiatorAddress || !wallet.isReceiveAddressConfirmed("mainnet")) {
-      setError("Choose a receive address derived from your connected Selene wallet in Wallet Details before preparing a PUSD circle.");
+      setError("Pick the address shown in Selene in Wallet details first.");
       return null;
     }
     if (selectedAddressPendingOnly) {
@@ -434,7 +434,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     setTestSignChecked(null);
     try {
       const walletAddress = wallet.address("mainnet");
-      if (!walletAddress) throw new Error("The connected Selene session does not expose a Mainnet P2PKH signing address.");
+      if (!walletAddress) throw new Error("The connected wallet address isn't available on Mainnet. Reconnect Selene.");
       if (signingPlan.operation === "genesis" &&
           (!wallet.isReceiveAddressConfirmed("mainnet") || walletAddress !== signingPlan.circle.initiator ||
            addressKey(signingPlan.circle.members[0]) !== addressKey(walletAddress))) {
@@ -728,7 +728,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
               void pendingCopy.then(() => setNotice("Member 1 address copied."))
                 .catch(() => setNotice("Could not copy the address. Select it and copy manually."));
             }}><Copy size={15} /> Copy address</button>
-            <small>{wallet.isReceiveAddressConfirmed("mainnet") ? "Selected from your connected Selene receive addresses" : "Choose a derived Mainnet receive address in Wallet Details first"}</small>
+            <small>{wallet.isReceiveAddressConfirmed("mainnet") ? "Address confirmed ✓" : "Pick the address shown in Selene first."}</small>
           </> : "Connect Selene and choose your receive address. It will be Member 1 automatically."}
         </div>
         <label>Other members' Mainnet BCH addresses · one per line
