@@ -2642,7 +2642,7 @@ export default function App() {
           </section>
         </div>
       )}
-      <footer className="app-footer"><span>© 2026 AjoChain</span><a href="https://github.com/Afar88/ajochain-blaze/blob/main/docs/MAINNET_PROOF.md" style={{ color: "var(--primary)", fontWeight: 800, textDecoration: "underline" }}>On-chain proof</a><span><span className="footer-dot" /> {network === "chipnet" ? "Chipnet testing" : "Mainnet · wallet-authorized transactions"}</span></footer>
+      <footer className="app-footer"><span>© 2026 AjoChain</span><a href="https://github.com/Afar88/ajochain-blaze/blob/main/docs/MAINNET_PROOF.md" style={{ color: "var(--primary)", fontWeight: 800, textDecoration: "underline" }}>Mainnet transaction record</a><span><span className="footer-dot" /> {network === "chipnet" ? "Chipnet testing" : "Mainnet · approve in Selene"}</span></footer>
     </main>
   );
 }
