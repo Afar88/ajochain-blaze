@@ -569,9 +569,6 @@ export default function App() {
     cancelled: boolean;
     cancel: () => void;
   } | null>(null);
-  const selectedMainnetReceiveAddress = receiveAddressChoices.find((choice) =>
-    (choice.branch ?? "receive") === "receive" && choice.index === walletView.receiveIndex,
-  ) ?? null;
 
   useEffect(() => {
     let timer: number | undefined;
