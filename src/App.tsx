@@ -2315,7 +2315,9 @@ export default function App() {
               </div>
               <div className="wallet-balance-updated" aria-live="polite">
                 {walletBalanceUpdatedAt ? "Updated " + formatUpdatedAgo(walletBalanceUpdatedAt) : "Balances not checked yet"}
-                {walletPusdError && <span>{walletPusdTotal !== null ? "PUSD refresh failed. Showing last balance." : "PUSD balance could not be checked."}</span>}
+                {walletPusdError && <span>{walletPusdTotal !== null ? "Showing your last PUSD balance." : "PUSD balance unavailable."}
+                  <button type="button" className="inline-dismiss" aria-label="Close PUSD balance warning" onClick={() => setWalletPusdError("")}>×</button>
+                </span>}
               </div>
             </article>
             <p className="wallet-balance-explainer">Circle balances are shown on each circle page.</p>
@@ -2421,7 +2423,7 @@ export default function App() {
                   <div>
                     <strong>{network === "mainnet" && walletPusdTotal !== null
                       ? formatAssetAmount("PUSD", walletPusdTotal) + " PUSD"
-                      : network !== "mainnet" ? "Mainnet only" : "Checking…"}</strong>
+                      : network !== "mainnet" ? "Mainnet only" : walletPusdError ? "Not available" : "Checking…"}</strong>
                     <small>ParyonUSD</small>
                   </div>
                   <div className="wallet-modal-balance-footer">
@@ -2431,6 +2433,10 @@ export default function App() {
                       <RefreshCw size={14} /> {walletBalanceRefreshing ? "Refreshing…" : "Refresh"}
                     </button>
                   </div>
+                  {walletPusdError && <div className="wallet-pusd-warning" role="alert">
+                    {walletPusdTotal !== null ? "PUSD refresh failed. Showing the last balance." : "PUSD balance unavailable."}
+                    <button type="button" className="inline-dismiss" aria-label="Close PUSD balance warning" onClick={() => setWalletPusdError("")}>×</button>
+                  </div>}
                 </section>
                 <div className="wallet-address-card">
                   <span>{NETWORKS[network].label}</span>
