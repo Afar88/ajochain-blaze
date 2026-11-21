@@ -214,9 +214,9 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
         const matchedIndex = wallet.matchReceiveAddress(memberAddress, "mainnet", 250);
         if (matchedIndex !== null) {
           setNotice(
-            "Matched this Selene wallet to registered Member " +
+            "Your wallet matches Member " +
             (activeCircle.members.findIndex((member) => sameMainnetAddress(member, memberAddress)) + 1) +
-            " (receive index " + matchedIndex + ").",
+            " (" + matchedIndex + ").",
           );
           return;
         }
@@ -237,7 +237,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
     if (!initiatorAddress) return { members: [] as string[], error: "Connect Selene to register your address as Member 1." };
     if (!initiatorAddressConfirmed) return {
       members: [initiatorAddress, ...additionalMembers],
-      error: "Sync the Mainnet receive address currently shown in Selene under Wallet Details before creating a circle.",
+      error: "Pick the address shown in Selene first.",
     };
     try {
       return { members: buildV2FeeMemberOrder(initiatorAddress, additionalMembers, "mainnet"), error: "" };
@@ -272,7 +272,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
     try {
       if (network !== "mainnet") throw new Error("BCH Mainnet drafts can only be saved while the app is set to Mainnet.");
       if (!initiatorAddress) throw new Error("Connect Selene to register your address as Member 1.");
-      if (!initiatorAddressConfirmed) throw new Error("Sync the Mainnet receive address currently shown in Selene under Wallet Details before saving or creating this circle.");
+      if (!initiatorAddressConfirmed) throw new Error("Pick the address shown in Selene first.");
       if (memberOrder.error) throw new Error(memberOrder.error);
       if (!name.trim() || name.trim().length > 60) throw new Error("Enter a circle name between 1 and 60 characters.");
       if (members.length < 2 || members.length > 5) throw new Error("Add 1–4 other BCH Mainnet addresses. Your connected wallet is Member 1.");
@@ -486,13 +486,13 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
     const signingPlan = signingPlanOverride ?? (target === "genesis" ? genesisSigningPlan : actionSigningPlan);
     if (!signingPlan) return;
     if (network !== "mainnet" || !walletConnected || wallet.state !== "connected") {
-      setError("Reconnect Selene on BCH Mainnet before starting signature verification.");
+      setError("Reconnect Selene on Mainnet first.");
       return;
     }
     if (Date.now() - signingPlan.createdAt > 60_000) {
       if (target === "genesis") setGenesisSigningPlan(null);
       else setActionSigningPlan(null);
-      setError("This signed-transaction review plan is older than 60 seconds. Refresh the chain preview and prepare a new plan before asking Selene to sign.");
+      setError("This preview expired. Refresh it before signing.");
       return;
     }
     if (signingPlan.operation === "genesis") {
@@ -677,16 +677,16 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
     setCreationResult(null);
 
     if (network !== "mainnet") {
-      setError("Switch the app to Bitcoin Cash Mainnet. This V3 BCH circle uses the shared Mainnet fee treasury.");
+      setError("Switch to Mainnet to prepare this circle.");
       return null;
     }
     if (!walletConnected || wallet.state !== "connected") {
-      setError("Connect Selene in Selene before preparing the circle setup preview.");
+      setError("Connect Selene to continue.");
       return null;
     }
     const initiator = wallet.address("mainnet");
     if (!initiator) {
-      setError("No Mainnet address is available from your wallet. Pick the address shown in Selene in Wallet details first.");
+      setError("Pick the address shown in Selene first.");
       return null;
     }
     if (!initiatorAddressConfirmed) {
