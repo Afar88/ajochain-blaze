@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
-  Activity, ArrowRight, Check, ChevronDown, Copy, Home,
+  Activity, ArrowRight, Check, Copy, Home,
   Monitor, MoreVertical, Moon, RefreshCw, ShieldCheck, Sun, Users, Wallet, X,
 } from "lucide-react";
 import { getDefaultNetwork, NETWORKS, type NetworkId } from "./core/network-config";
@@ -1138,11 +1138,11 @@ export default function App() {
             unconfirmedSatoshis: result.unconfirmedSatoshis.toString(),
             hasHistory: result.hasHistory,
             hasPendingHistory: result.hasPendingHistory,
-            status: result.confirmedSatoshis > 0n || (result.hasHistory && !result.hasPendingHistory)
+            status: (result.confirmedSatoshis > 0n || (result.hasHistory && !result.hasPendingHistory)
               ? "confirmed"
               : result.hasPendingHistory || result.unconfirmedSatoshis > 0n
                 ? "pending"
-                : "unused",
+                : "unused") as ReceiveAddressChoice["status"],
             newest: false,
           };
         }).sort((left, right) => {
@@ -1410,7 +1410,7 @@ export default function App() {
         feeRateSatoshisPerKb: feeQuote.feeRateSatoshisPerKb,
         maxFeeSatoshis: BigInt(pusdMaxFee.trim()),
       });
-      const verified = await walletClient.signAndVerify(
+      await walletClient.signAndVerify(
         freshPlan,
         freshPlan.walletInputs,
         "Verify PUSD Mainnet transfer to " + pusdRecipient.trim() + " (local verification only; never broadcast)",
@@ -2597,6 +2597,14 @@ export default function App() {
                     <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setReceiveAddressScanError("")}>×</button>
                   </p>}
                 </>}
+ 
+                <section className="wallet-discovery-actions" aria-label="Find saved circles">
+                  <button type="button" className="secondary-button" disabled={discoveryBusy}
+                    onClick={() => setDiscoveryRun((run) => run + 1)}>
+                    {discoveryBusy ? "Checking circles…" : "Check again"}
+                  </button>
+                  {discoveryMessage && <p className="wallet-match-message" role="status">{discoveryMessage}</p>}
+                </section>
 
                 <details className="wallet-tools-disclosure">
                   <summary>Advanced</summary>
