@@ -1406,40 +1406,60 @@ export default function App() {
   };
 
   useEffect(() => {
-    // Discovery is read-only and uses the connected wallet's own addresses on each BCH network.
-    // This trigger is scoped to the wallet session and address set, not address-picker activity.
-    const sessionKey = getDiscoverySessionKey(
-      walletSessionIdentity,
-      walletView.state,
-      walletView.addressSetRevision,
-    );
+    // Remember circles by the wallet's first receive address and the network.
+    const sessionKey = getDiscoverySessionKey(walletSessionIdentity, walletView.state, walletView.addressSetRevision);
     const previousRun = activeDiscoveryRunRef.current;
-    if (previousRun && previousRun.sessionKey === sessionKey) {
-      // Repeated trigger for the same session: leave the in-flight scan alone.
-      return;
-    }
+    if (previousRun && previousRun.sessionKey === sessionKey) return;
     if (previousRun && previousRun.sessionKey !== sessionKey) {
       previousRun.cancel();
       activeDiscoveryRunRef.current = null;
       discoveryBusyRef.current = false;
       setDiscoveryBusy(false);
     }
+    if (!walletClient || walletView.state !== "connected" || walletClient.state !== "connected") return;
 
-    if (!walletClient || walletView.state !== "connected" || walletClient.state !== "connected") {
-      return;
-    }
+    const manualRefresh = discoveryManualRequestRef.current;
+    discoveryManualRequestRef.current = false;
     if (discoveryMessageTimerRef.current !== null) {
       window.clearTimeout(discoveryMessageTimerRef.current);
       discoveryMessageTimerRef.current = null;
     }
 
-    // Snapshot selected and active receive addresses exactly once at scan start.
-    // Changes to receiveAddressChoices/receiveIndex do not restart this run.
+    let chipnetAddresses: ReturnType<WalletClient["listWalletAddresses"]>;
+    let mainnetAddresses: ReturnType<WalletClient["listWalletAddresses"]>;
+    try {
+      chipnetAddresses = walletClient.listWalletAddresses("chipnet", 49, 20);
+      mainnetAddresses = walletClient.listWalletAddresses("mainnet", 49, 20);
+    } catch {
+      return;
+    }
+    const firstChipReceive = chipnetAddresses.find((entry) => entry.branch === "receive")?.address ?? "";
+    const firstMainReceive = mainnetAddresses.find((entry) => entry.branch === "receive")?.address ?? "";
+    const chipnetCache = readWalletDiscoveryCache(window.localStorage, firstChipReceive, "chipnet");
+    const mainnetCache = readWalletDiscoveryCache(window.localStorage, firstMainReceive, "mainnet");
+    const useChipnetCache = !manualRefresh && chipnetCache !== null;
+    const useMainnetCache = !manualRefresh && mainnetCache !== null;
+
+    if (chipnetCache && useChipnetCache) {
+      try { mergeCachedDiscoveryCircles(window.localStorage, "chipnet", chipnetCache.circles); } catch { /* cache remains available */ }
+      window.dispatchEvent(new Event("ajochain:saved-circles-changed"));
+    }
+    if (mainnetCache && useMainnetCache) {
+      try { mergeCachedDiscoveryCircles(window.localStorage, "mainnet", mainnetCache.circles); } catch { /* cache remains available */ }
+      window.dispatchEvent(new Event("ajochain:bch-mainnet-circles-changed"));
+    }
+    if (useChipnetCache || useMainnetCache) setMenuCircles(readSavedCircleMenuRecords());
+
     const prioritySnapshot = discoveryPriorityAddressesRef.current;
+    const selectedReceive = walletClient.address("mainnet");
     let chipnetTimedOut = false;
     let mainnetTimedOut = false;
-    let chipnetStatus = "Chipnet: checking…";
-    let mainnetStatus = "Mainnet: checking…";
+    let chipnetStatus = useChipnetCache
+      ? "Chipnet: restored " + chipnetCache!.circles.length + " saved circle" + (chipnetCache!.circles.length === 1 ? "." : "s.")
+      : "Chipnet: checking…";
+    let mainnetStatus = useMainnetCache
+      ? "Mainnet: restored " + mainnetCache!.circles.length + " saved circle" + (mainnetCache!.circles.length === 1 ? "." : "s.")
+      : "Mainnet: checking…";
     const publishStatus = () => {
       setDiscoveryMessage(chipnetStatus + " · " + mainnetStatus);
       if (discoveryMessageTimerRef.current !== null) {
@@ -1471,13 +1491,10 @@ export default function App() {
       },
     };
 
-    if (discoveryBusyRef.current) {
-      // Ignore a duplicate trigger while this wallet session is already scanning.
-      return;
-    }
+    if (discoveryBusyRef.current) return;
     discoveryBusyRef.current = true;
     activeDiscoveryRunRef.current = run;
-    setDiscoveryBusy(true);
+    setDiscoveryBusy(!useChipnetCache || !useMainnetCache);
     publishStatus();
 
     void (async () => {
@@ -1491,60 +1508,52 @@ export default function App() {
 
         await settleIndependentTasks(
           async () => {
+            if (useChipnetCache) return { foundCount: chipnetCache!.circles.length };
             const provider = await getClassicProvider("chipnet");
-            const addresses = walletClient.listWalletAddresses("chipnet").map((entry) => entry.address);
-            if (addresses.length === 0) throw new Error("No Chipnet receive/change addresses are available from this wallet.");
+            const addresses = chipnetAddresses.map((entry) => entry.address);
+            if (addresses.length === 0) throw new Error("No Chipnet wallet addresses are available.");
             const found = await discoverV2FeeCircles(provider, addresses, undefined, "chipnet", {
               requestTimeoutMs: 10_000,
               overallTimeoutMs: 45_000,
               onTimeout: () => { chipnetTimedOut = true; },
             });
             if (run.cancelled) return { foundCount: 0 };
-
+            const encodedFound = found.map(encodeV2FeeCircleParams);
             const stored: unknown = JSON.parse(window.localStorage.getItem(V2_MENU_STORAGE_KEY) || "[]");
             const existing = dedupeSavedV2FeeCircleRecords(stored);
-            const knownCategories = new Set(existing.flatMap((record) => {
+            const known = new Set(existing.flatMap((record) => {
               const identity = getV2FeeCircleRecordIdentity(record.encoded);
               return identity ? [identity.stateCategory.toLowerCase()] : [];
             }));
             const additions = found
-              .filter((params) => !knownCategories.has(params.stateCategory.toLowerCase()))
+              .filter((params) => !known.has(params.stateCategory.toLowerCase()))
               .map((params) => ({ encoded: encodeV2FeeCircleParams(params), savedAt: 0 }));
             if (additions.length > 0) {
               window.localStorage.setItem(V2_MENU_STORAGE_KEY, JSON.stringify([...existing, ...additions]));
+              window.dispatchEvent(new Event("ajochain:saved-circles-changed"));
             }
+            writeWalletDiscoveryCache(window.localStorage, firstChipReceive, "chipnet", encodedFound);
             if (!run.cancelled) setMenuCircles(readSavedCircleMenuRecords());
             return { foundCount: found.length };
           },
           async () => {
-            const mainnetEntries = walletClient.listWalletAddresses("mainnet");
-            if (mainnetEntries.length === 0) throw new Error("No Mainnet receive/change addresses are available from this wallet.");
-            // Prioritize Selene's selected address, then active addresses from the
-            // captured activity snapshot. Other receive/change addresses remain eligible.
-            const selectedAddress = mainnetEntries.find((entry) =>
-              entry.branch === "receive" && entry.index === prioritySnapshot.receiveIndex,
-            )?.address;
+            if (useMainnetCache) return { foundCount: mainnetCache!.circles.length };
+            if (mainnetAddresses.length === 0) throw new Error("No Mainnet wallet addresses are available.");
             const knownActiveAddresses = prioritySnapshot.choices
               .filter((choice) => choice.hasHistory || choice.hasPendingHistory ||
                 BigInt(choice.confirmedSatoshis) > 0n || BigInt(choice.unconfirmedSatoshis) > 0n)
               .sort((left, right) => {
-                const leftTotal = BigInt(left.confirmedSatoshis) + BigInt(left.unconfirmedSatoshis);
-                const rightTotal = BigInt(right.confirmedSatoshis) + BigInt(right.unconfirmedSatoshis);
-                return leftTotal === rightTotal ? left.index - right.index : leftTotal > rightTotal ? -1 : 1;
-              })
-              .map((choice) => choice.address);
+                const a = BigInt(left.confirmedSatoshis) + BigInt(left.unconfirmedSatoshis);
+                const b = BigInt(right.confirmedSatoshis) + BigInt(right.unconfirmedSatoshis);
+                return a === b ? left.index - right.index : a > b ? -1 : 1;
+              }).map((choice) => choice.address);
             const priorityAddresses = [
-              ...(selectedAddress ? [selectedAddress] : []),
+              ...(selectedReceive ? [selectedReceive] : []),
               ...knownActiveAddresses,
             ];
-            // Mainnet discovery stays on the independently verified, read-only
-            // quorum. No provider or transaction flow is changed here.
             const provider = await getClassicProvider("mainnet");
             const mainnetFound = await discoverV2FeeCircles(
-              provider,
-              mainnetEntries.map((entry) => entry.address),
-              undefined,
-              "mainnet",
+              provider, mainnetAddresses.map((entry) => entry.address), undefined, "mainnet",
               {
                 priorityAddresses,
                 requestTimeoutMs: 10_000,
@@ -1553,37 +1562,42 @@ export default function App() {
               },
             );
             if (run.cancelled) return { foundCount: 0 };
-
+            const encodedFound = mainnetFound.map(encodeV2FeeCircleParams);
             const savedMainnet: unknown = JSON.parse(window.localStorage.getItem(BCH_MAINNET_CIRCLES_STORAGE_KEY) || "[]");
-            const savedList = Array.isArray(savedMainnet) ? savedMainnet.filter((entry): entry is string => typeof entry === "string") : [];
+            const savedList = Array.isArray(savedMainnet)
+              ? savedMainnet.filter((entry): entry is string => typeof entry === "string") : [];
             const savedCategories = new Set(savedList.flatMap((encoded) => {
               const identity = getV2FeeCircleRecordIdentity(encoded);
               return identity ? [identity.stateCategory.toLowerCase()] : [];
             }));
-            const mainnetAdditions = mainnetFound.filter((params) => !savedCategories.has(params.stateCategory.toLowerCase()));
+            const mainnetAdditions = mainnetFound.filter((params) =>
+              !savedCategories.has(params.stateCategory.toLowerCase()),
+            );
             if (mainnetAdditions.length > 0) {
-              window.localStorage.setItem(BCH_MAINNET_CIRCLES_STORAGE_KEY, JSON.stringify([...savedList, ...mainnetAdditions.map(encodeV2FeeCircleParams)]));
-              window.dispatchEvent(new Event("ajochain:bch-mainnet-circles-changed"));
+              window.localStorage.setItem(BCH_MAINNET_CIRCLES_STORAGE_KEY, JSON.stringify([
+                ...savedList, ...mainnetAdditions.map(encodeV2FeeCircleParams),
+              ]));
             }
-            // My circles is rendered from this exact Mainnet storage collection.
+            writeWalletDiscoveryCache(window.localStorage, firstMainReceive, "mainnet", encodedFound);
+            window.dispatchEvent(new Event("ajochain:bch-mainnet-circles-changed"));
             if (!run.cancelled) setMenuCircles(readSavedCircleMenuRecords());
             return { foundCount: mainnetFound.length };
           },
           (result) => {
-            if (run.cancelled) return;
+            if (run.cancelled || useChipnetCache) return;
             chipnetStatus = getDiscoveryNetworkStatus("Chipnet", result, chipnetTimedOut);
             publishStatus();
           },
           (result) => {
-            if (run.cancelled) return;
+            if (run.cancelled || useMainnetCache) return;
             mainnetStatus = getDiscoveryNetworkStatus("Mainnet", result, mainnetTimedOut);
             publishStatus();
           },
         );
       } catch {
         if (!run.cancelled) {
-          chipnetStatus = "Chipnet: unavailable, tap Retry to check again.";
-          mainnetStatus = "Mainnet: unavailable, tap Retry to check again.";
+          if (!useChipnetCache) chipnetStatus = "Chipnet: unavailable, tap Check again.";
+          if (!useMainnetCache) mainnetStatus = "Mainnet: unavailable, tap Check again.";
           publishStatus();
         }
       } finally {
