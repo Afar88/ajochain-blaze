@@ -134,6 +134,14 @@ describe("saved circle and homepage guardrails", () => {
     expect(activitySource).toContain("ajochain:saved-circles-changed");
   });
 
+  it("defaults Chipnet to the funded receive address without auto-confirming it", () => {
+    expect(appSource).toContain("client.isReceiveAddressConfirmed(network)");
+    expect(appSource).toContain('client.matchReceiveAddress(defaultChoice.address, "chipnet")');
+    expect(appSource).toContain('client.selectReceiveAddressIndex(defaultChoice.index, "mainnet")');
+    expect(appSource).toContain('WALLET_SELECTED_RECEIVE_INDEX_KEY + ":chipnet"');
+    expect(appSource).toContain('"This address isn\'t in your wallet. Check Selene is on Chipnet and reconnect."');
+  });
+
   it("never displays a BCH scan from a different selected network", () => {
     expect(appSource).toContain("receiveAddressChoicesNetwork === network");
     expect(appSource).toContain("receiveAddressChoices: currentNetworkAddressChoices");
