@@ -419,13 +419,13 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
           <p>Create Chipnet circles, contribute, collect payouts, and restore with an invite.</p>
         </div>
         <span className={network === "mainnet" ? "classic-network mainnet" : "classic-network"}>
-          {network === "mainnet" ? "Mainnet · read-only" : "Chipnet · test"}
+          {network === "mainnet" ? "Mainnet" : "Chipnet"}
         </span>
       </div>
 
       <div className="classic-account-summary">
         <div><b>{networkSavedCount}</b><span>Circles on this network</span></div>
-        <div><b>{walletConnected ? "Connected" : "Not connected"}</b><span>WizardConnect wallet</span></div>
+        <div><b>{walletConnected ? "Connected" : "Not connected"}</b><span>Connected wallet</span></div>
         <p>Local account index only. It does not create a cloud login or synchronize data across devices; keep invite links as a recovery method.</p>
       </div>
 
@@ -480,14 +480,14 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
             <>
               <div className="classic-account-summary classic-chain-stats">
                 <div><b>{status.round === null ? "Not started" : status.completed ? "Complete" : (status.round + 1) + " / " + activeCircle.members.length}</b><span>Current round</span></div>
-                <div><b>{formatBch(status.available)}</b><span>Observed pot (single provider)</span></div>
+                <div><b>{formatBch(status.available)}</b><span>Circle balance</span></div>
                 <div><b>{status.ready ? "Ready" : formatBch(status.shortfall) + " short"}</b><span>Next payout condition</span></div>
               </div>
               {status.issues.length > 0 && <ul className="classic-issues">{status.issues.map((item) => <li key={item}>{item}</li>)}</ul>}
               {status.recipient && <p className="classic-recipient">Next payout recipient: <b>{status.recipient}</b></p>}
             </>
           ) : (
-            <p className="classic-empty">Reading circle state from its original network. Use refresh to retry if the Electrum provider is unavailable.</p>
+            <p className="classic-empty">Checking the circle. Refresh to try again.</p>
           )}
           <div className="classic-actions">
             <button type="button" className="secondary-button" onClick={() => void refresh()} disabled={busy}>Refresh chain state</button>
