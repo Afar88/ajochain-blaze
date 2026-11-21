@@ -227,7 +227,7 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
       const stateVerified = status.stateVerified || status.completed;
       return {
         ref, status: stateVerified ? "ready" : "unavailable",
-        stateLabel: status.completed ? "Rotation complete" : stateVerified ? "Active" : "Needs checking",
+        stateLabel: status.completed ? "Rotation complete" : stateVerified ? "Active" : "Not confirmed",
         roundLabel: status.round === null ? "Round unavailable" : status.completed
           ? status.round + " / " + ref.params.members.length
           : (status.round + 1) + " / " + ref.params.members.length,
@@ -253,7 +253,7 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
         roundLabel: snapshot.completed ? snapshot.round + " / " + ref.params.members.length
           : (snapshot.round + 1) + " / " + ref.params.members.length,
         recipient: snapshot.recipient,
-        details: "Member balances come from the blockchain.",
+        details: "Member balances are checked for this circle.",
         memberRecords: snapshot.memberAccounting.map((member) => ({
           address: member.address,
           credit: member.currentCredit,
@@ -300,7 +300,7 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
       roundLabel: snapshot.completed ? snapshot.round + " / " + ref.params.members.length
         : (snapshot.round + 1) + " / " + ref.params.members.length,
       recipient: snapshot.recipient,
-      details: "PUSD member balances come from the blockchain.",
+      details: "PUSD balances are checked for each member.",
       memberRecords: snapshot.credits.map((credit, index) => ({
         address: ref.params.members[index],
         credit,
@@ -324,10 +324,10 @@ function shortTxid(txid: string) {
 
 function txStatusLabel(record: CircleTransactionRecord) {
   if (record.status === "confirmed") {
-    return "Confirmed · " + (record.confirmations ?? 0).toLocaleString() + " confirmations";
+    return "Confirmed · " + (record.confirmations ?? 0).toLocaleString() + " checks";
   }
-  if (record.status === "pending") return "Pending · not confirmed";
-  return "Needs checking";
+  if (record.status === "pending") return "Waiting for confirmation";
+  return "Not confirmed";
 }
 
 export default function ActivityRecords({ network, compact = false }: { network: "chipnet" | "mainnet"; compact?: boolean }) {
@@ -417,7 +417,7 @@ export default function ActivityRecords({ network, compact = false }: { network:
                 <div>
                   <span className="section-kicker">{result.ref.kind === "pusd" ? "PUSD" : "BCH"} · {result.ref.network.toUpperCase()}</span>
                   <h2>{result.ref.name}</h2>
-                  <small>{result.ref.kind === "classic" ? "Classic BCH circle" : result.ref.kind === "fee" ? "Member-receipt BCH circle" : "PUSD member-escrow circle"}</small>
+                  <small>{result.ref.kind === "classic" ? "Classic BCH savings circle" : result.ref.kind === "fee" ? "BCH savings circle" : "PUSD savings circle"}</small>
                 </div>
                 <span className={"activity-state-pill " + result.status}>
                   {result.status === "loading" ? "Checking…" : result.status === "ready" ? "Available" : "Unavailable"}
@@ -471,7 +471,7 @@ export default function ActivityRecords({ network, compact = false }: { network:
                   <div className="activity-history">
                     <div className="activity-subheading">
                       <b>Recent payments</b>
-                      <small>{result.historyError ? "Network check failed" : result.history?.truncated ? "Latest 20 payments" : "Payment history"}</small>
+                      <small>{result.historyError ? "Payment history unavailable" : result.history?.truncated ? "Latest 20 payments" : "Payment history"}</small>
                     </div>
                     {result.historyError ? (
                       <div className="activity-unavailable">
@@ -490,7 +490,7 @@ export default function ActivityRecords({ network, compact = false }: { network:
                             <code>{shortTxid(record.txid)}</code>
                             <small>{record.status === "confirmed" && record.blockTimestamp
                               ? new Date(record.blockTimestamp).toLocaleString() + " · block " + record.height
-                              : record.status === "pending" ? "Seen in mempool · awaiting confirmation" : record.reason ?? "Payment couldn't be confirmed"}</small>
+                              : record.status === "pending" ? "Waiting for confirmation" : record.reason ?? "Payment couldn't be confirmed"}</small>
                           </span>
                           <span className={"activity-state-pill " + record.status}>{txStatusLabel(record)}</span>
                         </div>
