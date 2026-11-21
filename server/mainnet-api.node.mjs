@@ -50,6 +50,7 @@ import {
   broadcastBchMainnetGatherTransaction,
   validateBchMainnetGatherLayout,
   createMainnetApiServer,
+  withElectrumSessions,
 } from "./mainnet-api.mjs";
 
 const mainnetP2pkh = "bitcoincash:qq2azmyyv6dtgczexyalqar70q036yund54qgw0wg6";
@@ -149,15 +150,21 @@ const bchMainnetVerificationCircle = {
 };
 
 
-test("Mainnet Electrum provider manifest requires unique operator identities", () => {
+test("Mainnet Electrum provider manifest allows 2–6 endpoints with two or more declared operators", () => {
   const providers = parseMainnetElectrumProviderConfig(
     "wss://node-a.example:50004,wss://node-b.example:50004",
     "provider-a,provider-b",
   );
-  assert.deepEqual(providers, [
+  assert.deepEqual(providers.slice(0, 2), [
     { endpoint: "wss://node-a.example:50004", operatorId: "provider-a" },
     { endpoint: "wss://node-b.example:50004", operatorId: "provider-b" },
   ]);
+  const backupProviders = parseMainnetElectrumProviderConfig(
+    "wss://node-a.example:50004,wss://node-b.example:50004,wss://node-c.example:50004",
+    "provider-a,provider-a,provider-b",
+  );
+  assert.deepEqual(backupProviders.slice(0, 3).map((provider) => provider.operatorId),
+    ["provider-a", "provider-a", "provider-b"]);
   assert.throws(() => parseMainnetElectrumProviderConfig(
     "wss://node-a.example:50004,wss://node-b.example:50004",
     "",
@@ -165,7 +172,16 @@ test("Mainnet Electrum provider manifest requires unique operator identities", (
   assert.throws(() => parseMainnetElectrumProviderConfig(
     "wss://node-a.example:50004,wss://node-b.example:50004",
     "same-operator,same-operator",
-  ), /distinct operator IDs/i);
+  ), /at least two distinct operators/i);
+  assert.throws(() => parseMainnetElectrumProviderConfig(
+    "wss://node-a.example:50004",
+    "provider-a",
+  ), /between two and six/i);
+  const sevenEndpoints = Array.from({ length: 7 }, (_, index) =>
+    "wss://node-" + index + ".example:50004",
+  ).join(",");
+  const sevenOperators = Array.from({ length: 7 }, (_, index) => "provider-" + index).join(",");
+  assert.throws(() => parseMainnetElectrumProviderConfig(sevenEndpoints, sevenOperators), /between two and six/i);
   assert.throws(() => parseMainnetElectrumProviderConfig(
     "wss://node-a.example:50004,wss://node-a.example:50005",
     "provider-a,provider-b",
@@ -178,6 +194,305 @@ test("Mainnet Electrum provider manifest requires unique operator identities", (
     "wss://user:password@node-a.example:50004,wss://node-b.example:50004",
     "provider-a,provider-b",
   ), /without embedded credentials/i);
+});
+
+test("Mainnet Electrum parser appends built-in backups after valid environment endpoints", () => {
+  const providers = parseMainnetElectrumProviderConfig(
+    "wss://env-a.example:50004,wss://env-b.example:50004",
+    "env-a,env-b",
+  );
+  assert.deepEqual(providers, [
+    { endpoint: "wss://env-a.example:50004", operatorId: "env-a" },
+    { endpoint: "wss://env-b.example:50004", operatorId: "env-b" },
+    { endpoint: "wss://fulcrum.greyh.at:50004", operatorId: "greyh-at" },
+    { endpoint: "wss://bch.soul-dev.com:50004", operatorId: "soul-dev" },
+  ]);
+});
+
+test("Mainnet Electrum parser does not duplicate a built-in backup hostname already in env", () => {
+  const providers = parseMainnetElectrumProviderConfig(
+    "wss://env-a.example:50004,wss://fulcrum.greyh.at:50004",
+    "env-a,greyh-at",
+  );
+  assert.deepEqual(providers, [
+    { endpoint: "wss://env-a.example:50004", operatorId: "env-a" },
+    { endpoint: "wss://fulcrum.greyh.at:50004", operatorId: "greyh-at" },
+    { endpoint: "wss://bch.soul-dev.com:50004", operatorId: "soul-dev" },
+  ]);
+  assert.equal(providers.filter((provider) => new URL(provider.endpoint).hostname === "fulcrum.greyh.at").length, 1);
+});
+
+test("Mainnet Electrum parser caps appended providers at six", () => {
+  const endpoints = Array.from({ length: 5 }, (_, index) => "wss://env-" + index + ".example:50004");
+  const labels = Array.from({ length: 5 }, (_, index) => "env-" + index);
+  const providers = parseMainnetElectrumProviderConfig(endpoints.join(","), labels.join(","));
+  assert.equal(providers.length, 6);
+  assert.deepEqual(providers.slice(0, 5).map((provider) => provider.endpoint), endpoints);
+  assert.equal(providers[5].endpoint, "wss://fulcrum.greyh.at:50004");
+});
+
+test("Mainnet Electrum parser never uses built-in backups to rescue invalid environment config", () => {
+  assert.throws(
+    () => parseMainnetElectrumProviderConfig("", ""),
+    /between two and six unique ELECTRUM_SERVERS/i,
+  );
+  assert.throws(
+    () => parseMainnetElectrumProviderConfig(
+      "wss://env-a.example:50004,wss://env-b.example:50004",
+      "same-operator,same-operator",
+    ),
+    /at least two distinct operators/i,
+  );
+});
+
+function makeElectrumProviders(entries) {
+  const requestedHostnames = new Set(entries.map((entry) => new URL(entry.host).hostname));
+  return parseMainnetElectrumProviderConfig(
+    entries.map((entry) => entry.host).join(","),
+    entries.map((entry) => entry.operator).join(","),
+  ).filter((provider) => requestedHostnames.has(new URL(provider.endpoint).hostname));
+}
+
+function makeElectrumTestTip(hash = "a".repeat(64)) {
+  return { height: 900_000, hash, headerHex: hash, timestamp: 1_800_000_000_000 };
+}
+
+function makeElectrumTestSessionFactory(created, callImpl) {
+  return (provider) => {
+    const session = {
+      ...provider,
+      timeoutMs: 5_000,
+      closed: false,
+      close() { this.closed = true; },
+      async call(method, params) {
+        return callImpl ? callImpl(this, method, params) : undefined;
+      },
+    };
+    created.push(session);
+    return session;
+  };
+}
+
+test("Electrum failover uses two fast good servers and closes the non-answering backup", async () => {
+  const providers = makeElectrumProviders([
+    { host: "wss://slow.example:50004", operator: "slow-op" },
+    { host: "wss://fast-a.example:50004", operator: "fast-a" },
+    { host: "wss://fast-b.example:50004", operator: "fast-b" },
+    { host: "wss://fast-c.example:50004", operator: "fast-c" },
+  ]);
+  const created = [];
+  const selected = await withElectrumSessions(
+    async (sessions) => ({
+      sessions,
+      configured: sessions[0].providersConfigured,
+      timeouts: sessions.map((session) => session.timeoutMs),
+    }),
+    {
+      providers,
+      rpcTimeoutMs: 12_000,
+      firstAnswerTimeoutMs: 20,
+      sessionFactory: makeElectrumTestSessionFactory(created),
+      readTip: async (session) => {
+        if (session.operatorId === "slow-op") {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          throw new Error("simulated first-tip timeout");
+        }
+        await new Promise((resolve) => setTimeout(resolve, session.operatorId === "fast-a" ? 5 : 10));
+        return makeElectrumTestTip();
+      },
+    },
+  );
+  assert.equal(selected.sessions.length, 2);
+  assert.equal(selected.configured, 4);
+  assert.deepEqual(selected.timeouts, [12_000, 12_000]);
+  assert.ok(selected.sessions.every((session) => session.operatorId !== "slow-op"));
+  assert.equal(created.length, 4);
+  assert.ok(created.every((session) => session.closed));
+});
+
+test("Electrum failover waits for a different operator when two faster endpoints share one label", async () => {
+  const providers = makeElectrumProviders([
+    { host: "wss://same-a.example:50004", operator: "shared-operator" },
+    { host: "wss://same-b.example:50004", operator: "shared-operator" },
+    { host: "wss://other.example:50004", operator: "other-operator" },
+  ]);
+  const created = [];
+  let callbackStarted = false;
+  const result = await withElectrumSessions(async (sessions) => {
+    callbackStarted = true;
+    return sessions;
+  }, {
+    providers,
+    rpcTimeoutMs: 12_000,
+    firstAnswerTimeoutMs: 100,
+    sessionFactory: makeElectrumTestSessionFactory(created),
+    readTip: async (session) => {
+      const delay = session.operatorId === "other-operator" ? 35 : 5;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return makeElectrumTestTip();
+    },
+  });
+  assert.equal(callbackStarted, true);
+  assert.equal(result.length, 2);
+  assert.deepEqual(new Set(result.map((session) => session.operatorId)), new Set(["shared-operator", "other-operator"]));
+  assert.ok(result.some((session) => session.endpoint.includes("other.example")));
+  assert.equal(created.length, 3);
+  assert.ok(created.every((session) => session.closed));
+});
+
+test("Electrum failover retries one incomplete selection, then returns the 503 quorum error", async () => {
+  const providers = makeElectrumProviders([
+    { host: "wss://reachable.example:50004", operator: "reachable" },
+    { host: "wss://unreachable.example:50004", operator: "unreachable" },
+  ]);
+  const created = [];
+  const answers = new Map();
+  await assert.rejects(
+    withElectrumSessions(async () => assert.fail("callback must not run without quorum"), {
+      providers,
+      rpcTimeoutMs: 12_000,
+      firstAnswerTimeoutMs: 10,
+      sessionFactory: makeElectrumTestSessionFactory(created),
+      readTip: async (session) => {
+        answers.set(session.operatorId, (answers.get(session.operatorId) ?? 0) + 1);
+        if (session.operatorId === "unreachable") {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          throw new Error("simulated first-tip timeout");
+        }
+        return makeElectrumTestTip();
+      },
+    }),
+    (error) => {
+      assert.equal(mainnetApiErrorStatus(error.message), 503);
+      assert.equal(mainnetApiPublicError(error.message),
+        "Couldn't reach enough BCH servers. Nothing was sent. Try again.");
+      return true;
+    },
+  );
+  assert.equal(created.length, 4);
+  assert.equal(answers.get("reachable"), 2);
+  assert.equal(answers.get("unreachable"), 2);
+  assert.ok(created.every((session) => session.closed));
+});
+
+test("Electrum tip disagreement waits for a third server that matches the first tip", async () => {
+  const providers = makeElectrumProviders([
+    { host: "wss://tip-a.example:50004", operator: "tip-a" },
+    { host: "wss://tip-b.example:50004", operator: "tip-b" },
+    { host: "wss://tip-c.example:50004", operator: "tip-c" },
+  ]);
+  const created = [];
+  const result = await withElectrumSessions(async (sessions) => sessions, {
+    providers,
+    rpcTimeoutMs: 12_000,
+    firstAnswerTimeoutMs: 100,
+    sessionFactory: makeElectrumTestSessionFactory(created),
+    readTip: async (session) => {
+      const delay = { "tip-a": 5, "tip-b": 10, "tip-c": 20 }[session.operatorId];
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return makeElectrumTestTip(session.operatorId === "tip-b" ? "b".repeat(64) : "a".repeat(64));
+    },
+  });
+  assert.equal(result.length, 2);
+  assert.deepEqual(result.map((session) => session.operatorId), ["tip-a", "tip-c"]);
+  assert.equal(result[0].providersAnswered, 3);
+  assert.ok(created.every((session) => session.closed));
+});
+
+test("Electrum tip disagreement rechecks all first-pass responders after two seconds", async () => {
+  const providers = makeElectrumProviders([
+    { host: "wss://recheck-a.example:50004", operator: "recheck-a" },
+    { host: "wss://recheck-b.example:50004", operator: "recheck-b" },
+    { host: "wss://recheck-c.example:50004", operator: "recheck-c" },
+  ]);
+  const created = [];
+  const readCounts = new Map();
+  const sleeps = [];
+  const result = await withElectrumSessions(async (sessions) => sessions, {
+    providers,
+    rpcTimeoutMs: 12_000,
+    firstAnswerTimeoutMs: 100,
+    sessionFactory: makeElectrumTestSessionFactory(created),
+    sleep: async (milliseconds) => { sleeps.push(milliseconds); },
+    readTip: async (session) => {
+      const count = (readCounts.get(session.operatorId) ?? 0) + 1;
+      readCounts.set(session.operatorId, count);
+      if (count === 1) return makeElectrumTestTip(session.operatorId.padEnd(64, "a").slice(0, 64));
+      return makeElectrumTestTip("f".repeat(64));
+    },
+  });
+  assert.equal(result.length, 2);
+  assert.deepEqual(sleeps, [2_000]);
+  assert.deepEqual([...readCounts.values()], [2, 2, 2]);
+  assert.deepEqual(result.map((session) => session.operatorId), ["recheck-a", "recheck-b"]);
+  assert.equal(result[0].providersAnswered, 3);
+  assert.ok(created.every((session) => session.closed));
+});
+
+test("Electrum tip disagreement after recheck returns 503 before the callback", async () => {
+  const providers = makeElectrumProviders([
+    { host: "wss://disagree-a.example:50004", operator: "disagree-a" },
+    { host: "wss://disagree-b.example:50004", operator: "disagree-b" },
+    { host: "wss://disagree-c.example:50004", operator: "disagree-c" },
+  ]);
+  const created = [];
+  let callbackCalled = false;
+  const sleeps = [];
+  await assert.rejects(
+    withElectrumSessions(async () => { callbackCalled = true; }, {
+      providers,
+      rpcTimeoutMs: 12_000,
+      firstAnswerTimeoutMs: 100,
+      sessionFactory: makeElectrumTestSessionFactory(created),
+      sleep: async (milliseconds) => { sleeps.push(milliseconds); },
+      readTip: async (session) => makeElectrumTestTip(
+        (session.operatorId + "0".repeat(64)).slice(0, 64),
+      ),
+    }),
+    (error) => {
+      assert.equal(mainnetApiErrorStatus(error.message), 503);
+      assert.equal(mainnetApiPublicError(error.message),
+        "BCH servers disagree right now. Nothing was sent. Try again soon.");
+      return true;
+    },
+  );
+  assert.deepEqual(sleeps, [2_000]);
+  assert.equal(callbackCalled, false);
+  assert.ok(created.every((session) => session.closed));
+});
+
+test("Electrum selection retry never retries the broadcast after a relay attempt", async () => {
+  const providers = makeElectrumProviders([
+    { host: "wss://relay-a.example:50004", operator: "relay-a" },
+    { host: "wss://relay-b.example:50004", operator: "relay-b" },
+  ]);
+  const created = [];
+  let relayCalls = 0;
+  const raw = sampleRawTransactionHex();
+  const expectedTxid = transactionIdFromHex(raw);
+  await assert.rejects(
+    withElectrumSessions(
+      (sessions) => broadcastPusdTransactionOnce(sessions, raw, expectedTxid),
+      {
+        providers,
+        rpcTimeoutMs: 12_000,
+        firstAnswerTimeoutMs: 100,
+        sessionFactory: makeElectrumTestSessionFactory(created, async (_session, method) => {
+          if (method === "blockchain.transaction.broadcast") {
+            relayCalls += 1;
+            throw new Error("relay response timed out");
+          }
+          if (method === "blockchain.transaction.get") throw new Error("not found");
+          throw new Error("unexpected method: " + method);
+        }),
+        readTip: async () => makeElectrumTestTip(),
+      },
+    ),
+    /result is UNKNOWN.*It was not retried/s,
+  );
+  assert.equal(relayCalls, 1);
+  assert.equal(created.length, 2);
+  assert.ok(created.every((session) => session.closed));
 });
 
 test("Mainnet BCH gather accepts only one token-free output back to a wallet-derived address", () => {
