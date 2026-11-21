@@ -36,6 +36,9 @@ import {
   getVerifiedTransactionStatus,
   verifyElectrumMerkleProof,
   mainnetApiErrorStatus,
+  mainnetApiPublicError,
+  normalizeWalletAddresses,
+  MAINNET_RELEASE_APPROVED,
   lockingBytecodeToScriptHash,
   normalizeElectrumUnspent,
   MAINNET_BROADCAST_ENABLED,
@@ -407,6 +410,7 @@ test("PUSD Mainnet broadcast stays locked even if a runtime override is set", as
       body: JSON.stringify({}),
     });
     assert.equal(MAINNET_BROADCAST_ENABLED, false);
+    assert.equal(MAINNET_RELEASE_APPROVED, false);
     assert.equal(response.status, 403);
     const payload = await response.json();
     assert.match(payload.error, /Mainnet broadcast is disabled/);
@@ -765,14 +769,30 @@ test("transaction-status endpoint rejects malformed txids before opening Electru
   }
 });
 
-test("ambiguous PUSD relay outcomes are exposed as retry-blocked service errors", () => {
-  assert.equal(
-    mainnetApiErrorStatus("PUSD broadcast result is UNKNOWN for " + "ab".repeat(32) + ". It was not retried."),
-    503,
-  );
+test("Mainnet API errors hide upstream provider details without losing ambiguous transaction IDs", () => {
+  const txid = "ab".repeat(32);
+  const rawProviderError = "Unable to connect to configured Electrum endpoint: wss://private-node.example:50004";
+  assert.equal(mainnetApiErrorStatus(rawProviderError), 503);
+  assert.equal(mainnetApiPublicError(rawProviderError),
+    "Mainnet service is temporarily unavailable. Check transaction status before retrying.");
+  assert.equal(mainnetApiPublicError("PUSD broadcast result is UNKNOWN for " + txid + ". Initial relay result: secret provider detail."),
+    "Transaction submission status is unknown for " + txid + ". Check this transaction before attempting any retry.");
+  assert.doesNotMatch(mainnetApiPublicError(rawProviderError), /private-node|wss:\/\//);
   assert.equal(mainnetApiErrorStatus("Rate limit exceeded; retry in one minute."), 429);
   assert.equal(mainnetApiErrorStatus("Request body exceeds the permitted size."), 413);
   assert.equal(mainnetApiErrorStatus("Invalid PUSD amount."), 400);
+});
+
+test("PUSD Mainnet wallet address normalization rejects arbitrary P2SH covenant scripts", () => {
+  const p2sh = encodeCashAddress({
+    prefix: "bitcoincash",
+    type: "p2sh",
+    payload: new Uint8Array(20).fill(91),
+  });
+  assert.notEqual(typeof p2sh, "string");
+  if (typeof p2sh === "string") return;
+  assert.throws(() => normalizeWalletAddresses([p2sh.address]), /wallet-derived Mainnet P2PKH/);
+  assert.equal(normalizeWalletAddresses([createMainnetTestTokenAddress(92)]).length, 1);
 });
 
 
@@ -976,7 +996,10 @@ test("PUSD submission-status route returns 503 when private ledger credentials a
       mockApiRequest("GET", "/api/pusd/submission?txid=" + "ab".repeat(32)),
     );
     assert.equal(response.statusCode, 503);
-    assert.match(JSON.parse(response.body).error, /ledger is not configured/);
+    assert.equal(
+      JSON.parse(response.body).error,
+      "Mainnet service is temporarily unavailable. Check transaction status before retrying.",
+    );
   } finally {
     if (originalUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
     else process.env.UPSTASH_REDIS_REST_URL = originalUrl;
@@ -1342,4 +1365,27 @@ test("PUSD Mainnet V3 circle broadcast has its own gate and refuses before verif
     /PUSD Mainnet circle broadcast is disabled/,
   );
   assert.equal(called, false);
+});
+
+test("Plain PUSD Mainnet send route stays disabled before request parsing or Electrum access", async () => {
+  const server = createMainnetApiServer();
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    for (const path of ["/api/pusd/broadcast"]) {
+      const response = await fetch("http://127.0.0.1:" + address.port + path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      assert.equal(response.status, 403, path);
+      assert.match((await response.json()).error, /disabled/i, path);
+    }
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });

@@ -19,15 +19,16 @@ import {
 const PUSD_CATEGORY = "2469acc5afa4b10cb5b5c04afb89c3a3ffd61c5da9c01e26d00951cae2a02544";
 // Hard release gate: runtime environment variables must never activate real-value broadcasts.
 export const MAINNET_BROADCAST_ENABLED = false;
-// Separate gate for BCH Mainnet circle transactions (create, pay, payout, cancel).
+// Reported in /api/health. It means "no independent audit yet", not "Mainnet
+// off". AI/static review is not an independent audit, so this stays false.
+// The app shows the matching unaudited notice; users start with small amounts.
+export const MAINNET_RELEASE_APPROVED = false;
+// Circle transactions run on Mainnet behind their own gates. Every spend is
+// Selene-signed, quorum-verified against the exact covenant, and relayed once
+// through the shared durable input-reservation ledger.
 export const BCH_MAINNET_CIRCLE_BROADCAST_ENABLED = true;
-// Wallet-only BCH consolidation is a separately guarded Mainnet operation.
-// Every spend still requires a Selene signature, quorum verification and
-// the shared durable input-reservation ledger before a one-time relay.
+// Wallet-only BCH consolidation (UI not shipped). Kept on for parity with main.
 export const BCH_MAINNET_GATHER_BROADCAST_ENABLED = true;
-// Separate gate for PUSD Mainnet V3 circle transactions (genesis, deposit, payout, cancel).
-// Every spend is Selene-signed, quorum-verified against the exact covenant, and
-// relayed once through the shared durable input-reservation ledger.
 export const PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED = true;
 export const MAINNET_GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f";
 export const BCH_MAINNET_FORK_CHECKPOINT_HEIGHT = 478_559;
@@ -829,11 +830,14 @@ function parsePositiveBigInt(value, label, allowZero = false) {
   return parsed;
 }
 
-function normalizeWalletAddresses(value) {
+export function normalizeWalletAddresses(value) {
   if (!Array.isArray(value) || value.length === 0 || value.length > MAX_WALLET_ADDRESSES) {
     throw new Error("Supply between 1 and " + MAX_WALLET_ADDRESSES + " wallet-derived mainnet addresses.");
   }
   const scripts = value.map(cashAddressToLockingBytecode);
+  if (scripts.some((script) => !/^76a914[0-9a-f]{40}88ac$/.test(script))) {
+    throw new Error("Wallet addresses must be wallet-derived Mainnet P2PKH addresses.");
+  }
   if (new Set(scripts).size !== scripts.length) {
     throw new Error("Duplicate wallet addresses were supplied.");
   }
@@ -2577,7 +2581,7 @@ export async function broadcastBchMainnetGatherTransaction(
   enabled = BCH_MAINNET_GATHER_BROADCAST_ENABLED,
 ) {
   if (enabled !== true) {
-    throw new Error("BCH Mainnet wallet gathering is disabled until its release gate is approved.");
+    throw new Error("BCH Mainnet wallet gathering is disabled.");
   }
   const verification = await verifyBchMainnetGatherTransaction(sessions, tip, body);
   let relay;
@@ -2831,14 +2835,29 @@ async function applyRateLimit(request) {
 }
 
 export function mainnetApiErrorStatus(message) {
-  if (/Rate limit exceeded/.test(message)) return 429;
-  if (/Request body exceeds/.test(message)) return 413;
-  if (/Origin is not allowed/.test(message)) return 403;
+  const text = String(message ?? "");
+  if (/Rate limit exceeded/.test(text)) return 429;
+  if (/Request body exceeds/.test(text)) return 413;
+  if (/Origin is not allowed/.test(text)) return 403;
   // A competing transaction cannot reserve an already-locked input.
-  if (/input outpoint .*already reserved|input reservation exists/i.test(message)) return 409;
-  // Durable state and ambiguous relay failures must fail closed as unavailable.
-  if (/result is UNKNOWN|durable broadcast ledger|UPSTASH_REDIS_REST|input reservation/i.test(message)) return 503;
+  if (/input outpoint .*already reserved|input reservation exists/i.test(text)) return 409;
+  // Provider, network and durable-ledger failures are service errors, not
+  // client validation errors. Do not expose their raw messages to API callers.
+  if (/result is UNKNOWN|durable broadcast ledger|UPSTASH_REDIS_REST|input reservation|Electrum|WebSocket|fetch failed|ECONN[A-Z]*|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|Unable to connect|Timed out connecting/i.test(text)) return 503;
+  if (/TypeError|ReferenceError|SyntaxError|RangeError|Cannot read properties|is not a function/i.test(text)) return 500;
   return 400;
+}
+
+export function mainnetApiPublicError(message) {
+  const text = String(message ?? "Unknown service error.");
+  const status = mainnetApiErrorStatus(text);
+  if (status < 500) return text;
+  const unknownSubmission = text.match(/broadcast result is UNKNOWN for ([0-9a-f]{64})/i);
+  if (unknownSubmission) {
+    return "Transaction submission status is unknown for " + unknownSubmission[1].toLowerCase() +
+      ". Check this transaction before attempting any retry.";
+  }
+  return "Mainnet service is temporarily unavailable. Check transaction status before retrying.";
 }
 
 export function createMainnetApiServer() {
@@ -2882,7 +2901,7 @@ export function createMainnetApiServer() {
             bchCircleBroadcastEnabled: BCH_MAINNET_CIRCLE_BROADCAST_ENABLED,
             bchGatherBroadcastEnabled: BCH_MAINNET_GATHER_BROADCAST_ENABLED,
             pusdCircleBroadcastEnabled: PUSD_MAINNET_CIRCLE_BROADCAST_ENABLED,
-            mainnetReleaseApproved: false,
+            mainnetReleaseApproved: MAINNET_RELEASE_APPROVED,
             pusdDurableSubmissionLedgerConfigured: isPusdBroadcastLedgerConfigured(),
           });
         });
@@ -3012,8 +3031,8 @@ export function createMainnetApiServer() {
         return;
       }
       if (request.method === "POST" && url.pathname === "/api/pusd/broadcast") {
-        if (!MAINNET_BROADCAST_ENABLED) {
-          sendJson(response, 403, { error: "Mainnet broadcast is disabled until the release review is approved." });
+        if (!MAINNET_RELEASE_APPROVED || !MAINNET_BROADCAST_ENABLED) {
+          sendJson(response, 403, { error: "Mainnet broadcast is disabled until the independent release review is approved." });
           return;
         }
         const body = await readJson(request);
@@ -3027,7 +3046,7 @@ export function createMainnetApiServer() {
       sendJson(response, 404, { error: "Not found." });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown service error.";
-      sendJson(response, mainnetApiErrorStatus(message), { error: message });
+      sendJson(response, mainnetApiErrorStatus(message), { error: mainnetApiPublicError(message) });
     }
   });
 }
