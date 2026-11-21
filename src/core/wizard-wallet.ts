@@ -582,6 +582,8 @@ class WizardWallet {
   private autoResumePaused = false;
   // Foreground/focus/online can fire in quick succession on mobile browsers.
   private lastResumeAttemptAt = 0;
+  /** One automatic fresh-relay retry per stall of a saved session. Reset on connect. */
+  private autoRetryUsed = false;
   private confirmedReceiveAddresses: Partial<Record<Net, string>> = {};
   /** Authenticated WizardConnect wallet Nostr public key for the active session. */
   private sessionWalletIdentity: string | null = null;
@@ -611,6 +613,12 @@ class WizardWallet {
     this.clearConnectionWatchdog();
     this.connectionWatchdog = setTimeout(() => {
       if (!this.isCurrent(mgr, generation) || (this.state !== "connecting" && this.state !== "reconnecting")) return;
+      if (existing && !this.autoRetryUsed && !this.autoResumePaused) {
+        // A relay that died while the page was in the background never comes
+        // back on its own. Try the saved session once on a fresh relay.
+        this.autoRetryUsed = true;
+        if (this.retrySavedSession()) return;
+      }
       this.error = wizardConnectionTimeoutMessage(existing);
       // Stop the attempt for real so the relay cannot flip the page back to
       // "Reconnecting…". The saved session stays for an explicit retry.
@@ -683,6 +691,7 @@ class WizardWallet {
       this.addressSetRevision++;
       savePublicPaths(mgr);
       this.error = null;
+      this.autoRetryUsed = false;
       this.state = 'connected';
       this.emit();
     });
@@ -817,6 +826,22 @@ class WizardWallet {
       this.emit();
       return false;
     }
+  }
+
+  /**
+   * Called when the page comes back after being in the background (for
+   * example after approving in Selene). A relay left "reconnecting" in the
+   * background is often dead, so start the saved session on a fresh relay
+   * instead of waiting for the old one to time out.
+   */
+  resumeAfterBackground(): boolean {
+    if (this.autoResumePaused) return false;
+    if (this.state === 'reconnecting' || (this.state === 'connecting' && !this.uri)) {
+      const now = Date.now();
+      if (now - this.lastResumeAttemptAt < 5000) return false;
+      return this.retrySavedSession();
+    }
+    return this.tryResume();
   }
 
   /**
@@ -1141,8 +1166,16 @@ export const wallet = new WizardWallet();
 // Mobile browsers may suspend the relay while Selene is foregrounded. Resume only
 // when the page returns, and throttle duplicate focus/visibility events.
 if (typeof window !== 'undefined') {
+  let hiddenAt = 0;
   const resume = () => {
-    if (document.visibilityState === 'visible') wallet.tryResume();
+    if (document.visibilityState !== 'visible') {
+      hiddenAt = Date.now();
+      return;
+    }
+    const wasAway = hiddenAt > 0 && Date.now() - hiddenAt >= 2000;
+    hiddenAt = 0;
+    if (wasAway) wallet.resumeAfterBackground();
+    else wallet.tryResume();
   };
   window.addEventListener('focus', resume);
   window.addEventListener('online', resume);
