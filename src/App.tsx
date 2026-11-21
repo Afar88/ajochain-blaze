@@ -300,6 +300,16 @@ export function circleRiskNoticeText(network: NetworkId): string {
     : "Test network. No real money.";
 }
 
+export function formatUpdatedAgo(timestamp: number, now = Date.now()): string {
+  const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
+  if (seconds < 5) return "just now";
+  if (seconds < 60) return seconds + "s ago";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return minutes + "m ago";
+  const hours = Math.floor(minutes / 60);
+  return hours + "h ago";
+}
+
 const formatBchSatoshis = (satoshis: bigint) => {
   const whole = (satoshis / 100_000_000n).toString();
   const fraction = (satoshis % 100_000_000n).toString().padStart(8, "0");
@@ -1999,83 +2009,18 @@ export default function App() {
         {page === "overview" && (
           <>
             {renderCircleRiskNotice()}
-
-            <section className="overview-my-circles section-card" aria-labelledby="overview-circles-title">
-              <div className="section-heading overview-circles-heading">
-                <div><span className="section-kicker">YOUR SAVINGS</span><h2 id="overview-circles-title">My circles</h2>
-                  <p>{NETWORKS[network].label} circles, classified from read-only chain status.</p></div>
-                <button type="button" className="text-action" onClick={() => navigate("my-circles")}>View all <ArrowRight size={14} /></button>
-              </div>
-              {renderCircleTabs()}
-              {visibleStatusCircles.length === 0 ? (
-                <div className="my-circles-empty overview-empty">
-                  <h2>{circleStatusTab === "active" ? "No active circles yet" : "No completed circles yet"}</h2>
-                  <p>{circleStatusTab === "active"
-                    ? "Create your first circle or restore an invite. New circles appear here after their status is checked."
-                    : "Completed payouts and confirmed cancellations appear here."}</p>
-                  <button type="button" className="secondary-button" onClick={() => navigate("my-circles")}>Open My circles</button>
-                </div>
-              ) : renderCircleRows(visibleStatusCircles.slice(0, 3), true)}
-              {visibleNetworkCircles.length > 3 && (
-                <button type="button" className="text-action overview-view-more" onClick={() => navigate("my-circles")}>
-                  View all {visibleNetworkCircles.length} circles <ArrowRight size={14} />
-                </button>
-              )}
-              <span className="circle-scan-summary" role="status">✓ {NETWORKS[network].label}: {networkCircleCounts.active} active, {networkCircleCounts.completed} completed</span>
-            </section>
-
             <section className="welcome-hero">
               <div className="welcome-kicker"><span /> AJO · ESUSU · ON BITCOIN CASH</div>
               <h1>Your Ajo savings circle,<br /><em>on Bitcoin Cash.</em></h1>
-              <p>Save with people you trust. Everyone puts in the same amount, one member collects each round, and the rules are kept by the blockchain, not a middleman.</p>
-              <button className="primary-button hero-cta" type="button" onClick={() => navigate("create-circle")}>
-                Create a circle <ArrowRight size={16} />
-              </button>
-            </section>
-
-            <section className="overview-activity section-card" aria-labelledby="overview-activity-title">
-              <div className="section-heading"><div><span className="section-kicker">LATEST RECORDS</span><h2 id="overview-activity-title">Activity</h2></div>
-                <button type="button" className="text-action" onClick={() => navigate("activity")}>All activity <ArrowRight size={14} /></button>
+              <p>Save with people you trust. Everyone puts in the same amount, one member collects each round, and the rules stay on the blockchain.</p>
+              <div className="hero-actions">
+                <button className="primary-button hero-cta" type="button" onClick={() => navigate("create-circle")}>
+                  Create a circle <ArrowRight size={16} />
+                </button>
+                <button className="secondary-button hero-secondary-cta" type="button" onClick={() => navigate("my-circles")}>
+                  My circles
+                </button>
               </div>
-              <Suspense fallback={<p className="classic-empty">Loading chain-backed activity…</p>}>
-                <ActivityRecords network={network} compact key={"activity-overview-" + network} />
-              </Suspense>
-            </section>
-
-            <section className="how-ajo-works" aria-labelledby="how-ajo-works-title">
-              <div className="how-ajo-heading">
-                <span className="section-kicker">SIMPLE, TOGETHER</span>
-                <h2 id="how-ajo-works-title">How Ajo works</h2>
-              </div>
-              <ol className="how-ajo-steps">
-                <li><span className="how-ajo-number">01</span><div><b>Join</b><small>Join a circle with people you trust.</small></div></li>
-                <li><span className="how-ajo-number">02</span><div><b>Contribute each round</b><small>Everyone adds the agreed amount.</small></div></li>
-                <li><span className="how-ajo-number">03</span><div><b>Collect your turn</b><small>One member receives the pot each round.</small></div></li>
-              </ol>
-            </section>
-
-            <section className="overview-status-grid">
-              <article className="overview-status-card">
-                <div className="status-card-icon"><Wallet size={18} /></div>
-                <div><span className="status-label">WALLET</span><b>{connected ? walletView.walletName ?? "Connected" : "Not connected"}</b>
-                  <small>{connected ? shortAddress(walletAddress) : "Connect Selene to manage member contributions"}</small></div>
-                <button type="button" className="status-action" onClick={openWallet}>{connected ? "Details" : "Connect"} <ArrowRight size={13} /></button>
-              </article>
-              <article className="overview-status-card">
-                <div className="status-card-icon"><ShieldCheck size={18} /></div>
-                <div><span className="status-label">NETWORK</span><b>{NETWORKS[network].label}</b>
-                  <small>{network === "chipnet" ? "Chipnet testing environment" : "Mainnet · wallet approval required"}</small></div>
-                <button type="button" className="status-action" onClick={() => setMenuOpen(true)}>Change <ChevronDown size={13} /></button>
-              </article>
-            </section>
-
-            <section className="asset-preview">
-              <div><span className="section-kicker">SUPPORTED ASSETS</span><h2>BCH and PUSD</h2><p>Pick what your circle saves in. Fees are always shown up front.</p></div>
-              <div className="asset-preview-rows">
-                <div><span className="asset-symbol">B</span><span><b>Bitcoin Cash</b><small>Save in Bitcoin Cash · practise free on the test network first</small></span><span className="asset-state">Available</span></div>
-                <div><span className="asset-symbol pusd-symbol">P</span><span><b>ParyonUSD</b><small>Save in dollars with ParyonUSD · balances checked on the blockchain</small></span><span className="asset-state neutral">Read only</span></div>
-              </div>
-              <button type="button" className="text-action" onClick={() => navigate("assets")}>View asset details <ArrowRight size={14} /></button>
             </section>
           </>
         )}
@@ -2244,9 +2189,26 @@ export default function App() {
           <section className="page-section wallet-page">
             <div className="page-intro">
               <span className="section-kicker">YOUR WALLET</span>
-              <h1>Wallet</h1>
-              <p>Balances held in the wallet connected to Selene.</p>
+              <h1>Wallet &amp; assets</h1>
+              <p>Your BCH and dollar balances in one place.</p>
             </div>
+            <article className="asset-detail-card wallet-asset-intro">
+              <span className="section-kicker">SAVE YOUR WAY</span>
+              <h2>Bitcoin Cash or digital dollars</h2>
+              <p>Your circle, your currency. Fees are always shown before you sign.</p>
+              <div className="wallet-asset-rows">
+                <div className="wallet-asset-row">
+                  <span className="asset-symbol">B</span>
+                  <span><b>Bitcoin Cash</b><small>Fast, low-fee savings. Practise free on Chipnet, then save for real on Mainnet.</small></span>
+                  <span className="wallet-asset-status">Live</span>
+                </div>
+                <div className="wallet-asset-row">
+                  <span className="asset-symbol pusd-symbol">P</span>
+                  <span><b>ParyonUSD (PUSD)</b><small>Save in steady dollars, no bank needed. Balances checked straight on the blockchain.</small></span>
+                  <span className="wallet-asset-status">Mainnet</span>
+                </div>
+              </div>
+            </article>
             <article className="asset-detail-card wallet-balance-card">
               <div className="wallet-balance-heading">
                 <div>
@@ -2263,24 +2225,28 @@ export default function App() {
                 </div>
                 <div className="wallet-balance-row">
                   <span className="asset-symbol pusd-symbol">P</span>
-                  <div><b>ParyonUSD</b><small>Dollar balance on Mainnet</small></div>
-                  <strong>{!connected ? "Connect wallet" : network !== "mainnet" ? "Switch to Mainnet" : pusdView.status === "ready" ? formatAssetAmount("PUSD", pusdView.amount) + " PUSD" : pusdView.status === "loading" ? "Checking…" : "Not checked"}</strong>
+                  <div><b>ParyonUSD</b><small>Across your wallet addresses</small></div>
+                  <strong>{!connected ? "Connect wallet" : network !== "mainnet" ? "Switch to Mainnet" : walletPusdTotal !== null ? formatAssetAmount("PUSD", walletPusdTotal) + " PUSD" : walletPusdError ? "Not available" : "Checking…"}</strong>
                 </div>
               </div>
               <div className="wallet-balance-actions">
-                <button type="button" className="secondary-button" onClick={openWallet}>
-                  {connected ? "Open wallet details" : "Connect wallet"}
-                </button>
                 <button type="button" className="secondary-button" onClick={() => {
                   if (!connected) { openWallet(); return; }
-                  if (network !== "mainnet") { changeNetwork("mainnet"); return; }
-                  setPusdRefresh((value) => value + 1);
-                }} disabled={pusdView.status === "loading"}>
-                  {pusdView.status === "loading" ? "Checking PUSD…" : network !== "mainnet" ? "Switch to Mainnet for PUSD" : "Refresh PUSD"}
+                  setWalletBalanceRefreshRun((value) => value + 1);
+                }} disabled={!connected || walletBalanceRefreshing}>
+                  <RefreshCw size={15} className={walletBalanceRefreshing ? "activity-spin" : ""} />
+                  {walletBalanceRefreshing ? "Refreshing…" : "Refresh balances"}
+                </button>
+                <button type="button" className="secondary-button" onClick={openWallet}>
+                  {connected ? "Wallet details" : "Connect wallet"}
                 </button>
               </div>
+              <div className="wallet-balance-updated" aria-live="polite">
+                {walletBalanceUpdatedAt ? "Updated " + formatUpdatedAgo(walletBalanceUpdatedAt) : "Balances not checked yet"}
+                {walletPusdError && <span>{walletPusdTotal !== null ? "PUSD refresh failed. Showing last balance." : "PUSD balance could not be checked."}</span>}
+              </div>
             </article>
-            <p className="wallet-balance-explainer">Money in your connected wallet. Money in a circle shows on that circle's page.</p>
+            <p className="wallet-balance-explainer">Circle balances are shown on each circle page.</p>
             <details className="technical-details wallet-technical-details">
               <summary>Technical details</summary>
               <div className="asset-detail-row"><span>Selected network</span><b>{NETWORKS[network].label}</b></div>
