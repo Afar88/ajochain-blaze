@@ -2995,7 +2995,7 @@ export function createMainnetApiServer() {
         });
         await withElectrumSessions(async (sessions) => {
           const tip = await getTipQuorum(sessions);
-          const snapshots = await getUnspentSnapshots(sessions, walletScripts);
+          const snapshots = await getUnspentSnapshots(sessions, walletScripts, { includeTokens: true });
           const present = new Set(snapshots[0].map((item) => item.txid + ":" + item.vout));
           const unspent = Object.fromEntries(outpoints.map((item) => [
             item.txid + ":" + item.vout,
