@@ -1058,18 +1058,46 @@ export default function App() {
         const walletAddresses = client.listWalletAddresses(network, 49, 20);
         if (walletAddresses.length === 0) throw new Error("Couldn't load your wallet addresses. Reconnect and try again.");
         const provider = await getClassicProvider(network);
-        const activityProvider = provider as typeof provider & {
-          getAddressActivityForAddresses?: (addresses: readonly string[]) => Promise<Array<{
-            address: string; hasHistory: boolean; hasPendingHistory: boolean;
-            confirmedSatoshis: bigint; unconfirmedSatoshis: bigint;
-          }>>;
-        };
-        if (typeof activityProvider.getAddressActivityForAddresses !== "function") {
-          throw new Error("Your wallet balances could not be checked right now.");
+        const scanned: Array<{
+          address: string;
+          hasHistory: boolean;
+          hasPendingHistory: boolean;
+          confirmedSatoshis: bigint;
+          unconfirmedSatoshis: bigint;
+        }> = [];
+        if (network === "mainnet") {
+          const activityProvider = provider as typeof provider & {
+            getAddressActivityForAddresses?: (addresses: readonly string[]) => Promise<Array<{
+              address: string; hasHistory: boolean; hasPendingHistory: boolean;
+              confirmedSatoshis: bigint; unconfirmedSatoshis: bigint;
+            }>>;
+          };
+          if (typeof activityProvider.getAddressActivityForAddresses !== "function") {
+            throw new Error("Your wallet balances could not be checked right now.");
+          }
+          // Mainnet address-activity reads accept up to 50 addresses per call.
+          for (let offset = 0; offset < walletAddresses.length; offset += 50) {
+            const batch = walletAddresses.slice(offset, offset + 50);
+            scanned.push(...await activityProvider.getAddressActivityForAddresses(batch.map((entry) => entry.address)));
+          }
+        } else {
+          // Chipnet's regular provider exposes spendable UTXOs rather than the
+          // Mainnet activity quorum. Read each receive/change address directly.
+          const results = await Promise.all(walletAddresses.map(async (entry) => ({
+            address: entry.address,
+            utxos: await provider.getUtxos(entry.address),
+          })));
+          for (const result of results) {
+            const total = result.utxos.reduce((sum, utxo) => sum + (utxo.satoshis > 0n ? utxo.satoshis : 0n), 0n);
+            scanned.push({
+              address: result.address,
+              hasHistory: result.utxos.length > 0,
+              hasPendingHistory: false,
+              confirmedSatoshis: total,
+              unconfirmedSatoshis: 0n,
+            });
+          }
         }
-        const scanned = await activityProvider.getAddressActivityForAddresses(
-          walletAddresses.map((entry) => entry.address),
-        );
         if (cancelled || client.state !== "connected" || client.getSessionIdentity() !== identity ||
             client.addressSetRevision !== revision) return;
         const byAddress = new Map(scanned.map((entry) => [entry.address.toLowerCase(), entry]));
