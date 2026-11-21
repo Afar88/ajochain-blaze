@@ -533,11 +533,11 @@ export default function V2FeeBchWorkspace({
         <div>
           <span className="section-kicker">MEMBER CONTRIBUTIONS · CIRCLE RULES</span>
           <h2 id="v2-fee-title">{view === "create" ? "Fair-round BCH circle" : active?.name ?? "Your circle"}</h2>
-          <p>{view === "create" ? "Members contribute each round. When someone collects (except on the final turn), one next contribution is held for their following round." : "See each member’s contributions, what is still due, who collects next and which actions are available."}</p>
+          <p>{view === "create" ? "Members pay each round. One next payment is saved." : "See member payments, what's due and who collects next."}</p>
         </div>
         <span className="classic-network">Chipnet · test coins</span>
       </div>
-      <p className="circle-education-copy">For each non-final payout, one next contribution is held for the recipient's following round. Members make later contributions as usual.</p>
+      <p className="circle-education-copy">One next contribution is held for non-final payouts.</p>
 
       {view === "create" && (<>
       <div className="circle-workspace-grid">
@@ -545,7 +545,7 @@ export default function V2FeeBchWorkspace({
           <div className="circle-panel-heading">
             <span className="section-kicker">NEW GROUP</span>
             <h3>Create a circle</h3>
-            <p>Set the contribution and register your group members. Your connected Selene wallet is added first automatically.</p>
+            <p>Set an amount and add members. Your wallet is first.</p>
           </div>
           <form onSubmit={create}>
             <label>Circle name<input value={name} onChange={(event) => setName(event.target.value)} maxLength={60} required /></label>
@@ -559,19 +559,19 @@ export default function V2FeeBchWorkspace({
                 : "Connect your Selene wallet and it will be registered automatically."}
             </div>
             <label>Other members' Chipnet BCH addresses · one per line<textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder="bchtest:…\nbchtest:…" required /></label>
-            <p className="field-hint">The circle setup permanently links each member BCH address to this circle on the public Chipnet blockchain. Each member receives a small marker; the settings are public, but the circle name is not. Only add addresses whose owners agree to this public association.</p>
+            <p className="field-hint">Member addresses and settings are public. Add only with consent.</p><details className="technical-details"><summary>Details</summary><p>The circle setup permanently links each member BCH address to this circle on the public Chipnet blockchain. Each member receives a small marker; the settings are public, but the circle name is not. Only add addresses whose owners agree to this public association.</p></details>
             <button className="primary-button" type="submit" disabled={busy || network !== "chipnet" || !walletConnected}>
               {busy ? "Creating circle…" : network !== "chipnet" ? "Switch to Chipnet" : !walletConnected ? "Connect wallet first" : "Create fee circle"}
             </button>
           </form>
-          <small className="field-hint">Add 1–4 other unique Chipnet addresses in payout order (2–5 members total). Each member funds the current round; a non-final recipient carries one next contribution forward.</small>
+          <small className="field-hint">Add 1–4 other Chipnet addresses in payout order.</small>
         </div>
       </div>
       <form className="classic-restore-form circle-restore-form" onSubmit={restore}>
         <label>Join an existing circle with its invite link<input value={restoreInput} onChange={(event) => setRestoreInput(event.target.value)} placeholder="Paste circle invite URL" /></label>
         <button type="submit" className="secondary-button" disabled={!restoreInput.trim()}>Restore circle</button>
       </form>
-      <p className="field-hint circle-menu-hint">After you create or restore a circle, it appears on the <b>My circles</b> page for the selected network.</p>
+      <p className="field-hint circle-menu-hint">Find saved circles on My circles.</p>
       </>)}
 
       {view === "circle" && active && <div className="classic-active-circle">
@@ -591,7 +591,7 @@ export default function V2FeeBchWorkspace({
             <div><b>Member accountability ledger</b><span>What each member has paid, what is still due, and who has collected</span></div>
             <span className={snapshot.ready || snapshot.completed ? "fee-accounting-status safe" : "fee-accounting-status blocked"}>{snapshot.completed ? "Circle closed" : snapshot.ready ? "Payout unlocked" : "Payout locked"}</span>
           </div>
-          {(active.covenant === "fee-v1" || active.covenant === "fee-v1-guarded") && <p className="classic-error">Older circle rules: the circle checks one contribution at a time. If a member stops contributing after collecting, later rounds may be blocked. New circles hold aside the next contribution before a payout.</p>}
+          {(active.covenant === "fee-v1" || active.covenant === "fee-v1-guarded") && <details className="technical-details"><summary>Details</summary><p className="classic-error">Older circles fund one member at a time. New circles hold one future contribution before payout.</p></details>}
           {(active.covenant === "fee-v2-escrow" || active.covenant === "fee-v2-escrow-guarded") && <p className="field-hint">This older circle uses its original full-cycle payment rule. New circles hold aside one next contribution before a payout. Existing circles are not changed automatically.</p>}
           <div className="fee-accounting-table">
             <div className="fee-accounting-row fee-accounting-header"><span>Member</span><span>Paid directly</span><span>Locked now / required</span><span>Payout received</span><span>Still due</span><span>Status</span></div>
@@ -611,7 +611,7 @@ export default function V2FeeBchWorkspace({
             : snapshot.completed
             ? <p className="classic-recipient"><b>Circle completed.</b> Every registered member received their scheduled payout. No further deposits or payouts are accepted.{snapshot.closedAs === "completed" ? " The circle tokens were closed and their BCH backing returned to the initiator, so nothing remains locked." : ""}</p>
             : <p className="classic-recipient">Next payout recipient: <b>Member {snapshot.round + 1}</b> · {snapshot.recipient}</p>}
-          <p className="field-hint">{snapshot.closedAs ? "This circle is closed. No further actions are possible." : snapshot.hasPaid ? "The first payout has happened. Cancellation is permanently locked; remaining escrow cannot be withdrawn." : "No payout has happened yet. Only the initiator may cancel and refund recorded member credit."}</p>
+          <p className="field-hint">{snapshot.closedAs ? "This circle is closed." : snapshot.hasPaid ? "First payout is done. Cancellation is locked." : "No payout yet. The initiator can cancel and refund."}</p>
         </> : <p className="classic-empty">Reading the state NFT and all member receipts from Chipnet. Refresh if the transaction is still confirming.</p>}
         <div className="member-payment-status">
           {memberIndex >= 0
