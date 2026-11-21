@@ -293,7 +293,10 @@ test("Electrum failover uses two fast good servers and closes the non-answering 
       firstAnswerTimeoutMs: 20,
       sessionFactory: makeElectrumTestSessionFactory(created),
       readTip: async (session) => {
-        if (session.operatorId === "slow-op") return new Promise(() => {});
+        if (session.operatorId === "slow-op") {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          throw new Error("simulated first-tip timeout");
+        }
         await new Promise((resolve) => setTimeout(resolve, session.operatorId === "fast-a" ? 5 : 10));
         return makeElectrumTestTip();
       },
@@ -352,7 +355,10 @@ test("Electrum failover retries one incomplete selection, then returns the 503 q
       sessionFactory: makeElectrumTestSessionFactory(created),
       readTip: async (session) => {
         answers.set(session.operatorId, (answers.get(session.operatorId) ?? 0) + 1);
-        if (session.operatorId === "unreachable") return new Promise(() => {});
+        if (session.operatorId === "unreachable") {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          throw new Error("simulated first-tip timeout");
+        }
         return makeElectrumTestTip();
       },
     }),
