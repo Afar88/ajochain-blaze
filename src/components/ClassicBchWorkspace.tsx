@@ -32,6 +32,11 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
   const [contractAddress, setContractAddress] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  useEffect(() => {
+    if (!notice || /unavailable|could not|couldn't|failed|error|not valid|changed/i.test(notice)) return;
+    const timer = window.setTimeout(() => setNotice(""), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -504,7 +509,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
 
       {busy && <p className="classic-feedback" role="status">Working with the selected BCH network…</p>}
       {notice && <p className="classic-feedback" role="status">{notice}</p>}
-      {error && <p className="classic-error" role="alert">{error}</p>}
+      {error && <p className="classic-error" role="alert">{error}<button type="button" aria-label="Dismiss error" onClick={() => setError("")}>×</button></p>}
     </section>
   );
 }
