@@ -443,7 +443,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       const locallyVerified = await wallet.signAndVerify(
         signingPlan.wc,
         signingPlan.walletInputs,
-        signingPlan.prompt + (send ? " (verify and relay on BCH Mainnet)" : " (independent server verification only; never broadcast)"),
+        signingPlan.prompt + (send ? " (check and send on BCH Mainnet)" : " (independent server verification only; never broadcast)"),
       );
       if (signingPlan.operation === "genesis" &&
           (!wallet.isReceiveAddressConfirmed("mainnet") || wallet.address("mainnet") !== signingPlan.circle.initiator)) {
@@ -779,7 +779,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
           <div><span>Contribution per member</span><strong>{formatAssetAmount("PUSD", genesisSigningPlan.circle.contribution)} PUSD</strong></div>
           <div><span>Estimated network fee</span><strong>{preparedPlan.feeEstimate} sats</strong></div>
           <details className="technical-details">
-            <summary>Technical details</summary>
+            <summary>Details</summary>
             <div><span>PUSD circle contract address</span><strong><code>{preparedPlan.contractAddress}</code></strong></div>
             {preparedPlan.escrowAddresses.map((address, index) => (
               <div key={address}><span>Member {index + 1} escrow address</span><strong><code>{address}</code></strong></div>
@@ -821,10 +821,10 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
             </div>
           </div>
           {!circleSnapshot && <p className="classic-empty">Checking circle status…</p>}
-          {circleSnapshot && <p className="classic-empty">Latest PUSD Mainnet circle status is verified from the blockchain.</p>}
+          {circleSnapshot && <p className="classic-empty">Latest PUSD Mainnet circle details are up to date.</p>}
           {circleSnapshot && (
             <div className="pusd-mainnet-breakdown">
-              <b>Verified circle state</b>
+              <b>Circle status</b>
               <div><span>Round</span><strong>{circleSnapshot.completed ? "Completed" : (circleSnapshot.round + 1) + " of " + activeCircle.members.length}</strong></div>
               <div><span>Next recipient</span><strong>{circleSnapshot.recipient ?? "None"}</strong></div>
               <div><span>Payout readiness</span><strong>{circleSnapshot.ready ? "Ready" : "Waiting for member credits"}</strong></div>
@@ -856,7 +856,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
               <p>{actionPreview.summary}</p>
               <div><span>Estimated BCH network fee</span><strong>{actionPreview.feeEstimate} sats</strong></div>
               <details className="technical-details">
-                <summary>Technical details</summary>
+                <summary>Details</summary>
                 <p>Estimated transaction size: {actionPreview.size} bytes. Wallet items to approve: {actionPreview.walletInputCount}.</p>
                 <p>Payments are checked before they are sent. Check circle status again before each new action.</p>
               </details>
@@ -889,8 +889,11 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         <LockKeyhole size={16} />
         <span><b>PUSD Mainnet circle rules</b><small>Members approve each payment in Selene. The app checks the circle details before sending. Plain PUSD wallet transfers remain locked.</small>
           <details className="technical-details">
-            <summary>Technical details</summary>
-            <p>Circle actions are checked against provider-confirmed previous outputs, the exact circle and escrow artifacts, wallet signature hashes and BCH 2026 VM rules. The durable input ledger prevents a transaction from being relayed twice.</p>
+            <summary>Details</summary>
+            <details className="technical-details">
+            <summary>Details</summary>
+            <p>Before sending, the app checks the previous payments, circle rules and wallet approval. It prevents the same payment from being sent twice.</p>
+          </details>
           </details></span>
       </div>
 
