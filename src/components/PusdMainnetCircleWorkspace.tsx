@@ -696,7 +696,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         <div>
           <span className="section-kicker">PARYONUSD · DOLLAR TOKEN</span>
           <h2 id="pusd-mainnet-title">Create a PUSD Mainnet circle</h2>
-          <p>Each member controls their PUSD. A 1% fee applies. Cancel before the first payout.</p>
+          <p>Members control their PUSD. A 1% fee applies.</p>
         </div>
         <span className="classic-network mainnet">Bitcoin Cash Mainnet</span>
       </div>
@@ -707,7 +707,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       </div>
 
       {network !== "mainnet" && (
-        <p className="classic-error" role="status">Switch to Mainnet to create a PUSD circle. PUSD isn't available on Chipnet.</p>
+        <p className="classic-error" role="status">Switch to Mainnet for PUSD circles. Chipnet isn't supported.</p>
       )}
 
       <form className="pusd-mainnet-form" onSubmit={saveDraft}>
@@ -887,7 +887,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
 
       <div className="pusd-mainnet-build-status">
         <LockKeyhole size={16} />
-        <div><b>PUSD Mainnet circle rules</b><small>Members approve each payment in Selene. PUSD wallet transfers stay locked.</small>
+        <div><b>PUSD Mainnet circle rules</b><small>Approve each payment in Selene. Transfers stay locked.</small>
           <details className="technical-details">
             <summary>Details</summary>
             <details className="technical-details">
