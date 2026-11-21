@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { plainErrorSummary } from "./error-copy";
 import { Copy, RefreshCw } from "lucide-react";
 import { parseAssetAmount } from "../core/assets";
 import { CashTokensGenesisUtxoMissingError, classicAddressToPkh, getClassicProvider, planClassicGenesisSetup } from "../core/classic-bch";
@@ -640,9 +641,11 @@ export default function V2FeeBchWorkspace({
       </div>}
       {busy && <p className="classic-feedback" role="status">Preparing or verifying a Chipnet transaction…</p>}
       {notice && <p className="classic-feedback" role="status">{notice}</p>}
-      {error && <p className="classic-error" role="alert">{error}
+      {error && <div className="classic-error" role="alert">
+        <span>{plainErrorSummary(error)}</span>
+        <details className="technical-details"><summary>Details</summary><p>{error}</p></details>
         <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setError("")}>×</button>
-      </p>}
+      </div>}
     </section>
   );
 }
