@@ -1776,7 +1776,9 @@ export default function App() {
     currentBchBalanceScan,
     receiveAddressScanLoading,
   });
-  const selectedReceiveAddressChoice = receiveAddressChoices.find((choice) => choice.index === walletView.receiveIndex) ?? null;
+  const selectedReceiveAddressChoice = receiveAddressChoices.find((choice) =>
+    choice.branch === "receive" && choice.index === walletView.receiveIndex,
+  ) ?? null;
   const selectedAddressPendingOnly = network === "mainnet" && Boolean(selectedReceiveAddressChoice &&
     BigInt(selectedReceiveAddressChoice.confirmedSatoshis) === 0n &&
     (BigInt(selectedReceiveAddressChoice.unconfirmedSatoshis) > 0n || selectedReceiveAddressChoice.hasPendingHistory));
