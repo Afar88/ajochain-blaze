@@ -565,17 +565,23 @@ export default function App() {
     walletClient?.clearReceiveAddressConfirmation(network);
   }, [network, walletClient]);
 
-  // Status messages are transient: show them while relevant and clear them
-  // automatically so the page returns to a clean state.
+  // Status and success notes fade quickly. Errors are dismissed by the saver.
   useEffect(() => {
+    if (!gatherMessage && !addressMatchMessage && !pusdSignatureMessage && !mainnetInviteNotice) return;
     const timer = window.setTimeout(() => {
       setGatherMessage("");
       setAddressMatchMessage("");
       setPusdSignatureMessage("");
-      setPusdPlanError("");
-    }, 20_000);
+      setMainnetInviteNotice("");
+    }, 4_000);
     return () => window.clearTimeout(timer);
-  }, [gatherMessage, addressMatchMessage, pusdSignatureMessage, pusdPlanError]);
+  }, [gatherMessage, addressMatchMessage, pusdSignatureMessage, mainnetInviteNotice]);
+
+  useEffect(() => {
+    if (gatherResult?.status !== "success") return;
+    const timer = window.setTimeout(() => setGatherResult(null), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [gatherResult]);
 
   const selectedCircleRecord = menuCircles.find((circle) =>
     circle.id === selectedMenuCircle && circle.network === network,
@@ -2129,7 +2135,9 @@ export default function App() {
                 </label>
                 <button type="button" className="secondary-button" disabled={!mainnetInviteInput.trim()}
                   onClick={joinMainnetCircleWithInvite}>Join with invite</button>
-                {mainnetInviteError && <p className="classic-error" role="alert">{mainnetInviteError}</p>}
+                {mainnetInviteError && <p className="classic-error" role="alert">{mainnetInviteError}
+                  <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setMainnetInviteError("")}>×</button>
+                </p>}
                 {mainnetInviteNotice && <p className="classic-notice" role="status">{mainnetInviteNotice}</p>}
               </section>
             )}
@@ -2278,7 +2286,9 @@ export default function App() {
                 <button type="button" className="secondary-button" onClick={() => void preparePusdTransfer()} disabled={pusdPlanBusy || pusdView.status !== "ready" || network !== "mainnet"}>
                   {pusdPlanBusy ? "Preparing preview…" : "Prepare transfer preview"}
                 </button>
-                {pusdPlanError && <p className="classic-error" role="alert">{pusdPlanError}</p>}
+                {pusdPlanError && <p className="classic-error" role="alert">{pusdPlanError}
+                  <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setPusdPlanError("")}>×</button>
+                </p>}
                 {pusdTransferPlan && (
                   <div className="pusd-plan-summary" role="status">
                     <b>Transfer plan ready · review only</b>
