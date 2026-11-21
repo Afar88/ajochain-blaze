@@ -222,6 +222,15 @@ test("Mainnet Electrum parser does not duplicate a built-in backup hostname alre
   assert.equal(providers.filter((provider) => new URL(provider.endpoint).hostname === "fulcrum.greyh.at").length, 1);
 });
 
+test("Mainnet Electrum parser caps appended providers at six", () => {
+  const endpoints = Array.from({ length: 5 }, (_, index) => "wss://env-" + index + ".example:50004");
+  const labels = Array.from({ length: 5 }, (_, index) => "env-" + index);
+  const providers = parseMainnetElectrumProviderConfig(endpoints.join(","), labels.join(","));
+  assert.equal(providers.length, 6);
+  assert.deepEqual(providers.slice(0, 5).map((provider) => provider.endpoint), endpoints);
+  assert.equal(providers[5].endpoint, "wss://fulcrum.greyh.at:50004");
+});
+
 test("Mainnet Electrum parser never uses built-in backups to rescue invalid environment config", () => {
   assert.throws(
     () => parseMainnetElectrumProviderConfig("", ""),
@@ -413,6 +422,7 @@ test("Electrum tip disagreement rechecks all first-pass responders after two sec
       : new Set(["recheck-a", "recheck-b"]));
   assert.deepEqual(sleeps, [2_000]);
   assert.deepEqual([...readCounts.values()], [2, 2, 2]);
+  assert.deepEqual(result.map((session) => session.operatorId), ["recheck-a", "recheck-b"]);
   assert.equal(result[0].providersAnswered, 3);
   assert.ok(created.every((session) => session.closed));
 });
