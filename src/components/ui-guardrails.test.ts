@@ -3,9 +3,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { circleRiskNoticeText } from "../App";
-const stylesSource = readFileSync(resolve(here, "../styles.css"), "utf8");
-
 const here = dirname(fileURLToPath(import.meta.url));
+const stylesSource = readFileSync(resolve(here, "../styles.css"), "utf8");
 const appSource = readFileSync(resolve(here, "../App.tsx"), "utf8");
 const bchSource = readFileSync(resolve(here, "BchMainnetCircleWorkspace.tsx"), "utf8");
 const controlSource = readFileSync(resolve(here, "TestSignControl.tsx"), "utf8");
