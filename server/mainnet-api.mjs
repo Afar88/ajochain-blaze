@@ -334,7 +334,6 @@ async function selectElectrumProviderSessions(providers, {
       }
     });
     const sessions = created.filter(Boolean);
-    const sessionSet = new Set(sessions);
 
     const firstPass = await new Promise((resolve) => {
       let completed = created.length - sessions.length;
@@ -391,14 +390,26 @@ async function selectElectrumProviderSessions(providers, {
       return firstPass.pair;
     }
 
-    // All configured endpoints have answered, failed, or reached their
-    // five-second first-answer deadline. If no exact pair formed, briefly
-    // allow a just-arrived BCH block to settle, then sample every server that
-    // passed the initial identity and freshness checks exactly once more.
+    // Fewer than two declared operators passed the first check: retry the
+    // complete selection once rather than reporting a tip disagreement.
+    const distinctInitialOperators = new Set(firstPass.answers.map(({ session }) => session.operatorId));
+    if (distinctInitialOperators.size < 2) {
+      sessions.forEach((session) => session.close());
+      continue;
+    }
+
+    // Every configured endpoint has answered, failed, or reached its initial
+    // deadline and no exact pair exists. Give a just-arrived BCH block time to
+    // propagate, then re-read each server that passed the first chain check.
     await sleep(ELECTRUM_TIP_RECHECK_DELAY_MS);
     const rechecked = await Promise.all(firstPass.answers.map(async ({ session }) => {
       try {
-        return { session, tip: await readTip(session) };
+        const tip = await withDeadline(
+          Promise.resolve().then(() => readTip(session)),
+          timeoutMs,
+          "Electrum tip recheck timed out.",
+        );
+        return { session, tip };
       } catch {
         return null;
       }
@@ -418,12 +429,7 @@ async function selectElectrumProviderSessions(providers, {
     }
 
     sessions.forEach((session) => session.close());
-    const distinctInitialOperators = new Set(firstPass.answers.map(({ session }) => session.operatorId));
-    if (distinctInitialOperators.size >= 2) {
-      throw new Error(ELECTRUM_TIP_DISAGREEMENT);
-    }
-    // Fewer than two independently-labelled servers passed the first check:
-    // retry the complete connection/selection phase once, before callbacks.
+    throw new Error(ELECTRUM_TIP_DISAGREEMENT);
   }
 
   throw new Error(ELECTRUM_QUORUM_UNAVAILABLE);
