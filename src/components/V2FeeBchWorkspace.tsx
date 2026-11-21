@@ -462,6 +462,7 @@ export default function V2FeeBchWorkspace({
       );
       const provider = await getClassicProvider("chipnet");
       const txid = await provider.sendRawTransaction(signed.signedTransaction);
+      window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
       setNotice("V2 fee payout broadcast. The 1% project fee and member payout were paid from the circle pot; miner fee came from the connected wallet. Transaction: " + txid);
       await refresh(active);
     } catch (cause) { setError(errorText(cause)); }
