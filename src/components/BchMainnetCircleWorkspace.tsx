@@ -558,6 +558,9 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
           : "The Mainnet server did not return a valid verification-only result. No transaction was broadcast.");
       }
       if (send) {
+        if (signingPlan.operation === "deposit" || signingPlan.operation === "payout") {
+          window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
+        }
         if (target === "genesis") setGenesisSigningPlan(null);
         else setActionSigningPlan(null);
         const sent = (verification.message || "Transaction sent.") + " Transaction: " + (verification.txid || "unknown");
