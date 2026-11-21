@@ -1,0 +1,80 @@
+# AjoChain security review
+
+**Review date:** 21 November 2026  
+**Repository:** `Afar88/ajochain-blaze`  
+**Base:** `main` at `4d078afb12d0f17b16d2aeff9af39c0442677ae7`  
+**Review branch:** `security/full-review-fixes-2026-11-21`
+
+## Scope and assurance level
+
+This is a focused code review of the repository snapshot and the changed files listed in this PR. It covers the CashScript contract families, Mainnet transaction verification and broadcast boundaries, PUSD CashToken accounting, the Mainnet API, WizardConnect session lifecycle, and wallet-facing transaction/balance handling.
+
+This is **not an independent security audit**, formal verification, a review by a BCH/CashTokens security specialist, or evidence from real-value Mainnet lifecycle testing. The required product notice is unchanged:
+
+> Real BCH. The circle contract hasn't had an independent audit yet. Start with small amounts.
+
+`mainnetReleaseApproved` remains `false`. All Mainnet broadcast paths are now disabled in code until an independent release process approves them.
+
+## Findings and disposition
+
+### SEC-01 — Critical — Mainnet broadcast paths bypassed the global release lock
+
+- **Files/lines:** `server/mainnet-api.mjs:25` and the BCH/PUSD broadcast constants immediately below it; HTTP route gates at approximately lines 2930–3025.
+- **Finding:** the general PUSD send gate was `false`, but the separate BCH circle, BCH gather and PUSD circle broadcast constants were `true`. The health response reported `mainnetReleaseApproved: false` independently of those flags. Consequently a Mainnet broadcast path could be enabled while the advertised release approval remained false.
+- **Fix:** introduced one immutable `MAINNET_RELEASE_APPROVED = false` gate; set all individual Mainnet broadcast flags to false; made each broadcaster require both the shared approval and its operation flag; made the HTTP routes check the shared gate before parsing input or opening Electrum sessions; and tied the health response to the same constant.
+- **Regression coverage:** tests assert that the constants remain false, direct calls cannot override the gate by passing `true`, and every Mainnet broadcast route returns 403 before provider access.
+- **Still open:** an independent audit and an explicit release approval process are required before any Mainnet broadcast can be considered.
+
+### SEC-02 — Medium — Plain PUSD transfer API accepted non-P2PKH scripts as wallet addresses
+
+- **File/lines:** `server/mainnet-api.mjs:831`.
+- **Finding:** the plain PUSD spend path accepted any supported CashAddress script type in `walletAddresses`. Its wallet-signature-specific `0x61` check only applies to P2PKH prevouts. This allowed a caller-supplied P2SH/P2SH32 contract script to be classified as a wallet-owned script in a transfer path intended for locally derived Selene wallet addresses.
+- **Fix:** wallet address normalization now accepts only Mainnet P2PKH locking scripts. Token-aware P2PKH CashAddresses remain accepted because they map to the same P2PKH locking bytecode.
+- **Regression coverage:** P2SH addresses are rejected and token-aware P2PKH addresses are accepted.
+
+### SEC-03 — Medium — Mainnet API exposed raw provider and infrastructure errors
+
+- **File/lines:** `server/mainnet-api.mjs:2849` and the request error boundary at line 3047.
+- **Finding:** the HTTP error boundary returned raw exception messages. Electrum connection errors include configured endpoint URLs; upstream and ledger messages can expose operational detail.
+- **Fix:** provider/network/durable-ledger failures are classified as service errors and returned with a generic public message. Ambiguous broadcast outcomes retain only the transaction ID and a clear instruction not to retry until status is checked. Client validation errors remain actionable.
+- **Regression coverage:** tests prove a private Electrum URL and provider detail do not appear in public responses, while an ambiguous transaction ID remains visible.
+
+### SEC-04 — High — API rate limiting is process-local, not deployment-wide
+
+- **File/lines:** `server/mainnet-api.mjs:2814` (the `rateLimit` Map is defined immediately above).
+- **Finding:** the current limiter is an in-memory Map. Serverless instances do not share that state and may be created or recycled independently, so this is not a reliable global rate limit. The source comment already notes this limitation.
+- **Fix:** no code-only change can safely create a deployment-wide guarantee without selecting and configuring a shared limiter or Vercel edge/WAF policy. The Mainnet broadcast lock added in this PR reduces the immediate real-value exposure, but it does not solve API resource-abuse protection.
+- **Still open:** configure and verify shared edge or durable-store rate limits for each API route, establish route-specific quotas, and add monitoring. Do not treat the current Map as a production security boundary.
+
+### SEC-05 — High — V3 circle funds can remain locked after the first payout if a member defaults
+
+- **Files/lines:** `contracts/AjoCircleV3AutoReserve.cash:230–247`; `contracts/AjoCirclePUSDV3Mainnet.cash:290–303`; comparable pre-first-payout cancellation restrictions exist in the V2 fee/escrow contract sources.
+- **Finding:** the V3 BCH and PUSD cancellation paths are limited to round zero before the first payout. Once a cycle advances, if a member never funds a later installment, remaining member credits/escrow can remain locked indefinitely. This is a lifecycle/design risk, not a problem that an API-side check can repair.
+- **Fix:** no covenant change was made. Adding a timeout, member-default path or emergency exit safely requires a new reviewed covenant version, a clear refund policy and adversarial tests; changing an existing contract would alter its spending rules/address and is not safe as a quick patch.
+- **Still open:** design and independently review a post-payout default/recovery path, including exact PUSD refunds and BCH carrier handling. Existing circles cannot be retrofitted by changing source.
+
+### SEC-06 — Medium — Timed-out WizardConnect sessions can retain a stale manager during automatic retry
+
+- **File/lines:** `src/core/wizard-wallet.ts:601–614` and `629–647`.
+- **Finding:** the connection watchdog moves the state to `disconnected` but keeps the manager/relay references. A later automatic `tryResume()` can call `connect(existing)`, which replaces the manager reference without first cleaning up the timed-out manager/relay. Generation checks reject stale callbacks, but cleanup of the replaced relay is not explicit on this path.
+- **Fix:** not changed in this PR because safely changing wallet lifecycle ownership needs an integration test with the real WizardConnect manager/relay and mobile suspend/resume behaviour. The existing code's generation guard prevents a stale manager from being considered current for completed signing operations, but it does not prove the remote session is fully disposed.
+- **Still open:** add a mocked manager/relay lifecycle test, then make reconnection cleanup explicit while preserving the encrypted saved session for retry.
+
+### SEC-07 — High — Contract and Mainnet lifecycle assurance remains incomplete
+
+- **Files:** `contracts/*.cash`, corresponding generated artifacts, `server/mainnet-api.mjs`, `src/core/*`.
+- **Finding:** automated unit tests and local BCH 2026 VM checks do not constitute independent contract review or real-wallet/Mainnet lifecycle evidence. The V2/V3 sources include prototypes and multiple covenant generations; they must not be treated as interchangeable.
+- **Fix:** this PR does not label the application or any contract as audited. No generated `contracts/*.json` file is changed.
+- **Still open:** commission an independent review of the exact source and artifact hashes intended for deployment; test deposit, payout, cancel, rounding, all member counts, duplicate/replayed inputs, category/capability handling, fee bounds, carrier dust, reorgs and stuck-fund recovery with independent wallets. Confirm the deployed covenant address/version against its audited source before release.
+
+## Areas reviewed with no new code change
+
+- **BCH contract spend rules:** reviewed Classic, V2 fee/escrow and V3 auto-reserve source. Input/output ordering, state-round transitions, receipt order and fee outputs are checked in the covenant sources and/or server verifier. Legacy and prototype variants have different guarantees; do not conflate them.
+- **PUSD conservation and destinations:** reviewed V3 deposit, payout and cancel layouts and member escrow sidecar. The server verifier checks exact PUSD category/amounts, escrow scripts, recipient/treasury outputs, BCH carrier backing, dust, wallet sighash and BCH 2026 VM. The release gate is now closed pending independent review.
+- **Transaction signing:** reviewed the WizardConnect signing request and returned-transaction checks. Input outpoints/sequences, transaction version/locktime, outputs/CashTokens, required wallet sighashes and BCH 2026 VM checks are present.
+- **Stale data and replay:** Mainnet verification obtains quorum previous transactions and UTXO snapshots; PUSD broadcast uses a durable input/transaction reservation when configured. These controls still depend on the configured Electrum trust model. BCH circle relay does not yet have the same durable cross-operation input reservation as the PUSD path.
+- **Balance display:** the UI uses verified UTXO and raw previous-transaction evidence for PUSD. Client display remains dependent on provider quorum and must not be described as an independent on-chain proof.
+
+## Release decision
+
+**Do not enable Mainnet broadcasts from this PR.** All broadcast paths remain closed and `mainnetReleaseApproved` remains `false`. The fixes in this PR reduce concrete API/release-gate risk; the open items above must be resolved through a separately reviewed release process. This AI-assisted review is not an independent audit.
