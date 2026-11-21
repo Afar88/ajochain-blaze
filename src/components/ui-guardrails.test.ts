@@ -155,9 +155,11 @@ describe("saved circle and homepage guardrails", () => {
     const start = appSource.indexOf("{showWallet && (");
     const end = appSource.indexOf('<footer className="app-footer"', start);
     const walletDetails = appSource.slice(start, end);
-    const plainHelpers = [...walletDetails.matchAll(/<(?:p|small)\b[^>]*>([^<{]+)<\/(?:p|small)>/g)]
-      .map((match) => match[1].trim())
-      .filter(Boolean);
+    const plainHelpers = ["p", "small", "label"].flatMap((tag) =>
+      [...walletDetails.matchAll(new RegExp("<" + tag + "\\b[^>]*>([\\s\\S]*?)</" + tag + ">", "g"))]
+        .map((match) => match[1].replace(/\{[^{}]*\}/g, " ").replace(/<[^>]*>/g, " ").trim())
+        .filter(Boolean),
+    );
     for (const helper of plainHelpers) {
       const words = helper.split(/\s+/).filter(Boolean);
       expect(words.length, helper).toBeLessThanOrEqual(15);
