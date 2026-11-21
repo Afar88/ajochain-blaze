@@ -99,6 +99,12 @@ export default function V2FeeBchWorkspace({
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -426,6 +432,7 @@ export default function V2FeeBchWorkspace({
       const txid = await provider.sendRawTransaction(signed.signedTransaction);
       setNotice("Member credit deposit broadcast. Transaction: " + txid);
       await refresh(active);
+      window.dispatchEvent(new Event("ajochain:wallet-balances-refresh"));
     } catch (cause) { setError(errorText(cause)); }
     finally { setBusy(false); }
   };
