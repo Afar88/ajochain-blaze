@@ -2107,13 +2107,13 @@ export default function App() {
                 {circleStatusTab === "active" ? (
                   <>
                     <h2>No active circles on {network === "mainnet" ? "Mainnet" : "Chipnet"} yet</h2>
-                    <p>New circles appear here as soon as they are saved and their chain status is checked.</p>
+                    <p>Saved circles show here after the first check.</p>
                     <button type="button" className="primary-button" onClick={() => navigate("create-circle")}>Create a circle</button>
                   </>
                 ) : (
                   <>
                     <h2>No completed circles yet</h2>
-                    <p>Completed payouts and confirmed cancellations move here after the blockchain check. Cancelled circles are labelled separately.</p>
+                    <p>Completed and cancelled circles appear here.</p>
                   </>
                 )}
               </div>
