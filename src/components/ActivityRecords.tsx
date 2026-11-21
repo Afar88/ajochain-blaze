@@ -428,7 +428,7 @@ export default function ActivityRecords({ network, compact = false }: { network:
               ) : result.status === "unavailable" ? (
                 <div className="activity-unavailable">
                   <b>Couldn't confirm this circle yet</b>
-                  <details className="technical-details"><summary>Details</summary><details className="technical-details"><summary>Details</summary><p>{result.error}</p></details></details>
+                  <details className="technical-details"><summary>Details</summary><p>{result.error}</p></details>
                   <small>This saved circle hasn't been confirmed yet.</small>
                 </div>
               ) : (
