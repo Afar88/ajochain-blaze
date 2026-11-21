@@ -416,10 +416,6 @@ test("Electrum tip disagreement rechecks all first-pass responders after two sec
     },
   });
   assert.equal(result.length, 2);
-  assert.deepEqual(new Set(result.map((session) => session.operatorId)),
-    new Set(["recheck-a", "recheck-b", "recheck-c"]).size === 2
-      ? new Set(["recheck-a", "recheck-b"])
-      : new Set(["recheck-a", "recheck-b"]));
   assert.deepEqual(sleeps, [2_000]);
   assert.deepEqual([...readCounts.values()], [2, 2, 2]);
   assert.deepEqual(result.map((session) => session.operatorId), ["recheck-a", "recheck-b"]);
@@ -491,7 +487,9 @@ test("Electrum selection retry never retries the broadcast after a relay attempt
   assert.equal(relayCalls, 1);
   assert.equal(created.length, 2);
   assert.ok(created.every((session) => session.closed));
-});test("Mainnet BCH gather accepts only one token-free output back to a wallet-derived address", () => {
+});
+
+test("Mainnet BCH gather accepts only one token-free output back to a wallet-derived address", () => {
   const walletAddress = createMainnetTestAddress(21);
   const otherAddress = createMainnetTestAddress(22);
   const walletScript = cashAddressToLockingBytecode(walletAddress);
