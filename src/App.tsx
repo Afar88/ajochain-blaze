@@ -1485,10 +1485,14 @@ export default function App() {
     }
 
     const firstReceive = (targetNetwork: NetworkId) => {
-      const entries = walletClient.listWalletAddresses(targetNetwork, 49, 20);
-      return entries.find((entry) => entry.branch === "receive" && entry.index === 0)?.address
-        ?? entries.find((entry) => entry.branch === "receive")?.address
-        ?? "";
+      try {
+        const entries = walletClient.listWalletAddresses(targetNetwork, 49, 20);
+        return entries.find((entry) => entry.branch === "receive" && entry.index === 0)?.address
+          ?? entries.find((entry) => entry.branch === "receive")?.address
+          ?? "";
+      } catch {
+        return "";
+      }
     };
     const chipnetCacheAddress = firstReceive("chipnet");
     const mainnetCacheAddress = firstReceive("mainnet");
@@ -1501,6 +1505,7 @@ export default function App() {
 
     const restoreCachedCircles = (targetNetwork: NetworkId, encodedCircles: readonly string[]) => {
       if (encodedCircles.length === 0) return;
+      try {
       if (targetNetwork === "chipnet") {
         const stored: unknown = JSON.parse(window.localStorage.getItem(V2_MENU_STORAGE_KEY) || "[]");
         const existing = Array.isArray(stored)
@@ -1518,6 +1523,7 @@ export default function App() {
         const additions = encodedCircles.filter((encoded) => !seen.has(encoded));
         if (additions.length) window.localStorage.setItem(BCH_MAINNET_CIRCLES_STORAGE_KEY, JSON.stringify([...existing, ...additions]));
       }
+      } catch { /* Cached circle recovery is optional; the original scan can still run. */ }
     };
     if (chipnetCache) restoreCachedCircles("chipnet", chipnetCache.circles);
     if (mainnetCache) restoreCachedCircles("mainnet", mainnetCache.circles);
