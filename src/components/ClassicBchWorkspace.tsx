@@ -32,6 +32,12 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
   const [contractAddress, setContractAddress] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -346,6 +352,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
       const txid = await plan.provider.sendRawTransaction(signed.signedTransaction);
       setNotice("Contribution broadcast. Transaction ID: " + txid);
       await refresh(activeCircle);
+      window.dispatchEvent(new Event("ajochain:wallet-balances-refresh"));
     } catch (cause) {
       setError(message(cause));
     } finally {
