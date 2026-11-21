@@ -1923,9 +1923,9 @@ export default function App() {
                 ? (circle.status === "cancelled" ? "Cancelled" : "Completed") +
                   (circle.completedAt ? " · " + new Date(circle.completedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "")
                 : circle.status === "unknown"
-                  ? circle.checkedAt === null ? "Checking on-chain status…" : "Status unavailable · latest chain read failed"
+                  ? circle.checkedAt === null ? "Checking…" : "Status unavailable"
                   : circle.round === null
-                    ? "Checking round progress · " + circle.memberCount + " members"
+                    ? "Checking round · " + circle.memberCount + " members"
                     : "Round " + Math.min(circle.round + 1, circle.memberCount) + " of " + circle.memberCount}</small>
             </span>
             <span className={
@@ -2103,7 +2103,7 @@ export default function App() {
                 <div className="page-intro">
                   <span className="section-kicker">YOUR SAVINGS GROUPS</span>
                   <h1>Create a circle</h1>
-                  <p>Choose what your group wants to save in, set the amount and members, then review the circle setup before taking action.</p>
+                  <p>Choose a currency, amount and members. Review before creating.</p>
                 </div>
                 <section className="circle-choice-guide" aria-label="Choose a circle type">
                   <div className="circle-choice-heading">
@@ -2116,13 +2116,13 @@ export default function App() {
                         <span className="circle-choice-top"><span className="circle-choice-symbol">BCH</span><span className="circle-choice-status">Mainnet</span></span>
                         <b>BCH savings circle</b>
                         <span>For groups saving in Bitcoin Cash. Tracks member contributions and reserves the next installment for each non-final payout.</span>
-                        <small>Best when your group wants native BCH and individual member accounting.</small>
+                        <small>For groups saving in BCH.</small>
                       </button>
                       <button type="button" className={circleWorkspace === "pusd-mainnet" ? "circle-choice-card selected" : "circle-choice-card"} aria-pressed={circleWorkspace === "pusd-mainnet"} onClick={() => enterCreateCircleForm("pusd-mainnet")}>
                         <span className="circle-choice-top"><span className="circle-choice-symbol pusd">PUSD</span><span className="circle-choice-status">Mainnet</span></span>
                         <b>PUSD savings circle</b>
                         <span>For groups that prefer ParyonUSD instead of BCH. Contributions and payouts are denominated in PUSD, with BCH needed separately for network fees.</span>
-                        <small>Choose this if your group wants a stable-value token rather than BCH price exposure.</small>
+                        <small>For groups saving in steady dollars.</small>
                       </button>
                     </>}
                     {network === "chipnet" && <>
@@ -2181,7 +2181,7 @@ export default function App() {
             <div className="page-intro">
               <span className="section-kicker">YOUR SAVINGS CIRCLES</span>
               <h1>{network === "mainnet" ? "Mainnet circles" : "Chipnet test circles"}</h1>
-              <p>Circles are shown only for the network selected in the navigation menu. Status is read from the selected network's blockchain.</p>
+              <p>Only circles on the selected network appear here.</p>
             </div>
             <div className="circle-scan-summary-row">
               <span className="circle-scan-summary" role="status">✓ {NETWORKS[network].label}: {networkCircleCounts.active} active, {networkCircleCounts.completed} completed</span>
@@ -2211,13 +2211,13 @@ export default function App() {
                 {circleStatusTab === "active" ? (
                   <>
                     <h2>No active circles on {network === "mainnet" ? "Mainnet" : "Chipnet"} yet</h2>
-                    <p>New circles appear here as soon as they are saved and their chain status is checked.</p>
+                    <p>New circles appear here after they're saved.</p>
                     <button type="button" className="primary-button" onClick={() => navigate("create-circle")}>Create a circle</button>
                   </>
                 ) : (
                   <>
                     <h2>No completed circles yet</h2>
-                    <p>Completed payouts and confirmed cancellations move here after the blockchain check. Cancelled circles are labelled separately.</p>
+                    <p>Completed payouts and cancellations appear here.</p>
                   </>
                 )}
               </div>
@@ -2236,7 +2236,7 @@ export default function App() {
             <div className="page-intro">
               <span className="section-kicker">YOUR SAVINGS CIRCLE</span>
               <h1>{selectedCircleRecord?.name ?? "Circle details"}</h1>
-              <p>Review contributions, member progress and the next payout for this circle.</p>
+              <p>View contributions, progress and next payout.</p>
             </div>
             <Suspense fallback={<div className="workspace-loading"><span className="loading-orb" />Loading your circle…</div>}>
               {selectedCircleRecord?.kind === "v2-fee" && (
@@ -2338,7 +2338,7 @@ export default function App() {
               <summary>PUSD transfer tools</summary>
               <div className="pusd-transfer-box">
                 <div><span className="section-kicker">TRANSFER PREVIEW</span><h3>Prepare a PUSD transfer</h3>
-                  <p>Review a transfer using the PUSD coins in your wallet and the latest network fee estimate. Nothing is sent from this preview.</p></div>
+                  <p>Review your PUSD transfer and fee. Nothing is sent yet.</p></div>
                 <label>Recipient Bitcoin Cash address
                   <input value={pusdRecipient} onChange={(event) => { setPusdRecipient(event.target.value); setPusdTransferPlan(null); setPusdSignatureMessage(""); setPusdPlanError(""); }} placeholder="bitcoincash:…" autoComplete="off" />
                 </label>
@@ -2379,7 +2379,7 @@ export default function App() {
                   title="PUSD Mainnet spending is not yet approved by the security release gate">
                   Send PUSD · Mainnet locked
                 </button>
-                <small className="field-hint">PUSD sending stays locked until raw transaction inspection, independent wallet testing, fee/carrier validation, and security review are completed. This preview is not a payment.</small>
+                <small className="field-hint">PUSD sending remains locked. This preview sends nothing.</small>
               </div>
             </details>
           </section>
