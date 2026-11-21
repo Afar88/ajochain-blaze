@@ -1614,7 +1614,8 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
     padding-inline: 7px;
   }
 
-  .header-wallet-chip {
+  .app-shell .header-wallet-chip,
+  .compact-app .header-wallet-chip {
     flex: 0 1 auto;
     min-width: 0;
     max-width: 100px;
@@ -1719,7 +1720,8 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
     padding-inline: 6px;
   }
 
-  .header-wallet-chip {
+  .app-shell .header-wallet-chip,
+  .compact-app .header-wallet-chip {
     max-width: 88px;
     padding-inline: 6px;
   }
