@@ -720,7 +720,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
               void pendingCopy.then(() => setNotice("Member 1 address copied."))
                 .catch(() => setNotice("Could not copy the address. Select it and copy manually."));
             }}><Copy size={15} /> Copy address</button>
-            <small>{wallet.isReceiveAddressConfirmed("mainnet") ? "Selected from your connected Selene receive addresses" : "Choose a derived Mainnet receive address in Wallet Details first"}</small>
+            <small>{wallet.isReceiveAddressConfirmed("mainnet") ? "Selected from your connected Selene receive addresses" : "Pick an address first."}</small>
           </> : "Connect Selene and choose your receive address. It will be Member 1 automatically."}
         </div>
         <label>Other members' Mainnet BCH addresses · one per line
@@ -787,7 +787,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       {creationResult && (
         <div className="pusd-mainnet-breakdown mainnet-create-success" role="status">
           <b>Circle created</b>
-          <p>Selene approved the transaction and the Mainnet relay returned a transaction ID.</p>
+          <p>Selene approved the transaction. Check its status below.</p>
           <div><span>Transaction ID</span><strong><a href={creationResult.explorerUrl} target="_blank" rel="noreferrer">{creationResult.txid}</a></strong></div>
           <div className="mainnet-create-invite">
             <span>Invite link to share</span>
@@ -880,7 +880,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         <span><b>PUSD Mainnet circle rules</b><small>Members approve each payment in Selene. The app checks the circle details before sending. Plain PUSD wallet transfers remain locked.</small>
           <details className="technical-details">
             <summary>Technical details</summary>
-            <p>Circle actions are checked against provider-confirmed previous outputs, the exact circle and escrow artifacts, wallet signature hashes and BCH 2026 VM rules. The durable input ledger prevents a transaction from being relayed twice.</p>
+            <details className="technical-details"><summary>Details</summary><p>Circle actions are checked against the recorded inputs and outputs before anything is sent. Repeat sends are blocked.</p></details>
           </details></span>
       </div>
 
