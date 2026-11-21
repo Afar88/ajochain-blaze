@@ -857,7 +857,7 @@ export default function App() {
       const next = [encoded, ...records.filter((entry) => getV2FeeCircleRecordIdentity(entry)?.key !== identity.key)].slice(0, 50);
       window.localStorage.setItem(BCH_MAINNET_CIRCLES_STORAGE_KEY, JSON.stringify(next));
       window.dispatchEvent(new Event("ajochain:bch-mainnet-circles-changed"));
-      return "BCH Mainnet circle added. Open it from the list to check its on-chain state.";
+      return "BCH Mainnet circle added. Open it from the list to check its latest details.";
     }
 
     if (payload.version === 3 && typeof payload.contribution === "string" &&
@@ -876,7 +876,7 @@ export default function App() {
         } catch { return true; }
       })].slice(0, 50);
       window.localStorage.setItem(PUSD_MAINNET_CIRCLES_STORAGE_KEY, JSON.stringify(next));
-      return "PUSD Mainnet circle added. Open it from the list to check its on-chain state.";
+      return "PUSD Mainnet circle added. Open it from the list to check its latest details.";
     }
 
     throw new Error("This invite is not a supported BCH or PUSD Mainnet circle.");
