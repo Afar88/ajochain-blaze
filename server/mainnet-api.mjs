@@ -37,7 +37,8 @@ export const BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT = 556_767;
 export const BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH =
   "0000000000000000004626ff6e3b936941d341c5932ece4357eeccac44e6d56c";
 const DEFAULT_TIMEOUT_MS = 12_000;
-const MAX_TIP_AGE_MS = 30 * 60 * 1000;
+// BCH blocks are random; gaps over 30 minutes happen. 90 minutes avoids false "unavailable".
+const MAX_TIP_AGE_MS = 90 * 60 * 1000;
 const MAX_UTXOS_PER_ADDRESS = 1_000;
 const MAX_WALLET_ADDRESSES = 20;
 const MAX_GATHER_WALLET_ADDRESSES = 500;
