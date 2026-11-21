@@ -2347,6 +2347,31 @@ export default function App() {
                 {network === "mainnet" && selectedAddressPendingOnly && (
                   <p className="receive-address-pending-warning" role="alert">Wait 1 confirmation, then create.</p>
                 )}
+{network === "chipnet" && (
+  <section className="receive-address-picker chipnet-address-confirm" aria-label="Confirm your Chipnet address">
+    <label className="field-label" htmlFor="selene-address">Pick the address shown in Selene</label>
+    <input id="selene-address" className="form-control" value={seleneAddress}
+      onChange={(event) => setSeleneAddress(event.target.value)}
+      placeholder="Paste the address shown in Selene" autoComplete="off" />
+    <button type="button" className="primary-button" onClick={() => {
+      try {
+        const index = walletClient?.confirmReceiveAddress(seleneAddress, "chipnet", 250) ?? null;
+        setAddressMatchMessage(index === null
+          ? "This address isn't in your wallet. Check Selene's network and reconnect."
+          : "Address confirmed ✓");
+      } catch (cause) {
+        setAddressMatchMessage(cause instanceof Error ? cause.message : "Couldn't confirm this address.");
+      }
+    }}>Confirm address</button>
+    {addressMatchMessage && <p className={/isn't in your wallet|couldn't|could not|reconnect|not confirmed|unavailable|failed/i.test(addressMatchMessage) ? "classic-error" : "wallet-match-message"}
+      role={/isn't in your wallet|couldn't|could not|reconnect|not confirmed|unavailable|failed/i.test(addressMatchMessage) ? "alert" : "status"}>
+      {addressMatchMessage}<button type="button" aria-label="Dismiss message" onClick={() => setAddressMatchMessage("")}><X size={14} /></button>
+    </p>}
+  </section>
+)}
+{network === "mainnet" && selectedAddressPendingOnly && (
+  <p className="receive-address-pending-warning" role="alert">Wait 1 confirmation, then create.</p>
+)}
 <details className="wallet-tools-disclosure wallet-advanced-tools"><summary>Advanced</summary><div>
                   <section className="gather-card" aria-labelledby="gather-title">
                     <div className="gather-card-heading">
