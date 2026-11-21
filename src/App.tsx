@@ -315,6 +315,20 @@ export function circleRiskNoticeText(network: NetworkId): string {
     : "Test network. No real money.";
 }
 
+export function walletErrorSummary(error: string): string {
+  const normalized = error.toLowerCase();
+  if (/wizardconnect|xpub|receive key|relay|session/.test(normalized)) {
+    return "Wallet couldn't connect. Reconnect Selene and try again.";
+  }
+  if (/derived receive|no valid live receive key|no receive addresses/.test(normalized)) {
+    return "Couldn't load your addresses. Reconnect and try again.";
+  }
+  if (/signature|signed transaction/.test(normalized)) {
+    return "Couldn't check this payment. Nothing was sent.";
+  }
+  return error;
+}
+
 export function formatUpdatedAgo(timestamp: number, now = Date.now()): string {
   const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
   if (seconds < 5) return "just now";
@@ -2375,7 +2389,9 @@ export default function App() {
         )}
       </div>
 
-      {walletView.error && <div className="global-wallet-error" role="alert"><ShieldCheck size={17} /><span>{walletView.error}</span><div className="global-wallet-error-actions">
+      {walletView.error && <div className="global-wallet-error" role="alert"><ShieldCheck size={17} /><span>{walletErrorSummary(walletView.error)}</span>
+        <details className="technical-details"><summary>Details</summary><p>{walletView.error}</p></details>
+        <div className="global-wallet-error-actions">
         <button onClick={() => {
           if (!walletClient) return;
           if (walletClient.retrySavedSession()) return;
@@ -2599,9 +2615,11 @@ export default function App() {
                 {walletView.state === "connecting" && <p className="wallet-match-message">Approve in Selene, then come back.</p>}
                 {walletView.state === "reconnecting" && <p className="wallet-match-message" role="status">Reconnecting…</p>}
                 {walletView.state === "disconnected" && <p className="wallet-match-message" role="status">Disconnected.</p>}
-                {walletView.error && <p className="classic-error" role="alert">{walletView.error}
+                {walletView.error && <div className="classic-error" role="alert">
+                  <span>{walletErrorSummary(walletView.error)}</span>
+                  <details className="technical-details"><summary>Details</summary><p>{walletView.error}</p></details>
                   <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setWalletView((view) => ({ ...view, error: null }))}>×</button>
-                </p>}
+                </div>}
                 <div className="wallet-modal-actions">
                   <button className="primary-button" onClick={() => {
                     if (!walletClient) { openWallet(); return; }
