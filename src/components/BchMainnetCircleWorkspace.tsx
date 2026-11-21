@@ -685,7 +685,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
     }
     const initiator = wallet.address("mainnet");
     if (!initiator) {
-      setError("No verified Mainnet receive address is available from the connected wallet. Match Selene's current receive address in Wallet Details first.");
+      setError("No Mainnet address is available from your wallet. Pick the address shown in Selene in Wallet details first.");
       return null;
     }
     if (!initiatorAddressConfirmed) {
@@ -887,11 +887,11 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
             </div>
           </div>
           {!circleSnapshot && <p className="classic-empty">Checking circle status…</p>}
-          {circleSnapshot && <p className="classic-empty">Latest BCH Mainnet circle status is verified from the blockchain.</p>}
+          {circleSnapshot && <p className="classic-empty">Latest BCH Mainnet circle details are up to date.</p>}
           <button type="button" className="secondary-button" onClick={() => void copyInvite()}><Copy size={14} /> Copy invite</button>
           {circleSnapshot && (
             <div className="pusd-mainnet-breakdown">
-              <b>Verified circle state</b>
+              <b>Circle status</b>
               <div><span>Round</span><strong>{circleSnapshot.completed ? "Completed" : (circleSnapshot.round + 1) + " of " + activeCircle.members.length}</strong></div>
               <div><span>Next recipient</span><strong>{circleSnapshot.recipient ?? "None"}</strong></div>
               <div><span>Payout readiness</span><strong>{circleSnapshot.ready ? "Ready" : "Waiting for member credits"}</strong></div>
