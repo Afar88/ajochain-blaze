@@ -1,4 +1,5 @@
 import { TestSignControl } from "./TestSignControl";
+import { plainErrorSummary } from "./error-copy";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ArrowRight, Copy, LockKeyhole } from "lucide-react";
 import { encodeV2FeeCircleParams } from "../core/v2-fee-discovery";
@@ -801,9 +802,11 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
           <textarea value={membersText} onChange={(event) => { setMembersText(event.target.value); setMemberOrderErrorDismissed(false); }} rows={4} placeholder={"bitcoincash:…\nbitcoincash:…"} required />
           <small>Add 1–4 Mainnet addresses. Your wallet is Member 1.</small>
         </label>
-        {memberOrder.error && !memberOrderErrorDismissed && <p className="classic-error" role="alert">{memberOrder.error}
+        {memberOrder.error && !memberOrderErrorDismissed && <div className="classic-error" role="alert">
+          <span>{plainErrorSummary(memberOrder.error)}</span>
+          <details className="technical-details"><summary>Details</summary><p>{memberOrder.error}</p></details>
           <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setMemberOrderErrorDismissed(true)}>×</button>
-        </p>}
+        </div>}
         <label>Maximum BCH miner fee per action (satoshis)
           <input value={maxFee} onChange={(event) => setMaxFee(event.target.value)} inputMode="numeric" required />
           <small>Miner fees are separate from the pot.</small>
@@ -936,9 +939,11 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
         </div>
       )}
 
-      {error && <p className="classic-error" role="alert">{error}
+      {error && <div className="classic-error" role="alert">
+        <span>{plainErrorSummary(error)}</span>
+        <details className="technical-details"><summary>Details</summary><p>{error}</p></details>
         <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setError("")}>×</button>
-      </p>}
+      </div>}
       {notice && <p className="classic-notice" role="status">{notice}</p>}
 
       <div className="pusd-mainnet-saved">
