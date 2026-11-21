@@ -31,8 +31,9 @@
 ## Demo links
 
 - **BLAZE build (live):** https://ajochain-blaze.vercel.app
-- **Pre-BLAZE app (Nov 10, 2026 release):** https://ajochain.vercel.app
-- **Pre-BLAZE source:** https://github.com/Afar88/Ajochain — baseline commit [069acb5](https://github.com/Afar88/Ajochain/commit/069acb55e246a85fbe3ba25736fa34055388c7cc), the last commit before the Nov 14, 2026 14:00 UTC BLAZE kickoff.
+- **Pre-BLAZE build (Nov 10, 2026 release, commit [`9f1e15a`](https://github.com/Afar88/Ajochain/commit/9f1e15a11a9bf96c5b596516e4e1af8e9c7f8315)):** https://ajochain-lhlv8mkqp-destinymomobu-2325s-projects.vercel.app
+- **Pre-BLAZE source (last commit before the Nov 14, 2026 kickoff):** https://github.com/Afar88/Ajochain/tree/069acb5
+- **Legacy project's current URL (updated Nov 19, 2026; not a pure pre-BLAZE build):** https://ajochain.vercel.app
 
 ---
 
