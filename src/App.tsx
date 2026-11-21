@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   Activity, ArrowRight, Check, ChevronDown, Copy, Home,
-  Monitor, MoreVertical, Moon, ShieldCheck, Sun, Users, Wallet, X,
+  Monitor, MoreVertical, Moon, RefreshCw, ShieldCheck, Sun, Users, Wallet, X,
 } from "lucide-react";
 import { getDefaultNetwork, NETWORKS, type NetworkId } from "./core/network-config";
 import { settleIndependentTasks } from "./core/independent-network-tasks";
@@ -466,7 +466,7 @@ export default function App() {
   });
   const [showWallet, setShowWallet] = useState(false);
   const [receiveAddressChoices, setReceiveAddressChoices] = useState<ReceiveAddressChoice[]>([]);
-  const [receiveAddressPickerExpanded, setReceiveAddressPickerExpanded] = useState(true);
+  const [receiveAddressPickerExpanded, setReceiveAddressPickerExpanded] = useState(false);
   const [receiveAddressScanLoading, setReceiveAddressScanLoading] = useState(false);
   const [receiveAddressScanError, setReceiveAddressScanError] = useState("");
   const [walletShowAllAddresses, setWalletShowAllAddresses] = useState(false);
@@ -474,7 +474,7 @@ export default function App() {
   const [walletFullAddressOpen, setWalletFullAddressOpen] = useState(false);
   const [walletAddressQrOpen, setWalletAddressQrOpen] = useState(false);
   const [addressQrDataUrl, setAddressQrDataUrl] = useState("");
-  const [walletBalanceRefreshRun, setWalletBalanceRefreshRun] = useState(0);
+
   const [lastWalletBalanceUpdatedAt, setLastWalletBalanceUpdatedAt] = useState<number | null>(null);
   const [walletBalancesRefreshing, setWalletBalancesRefreshing] = useState(false);
   const [walletNow, setWalletNow] = useState(Date.now());
@@ -507,12 +507,10 @@ export default function App() {
           : connected ? "Connected" : "Connect wallet";
 
   const walletSessionIdentity = walletClient?.getSessionIdentity() ?? null;
-  const discoveryEffectDependencies = getDiscoveryEffectDependencies(
-    walletSessionIdentity,
-    walletView.state,
-    walletView.addressSetRevision,
-    discoveryRun,
-  );
+  const discoveryEffectDependencies = [
+    ...getDiscoveryEffectDependencies(walletSessionIdentity, walletView.state, walletView.addressSetRevision, discoveryRun),
+    showWallet,
+  ] as const;
   const discoveryPriorityAddressesRef = useRef({
     receiveIndex: walletView.receiveIndex,
     choices: receiveAddressChoices,
@@ -1079,14 +1077,13 @@ export default function App() {
         });
         setReceiveAddressChoices(choices);
 
-        const mainnetFirstReceive = entries.find((entry) => entry.branch === "receive" && entry.index === 0);
         const networkFirstReceive = entries.find((entry) => entry.branch === "receive" && entry.index === 0);
         if (networkFirstReceive) {
           const receiveSelectionStorageKey = "ajochain:wallet-receive-selection:v1:" + network + ":" + networkFirstReceive.address.toLowerCase();
           const savedIndex = Number(window.localStorage.getItem(receiveSelectionStorageKey));
           const savedExists = Number.isSafeInteger(savedIndex) &&
             choices.some((choice) => choice.branch === "receive" && choice.index === savedIndex);
-          if (!client.isReceiveAddressConfirmed(network)) {
+          if (network === "mainnet" && !client.isReceiveAddressConfirmed(network)) {
             client.selectReceiveAddressIndex(savedExists ? savedIndex : getDefaultReceiveAddressIndex(choices) ?? 0, network);
           }
           const displayStorageKey = "ajochain:wallet-address-display:v1:" + network + ":" + networkFirstReceive.address.toLowerCase();
@@ -1169,7 +1166,7 @@ export default function App() {
       document.removeEventListener("visibilitychange", handleVisible);
       window.removeEventListener("ajochain:wallet-balances-refresh", handleManualRefresh);
     };
-  }, [showWallet, page, network, walletClient, walletView.state, walletView.addressSetRevision, walletBalanceRefreshRun]);
+  }, [showWallet, page, network, walletClient, walletView.state, walletView.addressSetRevision]);
 
   useEffect(() => {
     let active = true;
@@ -1602,7 +1599,6 @@ export default function App() {
       }
       setGatherBusy(true);
       setGatherResult(null);
-      setBchBalanceScan(null);
       setGatherMessage("Checking your wallet for BCH coins…");
       try {
         const [{ getClassicProvider }, { planWalletConsolidation }] = await Promise.all([
@@ -2138,7 +2134,7 @@ export default function App() {
                 </div>
               </div>
               <div className="wallet-live-refresh"><small>Updated {formatUpdatedAgo(lastWalletBalanceUpdatedAt, walletNow)}</small>
-                <button type="button" className="secondary-button" onClick={() => setWalletBalanceRefreshRun((value) => value + 1)} disabled={walletBalancesRefreshing}>
+                <button type="button" className="secondary-button" onClick={() => window.dispatchEvent(new Event("ajochain:wallet-balances-refresh"))} disabled={walletBalancesRefreshing}>
                   <RefreshCw size={15} className={walletBalancesRefreshing ? "activity-spin" : ""} />
                   {walletBalancesRefreshing ? "Refreshing…" : "Refresh"}
                 </button>
@@ -2150,7 +2146,7 @@ export default function App() {
                 <button type="button" className="secondary-button" onClick={() => {
                   if (!connected) { openWallet(); return; }
                   if (network !== "mainnet") { changeNetwork("mainnet"); return; }
-                  setWalletBalanceRefreshRun((value) => value + 1);
+                  window.dispatchEvent(new Event("ajochain:wallet-balances-refresh"));
                 }} disabled={walletBalancesRefreshing}>
                   {walletBalancesRefreshing ? "Refreshing…" : network !== "mainnet" ? "Switch to Mainnet for PUSD" : "Refresh balances"}
                 </button>
@@ -2253,7 +2249,7 @@ export default function App() {
                 <section className="wallet-live-balances" aria-label="Wallet balances">
                   <div className="wallet-live-bch"><span className="section-kicker">BITCOIN CASH</span><strong>{walletBchBalanceSummary.balanceLabel}</strong><small>{walletBchBalanceSummary.detailLabel}</small></div>
                   <div className="wallet-live-pusd"><span className="section-kicker">PARYONUSD</span><strong>{network !== "mainnet" ? "Mainnet only" : pusdView.amount > 0n ? formatAssetAmount("PUSD", pusdView.amount) + " PUSD" : pusdView.status === "ready" ? "0.00 PUSD" : "Not checked yet"}</strong><small>{network !== "mainnet" ? "Switch to Mainnet to check PUSD." : pusdView.status === "error" ? pusdView.detail : "Across all wallet addresses"}</small></div>
-                  <div className="wallet-live-refresh"><small>Updated {formatUpdatedAgo(lastWalletBalanceUpdatedAt, walletNow)}</small><button type="button" className="secondary-button" onClick={() => setWalletBalanceRefreshRun((value) => value + 1)} disabled={walletBalancesRefreshing}><RefreshCw size={15} className={walletBalancesRefreshing ? "activity-spin" : ""} />{walletBalancesRefreshing ? "Refreshing…" : "Refresh"}</button></div>
+                  <div className="wallet-live-refresh"><small>Updated {formatUpdatedAgo(lastWalletBalanceUpdatedAt, walletNow)}</small><button type="button" className="secondary-button" onClick={() => window.dispatchEvent(new Event("ajochain:wallet-balances-refresh"))} disabled={walletBalancesRefreshing}><RefreshCw size={15} className={walletBalancesRefreshing ? "activity-spin" : ""} />{walletBalancesRefreshing ? "Refreshing…" : "Refresh"}</button></div>
                 </section>
                 <div className="wallet-address-card">
                   <span>{selectedWalletAddressChoice?.branch === "change" ? "Change address" : "Receive address"} · {NETWORKS[network].label}</span>
