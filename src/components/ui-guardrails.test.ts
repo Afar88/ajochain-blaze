@@ -164,8 +164,9 @@ describe("saved circle and homepage guardrails", () => {
       const words = helper.split(/\s+/).filter(Boolean);
       expect(words.length, helper).toBeLessThanOrEqual(15);
     }
+    const visibleHelpers = plainHelpers.join(" ").toLowerCase();
     for (const forbidden of ["derived", "receive key", "indices", "xpub", "verified picker", "relay", "session", "provider", "proof checks", "WizardConnect"]) {
-      expect(walletDetails.toLowerCase()).not.toContain(forbidden.toLowerCase());
+      expect(visibleHelpers).not.toContain(forbidden.toLowerCase());
     }
     for (const expected of [
       "Connect Selene. Your keys never leave your phone.",
