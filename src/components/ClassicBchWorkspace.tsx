@@ -422,7 +422,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
         <div>
           <span className="section-kicker">CLASSIC BCH · OLDER SAVINGS</span>
           <h2 id="classic-workspace-title">Create and manage circles</h2>
-          <p>Create Chipnet circles, contribute, collect payouts, and restore with an invite.</p>
+          <p>Create circles, pay in and collect payouts.</p>
         </div>
         <span className={network === "mainnet" ? "classic-network mainnet" : "classic-network"}>
           {network === "mainnet" ? "Mainnet" : "Chipnet · test"}
@@ -432,13 +432,13 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
       <div className="classic-account-summary">
         <div><b>{networkSavedCount}</b><span>Circles on this network</span></div>
         <div><b>{walletConnected ? "Connected" : "Not connected"}</b><span>Selene wallet</span></div>
-        <p>Circles stay on this phone. Save invite links to restore them on another device.</p>
+        <p>Circles stay on this phone. Save invite links for recovery.</p>
       </div>
 
       <div className="classic-workspace-grid">
         <div className="classic-create-panel">
           <h3>Start a Classic BCH circle</h3>
-          <p>2–5 unique BCH member addresses in payout order. This older circle uses one shared BCH pot and a fixed payout order; it does not track who made each contribution.</p>
+          <p>2–5 unique BCH addresses, in payout order. One shared pot. Individual deposits aren't tracked.</p>
           <form onSubmit={startCircle}>
             <label>Circle name
               <input value={name} onChange={(event) => setName(event.target.value)} maxLength={60} required />
@@ -466,7 +466,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
             </label>
             <button type="submit" className="secondary-button">Restore circle</button>
           </form>
-          <p className="classic-empty">Your saved circles are listed in My circles, grouped by the selected network.</p>
+          <p className="classic-empty">Saved circles appear in My circles for this network.</p>
         </div>
       </div>
 
