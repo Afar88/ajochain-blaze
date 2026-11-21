@@ -121,7 +121,7 @@ describe("App wallet BCH balance summary", () => {
       receiveAddressChoices: [],
     });
     expect(summary.balanceLabel).toBe("Not checked yet");
-    expect(summary.sourceLabel).toBe("No wallet scan in this session");
+    expect(summary.sourceLabel).toBe("No wallet scan yet");
   });
 });
 
