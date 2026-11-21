@@ -127,8 +127,23 @@ describe("saved circle and homepage guardrails", () => {
     expect(activitySource).toContain("ajochain-blaze:pusd-mainnet-circles-deployed:v1");
     expect(activitySource).toContain("readSavedBchMainnetCircles()");
     expect(activitySource).toContain("readSavedPusdCircles()");
+    expect(activitySource).toContain("readStoredV2Circles()");
+    expect(activitySource).toContain("loadSavedClassicCircles(window.localStorage)");
+    expect(activitySource).toContain("new Map(refs.map((ref) => [ref.id, ref]))");
     expect(activitySource).toContain("ajochain:bch-mainnet-circles-changed");
     expect(activitySource).toContain("ajochain:saved-circles-changed");
+  });
+
+  it("refreshes wallet balances on foreground, every minute and after circle payments", () => {
+    expect(appSource).toContain("window.setInterval(refresh, 60_000)");
+    expect(appSource).toContain('document.addEventListener("visibilitychange", refresh)');
+    expect(appSource).toContain('window.addEventListener("ajochain:wallet-balances-changed", refresh)');
+    for (const source of [
+      readFileSync(resolve(here, "BchMainnetCircleWorkspace.tsx"), "utf8"),
+      readFileSync(resolve(here, "PusdMainnetCircleWorkspace.tsx"), "utf8"),
+      readFileSync(resolve(here, "V2FeeBchWorkspace.tsx"), "utf8"),
+      readFileSync(resolve(here, "ClassicBchWorkspace.tsx"), "utf8"),
+    ]) expect(source).toContain("ajochain:wallet-balances-changed");
   });
 
   it("keeps the Home page limited to the notice, hero and two actions", () => {
