@@ -573,6 +573,8 @@ class WizardWallet {
   // Invalidates callbacks from managers that have been replaced or disconnected.
   private generation = 0;
   private connectionWatchdog: ReturnType<typeof setTimeout> | null = null;
+  /** Set when the user cancels; focus/visibility no longer restarts the connection. */
+  private autoResumePaused = false;
   // Foreground/focus/online can fire in quick succession on mobile browsers.
   private lastResumeAttemptAt = 0;
   private confirmedReceiveAddresses: Partial<Record<Net, string>> = {};
@@ -603,7 +605,7 @@ class WizardWallet {
   ) {
     this.clearConnectionWatchdog();
     this.connectionWatchdog = setTimeout(() => {
-      if (!this.isCurrent(mgr, generation) || this.state !== "connecting") return;
+      if (!this.isCurrent(mgr, generation) || (this.state !== "connecting" && this.state !== "reconnecting")) return;
       this.error = wizardConnectionTimeoutMessage(existing);
       // Stop showing an endless connecting state. Keep the current session
       // available for explicit retry or a late wallet_ready handshake.
@@ -670,7 +672,10 @@ class WizardWallet {
     });
     mgr.on('reconnecting', () => {
       if (!this.isCurrent(mgr, generation)) return;
+      const wasReconnecting = this.state === 'reconnecting';
       this.state = 'reconnecting';
+      // Never leave "Reconnecting…" running for minutes without telling the user.
+      if (!wasReconnecting) this.startConnectionWatchdog(mgr, generation, true);
       this.emit();
     });
     mgr.on('disconnect', (reason, detail) => {
@@ -748,6 +753,7 @@ class WizardWallet {
   /** Discard a stalled/stale pairing and create a fresh WizardConnect relay. */
   startFreshPairing() {
     if (this.state === 'connected' || this.state === 'disconnecting') return;
+    this.autoResumePaused = false;
     const mgr = this.mgr;
     const relay = this.relay;
     this.generation++;
@@ -775,6 +781,7 @@ class WizardWallet {
 
   /** Resume a stored WizardConnect session after reload or mobile app switching. */
   tryResume(): boolean {
+    if (this.autoResumePaused) return false;
     if (!canRestoreWizardSession(this.state, true)) return false;
     const now = Date.now();
     if (now - this.lastResumeAttemptAt < 5000) return false;
@@ -804,6 +811,7 @@ class WizardWallet {
    */
   retrySavedSession(): boolean {
     if (this.state === 'connected' || this.state === 'disconnecting') return false;
+    this.autoResumePaused = false;
     let saved: ReturnType<typeof loadSession> | null = null;
     try {
       saved = loadSession();
@@ -832,7 +840,30 @@ class WizardWallet {
     return this.tryResume();
   }
 
+  /**
+   * Stop a connect or reconnect attempt now. The saved session is kept, so
+   * Reconnect can try it again, but the page stops retrying on its own.
+   */
+  cancelConnectionAttempt(): boolean {
+    if (this.state !== 'connecting' && this.state !== 'reconnecting') return false;
+    const mgr = this.mgr;
+    const relay = this.relay;
+    this.generation++;
+    this.mgr = null;
+    this.relay = null;
+    this.clearConnectionWatchdog();
+    this.cleanup(mgr, relay, false);
+    this.uri = null;
+    this.qrUri = null;
+    this.error = null;
+    this.autoResumePaused = true;
+    this.state = 'disconnected';
+    this.emit();
+    return true;
+  }
+
   async disconnect() {
+    this.autoResumePaused = false;
     if (this.state === 'disconnecting') return;
     const mgr = this.mgr;
     const relay = this.relay;

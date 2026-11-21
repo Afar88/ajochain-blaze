@@ -233,3 +233,10 @@ describe("plain error copy", () => {
     }
   });
 });
+
+describe("wallet connection controls", () => {
+  it("offers Cancel and Disconnect while connecting or reconnecting", () => {
+    expect(appSource).toContain("walletClient.cancelConnectionAttempt()");
+    expect(appSource).toContain('(walletView.state === "connecting" || walletView.state === "reconnecting") && walletClient');
+  });
+});
