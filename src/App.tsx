@@ -2161,13 +2161,7 @@ export default function App() {
                 <button type="button" className="secondary-button" onClick={openWallet}>
                   {connected ? "Open wallet details" : "Connect wallet"}
                 </button>
-                <button type="button" className="secondary-button" onClick={() => {
-                  if (!connected) { openWallet(); return; }
-                  if (network !== "mainnet") { changeNetwork("mainnet"); return; }
-                  window.dispatchEvent(new Event("ajochain:wallet-balances-refresh"));
-                }} disabled={walletBalancesRefreshing}>
-                  {walletBalancesRefreshing ? "Refreshing…" : network !== "mainnet" ? "Switch to Mainnet for PUSD" : "Refresh balances"}
-                </button>
+
               </div>
             </article>
             <section className="asset-detail-card wallet-assets-block" aria-labelledby="wallet-assets-title">
@@ -2266,7 +2260,7 @@ export default function App() {
               <div className="wallet-detail-body">
                 <section className="wallet-live-balances" aria-label="Wallet balances">
                   <div className="wallet-live-bch"><span className="section-kicker">BITCOIN CASH</span><strong>{walletBchBalanceSummary.balanceLabel}</strong><small>{walletBchBalanceSummary.detailLabel}</small></div>
-                  <div className="wallet-live-pusd"><span className="section-kicker">PARYONUSD</span><strong>{network !== "mainnet" ? "Mainnet only" : pusdView.amount > 0n ? formatAssetAmount("PUSD", pusdView.amount) + " PUSD" : pusdView.status === "ready" ? "0.00 PUSD" : "Not checked yet"}</strong><small>{network !== "mainnet" ? "Switch to Mainnet to check PUSD." : pusdView.status === "error" ? pusdView.detail : "Across all wallet addresses"}</small></div>
+                  <div className="wallet-live-pusd"><span className="section-kicker">PARYONUSD</span><strong>{network !== "mainnet" ? "Mainnet only" : pusdView.amount > 0n ? formatAssetAmount("PUSD", pusdView.amount) + " PUSD" : pusdView.status === "ready" ? "0.00 PUSD" : "Not checked yet"}</strong><small>{network !== "mainnet" ? "Switch to Mainnet to check PUSD." : pusdView.status === "error" ? <>{pusdView.detail}<button type="button" aria-label="Dismiss PUSD balance error" onClick={() => setPusdView((current) => ({ ...current, status: current.amount > 0n ? "ready" : "idle", detail: "Checked across all wallet addresses." }))}><X size={13} /></button></> : "Across all wallet addresses"}</small></div>
                   <div className="wallet-live-refresh"><small>Updated {formatUpdatedAgo(lastWalletBalanceUpdatedAt, walletNow)}</small><button type="button" className="secondary-button" onClick={() => window.dispatchEvent(new Event("ajochain:wallet-balances-refresh"))} disabled={walletBalancesRefreshing}><RefreshCw size={15} className={walletBalancesRefreshing ? "activity-spin" : ""} />{walletBalancesRefreshing ? "Refreshing…" : "Refresh"}</button></div>
                 </section>
                 <div className="wallet-address-card">
