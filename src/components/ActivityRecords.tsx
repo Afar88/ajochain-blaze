@@ -337,6 +337,7 @@ export default function ActivityRecords({ network, compact = false }: { network:
   const [busy, setBusy] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<number | null>(null);
   const [refreshError, setRefreshError] = useState("");
+  const [dismissedErrors, setDismissedErrors] = useState<string[]>([]);
 
   const refresh = useCallback(async () => {
     setBusy(true);
@@ -410,7 +411,7 @@ export default function ActivityRecords({ network, compact = false }: { network:
           <RefreshCw size={15} className={busy ? "activity-spin" : ""} /> {busy ? "Refreshing…" : "Refresh records"}
         </button>
       </div>
-      {refreshError && <p className="classic-error" role="alert">{refreshError}</p>}
+      {refreshError && <p className="classic-error" role="alert">Couldn't refresh activity. <button type="button" aria-label="Dismiss error" onClick={() => setRefreshError("")}>×</button><details className="technical-details"><summary>Details</summary><span>{refreshError}</span></details></p>}
       {circles.length === 0 ? (
         <article className="asset-detail-card activity-empty">
           <h2>No saved circles found</h2>
@@ -433,11 +434,12 @@ export default function ActivityRecords({ network, compact = false }: { network:
               {result.status === "loading" ? (
                 <p className="classic-empty">Checking this circle…</p>
               ) : result.status === "unavailable" ? (
-                <div className="activity-unavailable">
+                {!dismissedErrors.includes(result.ref.id + ":circle") && <div className="activity-unavailable">
                   <b>Couldn't load this circle yet</b>
-                  <p>{result.error}</p>
+                  <button type="button" aria-label="Dismiss error" onClick={() => setDismissedErrors((current) => [...current, result.ref.id + ":circle"])}>×</button>
                   <small>This circle is saved. Refresh to check it again.</small>
-                </div>
+                  <details className="technical-details"><summary>Details</summary><p>{result.error}</p></details>
+                </div>}
               ) : (
                 <>
                   <div className="activity-state-grid">
@@ -481,11 +483,12 @@ export default function ActivityRecords({ network, compact = false }: { network:
                       <small>{result.historyError ? "Couldn't load history" : result.history?.truncated ? "Latest 20 records" : "Recent records"}</small>
                     </div>
                     {result.historyError ? (
-                      <div className="activity-unavailable">
+                      {!dismissedErrors.includes(result.ref.id + ":history") && <div className="activity-unavailable">
                         <b>Couldn't load transactions</b>
-                        <p>{result.historyError}</p>
+                        <button type="button" aria-label="Dismiss error" onClick={() => setDismissedErrors((current) => [...current, result.ref.id + ":history"])}>×</button>
                         <small>Circle details are still shown above.</small>
-                      </div>
+                        <details className="technical-details"><summary>Details</summary><p>{result.historyError}</p></details>
+                      </div>}
                     ) : result.history?.records.length ? (
                       result.history.records.map((record) => (
                         <div className="activity-transaction-row" key={record.txid}>
