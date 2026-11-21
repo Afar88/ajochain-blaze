@@ -209,6 +209,7 @@ type WalletView = {
 };
 export type ReceiveAddressChoice = {
   index: number;
+  branch?: "receive" | "change";
   address: string;
   confirmedSatoshis: string;
   unconfirmedSatoshis: string;
@@ -217,6 +218,58 @@ export type ReceiveAddressChoice = {
   status: "confirmed" | "pending" | "unused";
   newest: boolean;
 };
+
+export type WalletDiscoveryCache = { checkedAt: number; circles: string[] };
+const DISCOVERY_CACHE_PREFIX = "ajochain:wallet-discovery:v1:";
+const DISCOVERY_CACHE_MAX_AGE_MS = 30 * 60 * 1000;
+
+export function getWalletDiscoveryCacheKey(firstReceiveAddress: string, network: NetworkId): string {
+  return DISCOVERY_CACHE_PREFIX + network + ":" + firstReceiveAddress.trim().toLowerCase();
+}
+
+export function readWalletDiscoveryCache(
+  storage: Pick<Storage, "getItem">,
+  key: string,
+): WalletDiscoveryCache | null {
+  try {
+    const raw: unknown = JSON.parse(storage.getItem(key) || "null");
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const value = raw as Record<string, unknown>;
+    if (typeof value.checkedAt !== "number" || !Number.isFinite(value.checkedAt) ||
+        !Array.isArray(value.circles) || !value.circles.every((item) => typeof item === "string")) return null;
+    return { checkedAt: value.checkedAt, circles: value.circles as string[] };
+  } catch { return null; }
+}
+
+export function writeWalletDiscoveryCache(
+  storage: Pick<Storage, "setItem">,
+  key: string,
+  circles: readonly string[],
+  checkedAt = Date.now(),
+): WalletDiscoveryCache {
+  const cache = { checkedAt, circles: [...new Set(circles)] };
+  storage.setItem(key, JSON.stringify(cache));
+  return cache;
+}
+
+export function isWalletDiscoveryCacheFresh(cache: WalletDiscoveryCache | null, now = Date.now()): boolean {
+  return Boolean(cache && cache.checkedAt <= now && now - cache.checkedAt < DISCOVERY_CACHE_MAX_AGE_MS);
+}
+
+export function getDefaultWalletReceiveIndex(
+  entries: readonly Pick<ReceiveAddressChoice, "index" | "branch" | "confirmedSatoshis" | "unconfirmedSatoshis">[],
+  preferredIndex?: number | null,
+): number | null {
+  const receiveEntries = entries.filter((entry) => (entry.branch ?? "receive") === "receive");
+  if (preferredIndex !== null && preferredIndex !== undefined &&
+      receiveEntries.some((entry) => entry.index === preferredIndex)) return preferredIndex;
+  const ranked = [...receiveEntries].sort((left, right) => {
+    const leftTotal = BigInt(left.confirmedSatoshis) + BigInt(left.unconfirmedSatoshis);
+    const rightTotal = BigInt(right.confirmedSatoshis) + BigInt(right.unconfirmedSatoshis);
+    return leftTotal === rightTotal ? left.index - right.index : leftTotal > rightTotal ? -1 : 1;
+  });
+  return ranked[0]?.index ?? null;
+}
 type PreparedGather = {
   network: NetworkId;
   destinationAddress: string;
@@ -316,7 +369,7 @@ export function getWalletBchBalanceSummary(input: {
     };
   }
 
-  if (network === "mainnet" && receiveAddressChoices.length > 0) {
+  if (receiveAddressChoices.length > 0) {
     const totalSatoshis = receiveAddressChoices.reduce((total, choice) => {
       try {
         const addressTotal = BigInt(choice.confirmedSatoshis) + BigInt(choice.unconfirmedSatoshis);
@@ -327,8 +380,8 @@ export function getWalletBchBalanceSummary(input: {
     }, 0n);
     return {
       balanceLabel: formatBchSatoshis(totalSatoshis),
-      detailLabel: "Across your wallet addresses",
-      sourceLabel: "Receive-address activity across your wallet addresses",
+      detailLabel: "Across all wallet addresses",
+      sourceLabel: "Receive and change address balances",
     };
   }
 
@@ -413,7 +466,17 @@ export default function App() {
   });
   const [showWallet, setShowWallet] = useState(false);
   const [receiveAddressChoices, setReceiveAddressChoices] = useState<ReceiveAddressChoice[]>([]);
-  const [receiveAddressPickerExpanded, setReceiveAddressPickerExpanded] = useState(true);
+  const [receiveAddressPickerExpanded, setReceiveAddressPickerExpanded] = useState(false);
+  const [walletAddressPickerShowAll, setWalletAddressPickerShowAll] = useState(false);
+  const [expandedWalletAddress, setExpandedWalletAddress] = useState(false);
+  const [showWalletAddressQr, setShowWalletAddressQr] = useState(false);
+  const [walletAddressQrDataUrl, setWalletAddressQrDataUrl] = useState("");
+  const [walletBalanceRefreshRun, setWalletBalanceRefreshRun] = useState(0);
+  const [walletBalanceUpdatedAt, setWalletBalanceUpdatedAt] = useState<number | null>(null);
+  const [walletBalanceRefreshing, setWalletBalanceRefreshing] = useState(false);
+  const [walletPusdTotal, setWalletPusdTotal] = useState<bigint | null>(null);
+  const [walletPusdError, setWalletPusdError] = useState("");
+  const lastManualDiscoveryRunRef = useRef(0);
   const [receiveAddressScanLoading, setReceiveAddressScanLoading] = useState(false);
   const [receiveAddressScanError, setReceiveAddressScanError] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState("");
@@ -467,7 +530,7 @@ export default function App() {
     cancel: () => void;
   } | null>(null);
   const selectedMainnetReceiveAddress = receiveAddressChoices.find((choice) =>
-    choice.index === walletView.receiveIndex,
+    (choice.branch ?? "receive") === "receive" && choice.index === walletView.receiveIndex,
   ) ?? null;
 
   useEffect(() => {
@@ -1615,8 +1678,12 @@ export default function App() {
   // Keep the derived address visible even before Selene's current Receive
   // screen has been explicitly matched. Users need to compare this candidate
   // with the address shown in Selene before confirming it in Wallet Details.
-  const shortAddress = (value: string | null) =>
-    value ? value.slice(0, 10) + "…" + value.slice(-6) : "Address unavailable…";
+  const shortAddress = (value: string | null) => {
+    if (!value) return "Address unavailable";
+    const prefix = value.startsWith("bitcoincash:") ? "bitcoincash:" : "";
+    const body = prefix ? value.slice(prefix.length) : value;
+    return prefix + body.slice(0, 4) + "…" + body.slice(-4);
+  };
   const currentBchBalanceScan = bchBalanceScan && walletAddress &&
     bchBalanceScan.network === network &&
     bchBalanceScan.address.toLowerCase() === walletAddress.toLowerCase()
@@ -1629,7 +1696,9 @@ export default function App() {
     currentBchBalanceScan,
     receiveAddressScanLoading,
   });
-  const selectedReceiveAddressChoice = receiveAddressChoices.find((choice) => choice.index === walletView.receiveIndex) ?? null;
+  const selectedReceiveAddressChoice = receiveAddressChoices.find((choice) =>
+    (choice.branch ?? "receive") === "receive" && choice.index === walletView.receiveIndex,
+  ) ?? null;
   const selectedAddressPendingOnly = network === "mainnet" && Boolean(selectedReceiveAddressChoice &&
     BigInt(selectedReceiveAddressChoice.confirmedSatoshis) === 0n &&
     (BigInt(selectedReceiveAddressChoice.unconfirmedSatoshis) > 0n || selectedReceiveAddressChoice.hasPendingHistory));
