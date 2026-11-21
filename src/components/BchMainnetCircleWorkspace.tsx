@@ -497,7 +497,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
       if (selectedAddressPendingOnly) {
         setGenesisSigningPlan(null);
         setPreview(null);
-        setError("Wait for confirmation before creating a circle.");
+        setError("Wait 1 confirmation, then create.");
         return;
       }
       const currentAddress = wallet.address("mainnet");
@@ -754,7 +754,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
         <div>
           <span className="section-kicker">BITCOIN CASH · MAINNET SAVINGS</span>
           <h2 id="bch-mainnet-title">Create a BCH Mainnet circle</h2>
-          <p>Member-specific contribution records, a next-round reserve for each non-final recipient, and a fixed 1% project fee.</p>
+          <p>Each member has a balance. The project fee is 1%.</p>
         </div>
         <span className="classic-network mainnet">Bitcoin Cash Mainnet</span>
       </div>
@@ -762,7 +762,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
 
 
       {network !== "mainnet" && (
-        <p className="classic-error" role="status">Switch the app network to Bitcoin Cash Mainnet to prepare this circle. The Chipnet workspace remains separate below.</p>
+        <p className="classic-error" role="status">Switch to Mainnet to create this circle.</p>
       )}
 
       <form className="pusd-mainnet-form" onSubmit={(event) => void prepare(event)}>
@@ -771,7 +771,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
         </label>
         <label>Contribution per member (BCH)
           <input value={contribution} onChange={(event) => setContribution(event.target.value)} inputMode="decimal" placeholder="0.002" required />
-          <small>Minimum 0.002 BCH per member, per scheduled round. Up to 8 decimal places.</small>
+          <small>Minimum 0.002 BCH each round.</small>
         </label>
         <div className="creator-member-preview">
           <b>Member 1 · You, the initiator</b>
@@ -784,7 +784,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
                   void pendingCopy.then(() => setNotice("Member 1 address copied."))
                     .catch(() => setNotice("Could not copy the address. Select it and copy manually."));
                 }}><Copy size={15} /> Copy address</button>
-                <small>{initiatorAddressConfirmed ? "Confirmed from Selene's current Receive screen" : "Check Selene's Receive screen before creating a circle."}</small>
+                <small>{initiatorAddressConfirmed ? "Address confirmed ✓" : "Check Selene's Receive screen."}</small>
               </>
             : "Connect Selene and sync the address currently shown on its Mainnet Receive screen. Your address will be added first automatically."}
           {initiatorAddress && !initiatorAddressConfirmed && (
@@ -795,12 +795,12 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
         </div>
         <label>Other members' Mainnet addresses · one per line
           <textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder={"bitcoincash:…\nbitcoincash:…"} required />
-          <small>Add 1–4 other unique Bitcoin Cash Mainnet P2PKH or token-aware P2PKH addresses. Your connected Selene address is always Member 1.</small>
+          <small>Add 1–4 Mainnet addresses. Your wallet is Member 1.</small>
         </label>
         {memberOrder.error && <p className="classic-error" role="alert">{memberOrder.error}</p>}
         <label>Maximum BCH miner fee per action (satoshis)
           <input value={maxFee} onChange={(event) => setMaxFee(event.target.value)} inputMode="numeric" required />
-          <small>Miner fees are funded separately from the member pot and the 1% project fee.</small>
+          <small>Network fees come from your wallet, not the pot.</small>
         </label>
 
         <div className="pusd-mainnet-treasury">
@@ -825,7 +825,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
           {busy ? "Preparing circle setup…" : "Continue"} <ArrowRight size={15} />
         </button>
         </div>
-        <small className="field-hint">Your wallet is Member 1. Add the other members in order.</small>
+        <small className="field-hint">Your wallet is Member 1. Add other members in order.</small>
       </form>
 
       {preview && genesisSigningPlan && (
@@ -836,7 +836,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
             onClick={() => void createCircleInSelene()}>
             {lifecycleBusy ? "Approve in Selene…" : "Create circle in Selene"}
           </button>
-          <p className="receive-address-payout-note">Payouts for this circle will go to {genesisSigningPlan.circle.initiator.slice(0, 10)}…{genesisSigningPlan.circle.initiator.slice(-6)}. It stays in your Selene wallet.</p>
+          <p className="receive-address-payout-note">Payouts go to the address shown below.</p>
           {selectedAddressPendingOnly && <p className="receive-address-pending-warning" role="alert">Wait for confirmation before creating a circle.</p>}
           <div><span>Members</span><strong>{genesisSigningPlan.circle.members.length}</strong></div>
           <div><span>Member 1 · payout address</span><strong><code>{genesisSigningPlan.circle.initiator}</code></strong></div>
@@ -851,7 +851,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
           </details>
           <TestSignControl planCreatedAt={genesisSigningPlan?.createdAt ?? null} disabled={lifecycleBusy || !walletConnected}
             checked={testSignChecked === "genesis"} onTest={() => void verifyMainnetSignature("genesis")} />
-          <small>Nothing has been created yet. The circle is saved only after the Mainnet broadcast returns a transaction ID.</small>
+          <small>Not created yet. Saved after Mainnet sends successfully.</small>
         </div>
       )}
       </>}
@@ -921,7 +921,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
               <div><span>Estimated miner fee</span><strong>{actionPreview.feeEstimate} sats</strong></div>
               <div><span>Transaction size</span><strong>{actionPreview.size}</strong></div>
               <div><span>Wallet-owned inputs requiring signatures</span><strong>{actionPreview.walletInputCount}</strong></div>
-              <small>Sign and send uses real BCH. Re-read state before each new action; inputs must be confirmed.</small>
+              <small>Real BCH is sent. Confirm amounts and fees first.</small>
               <TestSignControl planCreatedAt={actionSigningPlan?.createdAt ?? null} disabled={lifecycleBusy || !walletConnected}
                 checked={testSignChecked === "action"} onTest={() => void verifyMainnetSignature("action")} />
           {actionSigningPlan && BCH_MAINNET_CIRCLE_SEND_ENABLED && <button type="button" className="primary-button" disabled={lifecycleBusy || !walletConnected} onClick={() => void verifyMainnetSignature("action", true)}>Sign and send on Mainnet</button>}
