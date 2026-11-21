@@ -20,6 +20,8 @@ export interface PusdProviderPolicy {
   minTipHeight: number;
 }
 
+const MAX_CLOCK_SKEW_MS = 2 * 60 * 1000;
+
 /**
  * Validate normalized provider data before it can reach UTXO selection.
  * This does not authenticate the provider or independently prove prevout
@@ -39,7 +41,9 @@ export function validatePusdProviderSnapshot(
     throw new Error("PUSD provider chain tip is behind the accepted minimum.");
   }
   if (!/^[0-9a-f]{64}$/i.test(snapshot.tipHash)) throw new Error("PUSD provider chain tip hash is invalid.");
-  if (!Number.isFinite(snapshot.observedAtMs) || snapshot.observedAtMs > policy.nowMs ||
+  // Phones and servers rarely share an exact clock. Accept a server time up to
+  // two minutes ahead of this device so a slow phone clock doesn't hide PUSD.
+  if (!Number.isFinite(snapshot.observedAtMs) || snapshot.observedAtMs > policy.nowMs + MAX_CLOCK_SKEW_MS ||
       policy.nowMs - snapshot.observedAtMs > policy.maxAgeMs) {
     throw new Error("PUSD provider snapshot is stale or has an invalid observation time.");
   }

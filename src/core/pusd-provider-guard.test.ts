@@ -29,6 +29,9 @@ describe("PUSD provider snapshot guard", () => {
   });
   it("rejects stale snapshots, old tips, and incomplete pagination", () => {
     expect(() => validatePusdProviderSnapshot({ ...snapshot, observedAtMs: 1 }, policy)).toThrow(/stale/);
+    // A server clock slightly ahead of the phone is accepted; far ahead is not.
+    expect(() => validatePusdProviderSnapshot({ ...snapshot, observedAtMs: policy.nowMs + 5_000 }, policy)).not.toThrow();
+    expect(() => validatePusdProviderSnapshot({ ...snapshot, observedAtMs: policy.nowMs + 3 * 60 * 1000 }, policy)).toThrow(/stale/);
     expect(() => validatePusdProviderSnapshot({ ...snapshot, tipHeight: 1 }, policy)).toThrow(/behind/);
     expect(() => validatePusdProviderSnapshot({ ...snapshot, paginationComplete: false }, policy)).toThrow(/incomplete/);
   });
