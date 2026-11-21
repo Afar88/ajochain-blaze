@@ -1,8 +1,8 @@
 # AjoChain BLAZE — BCH + PUSD Mainnet pathway audit
 
 **Audit date:** 18 November 2026  
-**Reviewed commit:** `5c65b2bb03e7a4c9802bb716945578479356cc48`  
-**Production deployment:** `dpl_6rvqJnCye9L67nf6hEQoKJPRarAE`  
+**Reviewed commit:** `ed1100a06481d8eeed2f65dad91d8bdbf59c8f8d`  
+**Production deployment:** `dpl_H1qk78kMSrJUwZGRYxWpPJi9mxN7`  
 **Production URL:** https://ajochain-blaze.vercel.app  
 **Submission target:** 20 November 2026
 
@@ -47,6 +47,18 @@ The nested API route smoke tests were performed after PR #48; PR #49 then added 
 - Unsigned PUSD circle genesis, deposit, payout and pre-first-payout cancellation plans, plus state/receipt/escrow reconciliation.
 
 The PUSD code is configured for two display decimals. Issuer-controlled confirmation of the exact category's decimals and token policy remains an explicit release requirement.
+
+## CI dependency audit — 18 November 2026
+
+GitHub Actions CI run #588 reported:
+
+- **Production-only dependency audit:** 0 vulnerabilities (0 info, low, moderate, high or critical).
+- **Full dependency tree:** 5 high-severity findings, 0 critical. They are in the development/build/test toolchain: direct development dependencies `vite` and `vitest`, plus transitive `fdir`, `picomatch` and `tinyglobby`.
+- The `picomatch` finding references GHSA-fc5q-39xc-vjpf (ReDoS through repeated extglobs; vulnerable range reported as `<=4.0.7`).
+
+These findings are not reported by the production-only audit, but the build/test toolchain still needs maintenance. The repository currently has no checked-in `package-lock.json`, so `npm install` resolves the dependency tree during each build. Do not apply `npm audit fix --force` blindly: the CI report's suggested remediation involves a SemVer-major Vitest change to 3.1.4. Review a compatible Vite/Vitest toolchain, add a reproducible lockfile, and rerun the full CI suite as a separate change.
+
+The verifier dependency is pinned exactly to `@bitauth/libauth@3.1.0-next.8`. Upstream currently labels this release a pre-release, but its release notes include the BCH 2026 VM and VMB updates used by this project. The stable `3.0.0` release is not a drop-in substitute for BCH 2026 validation. Keep the exact pin until a stable release with equivalent BCH 2026 behavior is available and has passed this repository's full and upstream vector suites; review and retain the upstream release provenance as part of the security sign-off.
 
 ## Findings that block real-value opening
 
