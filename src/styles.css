@@ -2055,8 +2055,8 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
 
 .wallet-modal-balance {
   display:grid;
-  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
-  gap:10px 16px;
+  grid-template-columns:minmax(0,1fr);
+  gap:10px;
   padding:16px;
   border:1px solid var(--line);
   border-radius:14px;
@@ -2099,4 +2099,16 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
 .wallet-modal-balance-footer .text-action:disabled {
   opacity:.6;
   cursor:wait;
+}
+
+.wallet-pusd-warning {
+  display:flex;
+  align-items:flex-start;
+  gap:8px;
+  color:var(--danger);
+  font-size:12px;
+  font-weight:750;
+}
+.wallet-pusd-warning .inline-dismiss {
+  margin-left:auto;
 }
