@@ -371,7 +371,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
     if (!activeCircle) return;
     const address = wallet.address("mainnet");
     if (!walletConnected || wallet.state !== "connected" || !address) {
-      setError("Connect the Mainnet member wallet through WizardConnect first.");
+      setError("Connect the member's Selene wallet first.");
       return;
     }
     setLifecycleBusy(true);
@@ -409,7 +409,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
     if (!activeCircle) return;
     const address = wallet.address("mainnet");
     if (!walletConnected || wallet.state !== "connected" || !address) {
-      setError("Connect a Mainnet fee-paying wallet through WizardConnect first.");
+      setError("Connect a Selene wallet to cover the Mainnet fee.");
       return;
     }
     setLifecycleBusy(true);
@@ -444,7 +444,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
     if (!activeCircle) return;
     const address = wallet.address("mainnet");
     if (!walletConnected || wallet.state !== "connected" || !address) {
-      setError("Connect the registered Mainnet circle initiator through WizardConnect first.");
+      setError("Reconnect the wallet that created this circle.");
       return;
     }
     setLifecycleBusy(true);
@@ -554,7 +554,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
       }
       if (!verification || verification.verified !== true || verification.broadcast !== send) {
         throw new Error(send
-          ? "The Mainnet server did not confirm the relay. Check the transaction ID before retrying."
+          ? "The transaction was not sent. Check its ID before retrying."
           : "The Mainnet server did not return a valid verification-only result. No transaction was broadcast.");
       }
       if (send) {
@@ -672,7 +672,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
       return null;
     }
     if (!walletConnected || wallet.state !== "connected") {
-      setError("Connect Selene through WizardConnect before preparing the circle setup preview.");
+      setError("Connect Selene before preparing the circle.");
       return null;
     }
     const initiator = wallet.address("mainnet");
@@ -681,7 +681,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
       return null;
     }
     if (!initiatorAddressConfirmed) {
-      setError("Choose a receive address derived from your connected Selene wallet in Wallet Details before preparing the circle.");
+      setError("Pick a receive address in Wallet details first.");
       return null;
     }
     if (selectedAddressPendingOnly) {
