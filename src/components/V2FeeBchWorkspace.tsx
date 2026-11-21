@@ -99,6 +99,11 @@ export default function V2FeeBchWorkspace({
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  useEffect(() => {
+    if (!notice || /unavailable|could not|couldn't|failed|error|not valid|changed/i.test(notice)) return;
+    const timer = window.setTimeout(() => setNotice(""), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -628,7 +633,7 @@ export default function V2FeeBchWorkspace({
       </div>}
       {busy && <p className="classic-feedback" role="status">Preparing or verifying a Chipnet transaction…</p>}
       {notice && <p className="classic-feedback" role="status">{notice}</p>}
-      {error && <p className="classic-error" role="alert">{error}</p>}
+      {error && <p className="classic-error" role="alert">{error}<button type="button" aria-label="Dismiss error" onClick={() => setError("")}>×</button></p>}
     </section>
   );
 }
