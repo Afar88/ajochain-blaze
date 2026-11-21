@@ -378,6 +378,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
       const txid = await plan.provider.sendRawTransaction(plan.builder.build());
       setNotice("Payout broadcast. Transaction ID: " + txid);
       await refresh(activeCircle);
+      window.dispatchEvent(new Event("ajochain:wallet-balances-refresh"));
     } catch (cause) {
       setError(message(cause));
     } finally {
