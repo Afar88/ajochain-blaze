@@ -1110,7 +1110,6 @@ export default function App() {
           if (defaultIndex !== null) client.selectReceiveAddressIndex(defaultIndex, "mainnet");
         }
         setReceiveAddressPickerExpanded(false);
-        setWalletBalanceUpdatedAt(Date.now());
         setBchBalanceScan({
           address: client.address(network) ?? walletAddresses.find((entry) => entry.branch === "receive")?.address ?? "",
           network,
@@ -1142,6 +1141,7 @@ export default function App() {
           setWalletPusdTotal(null);
           setWalletPusdError("");
         }
+        setWalletBalanceUpdatedAt(Date.now());
         if (page === "assets") setPusdRefresh((value) => value + 1);
       } catch (cause) {
         if (!cancelled) {
@@ -1570,6 +1570,7 @@ export default function App() {
               .map((params) => ({ encoded: encodeV2FeeCircleParams(params), savedAt: 0 }));
             if (additions.length > 0) {
               window.localStorage.setItem(V2_MENU_STORAGE_KEY, JSON.stringify([...existing, ...additions]));
+              window.dispatchEvent(new Event("ajochain:saved-circles-changed"));
             }
             if (!run.cancelled) setMenuCircles(readSavedCircleMenuRecords());
             return { foundCount: found.length };
