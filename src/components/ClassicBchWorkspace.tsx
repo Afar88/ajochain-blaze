@@ -438,7 +438,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
       <div className="classic-workspace-grid">
         <div className="classic-create-panel">
           <h3>Start a Classic BCH circle</h3>
-          <p>2–5 unique BCH addresses, in payout order. One shared pot. Individual deposits aren't tracked.</p>
+          <p>2–5 unique BCH addresses, in payout order.</p><small>One shared pot. Individual deposits aren't tracked.</small>
           <form onSubmit={startCircle}>
             <label>Circle name
               <input value={name} onChange={(event) => setName(event.target.value)} maxLength={60} required />
@@ -504,7 +504,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
               {status?.completed ? "Circle complete" : "Pay out next round"}
             </button>
           </div>
-          <p className="classic-disclaimer">Classic V1 does not track individual member credit or late payments. Chain state, not this browser's saved list, determines whether a payout is possible. The Mainnet transaction kill-switch remains closed in this build.</p>
+          <p className="classic-disclaimer">Classic V1 uses one shared pot and does not track each member's deposits. Mainnet payments are disabled in this build.</p>
         </div>
       )}
 
