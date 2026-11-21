@@ -560,7 +560,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
       }
       if (!verification || verification.verified !== true || verification.broadcast !== send) {
         throw new Error(send
-          ? "The Mainnet server did not confirm the relay. Check the transaction ID before retrying."
+          ? "The network hasn't confirmed this payment yet. Check its status before trying again."
           : "The Mainnet server did not return a valid verification-only result. No transaction was broadcast.");
       }
       if (send) {
@@ -689,7 +689,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
       return null;
     }
     if (!initiatorAddressConfirmed) {
-      setError("Choose a receive address derived from your connected Selene wallet in Wallet Details before preparing the circle.");
+      setError("Pick the address shown in Selene in Wallet details first.");
       return null;
     }
     if (selectedAddressPendingOnly) {
@@ -787,7 +787,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
                   void pendingCopy.then(() => setNotice("Member 1 address copied."))
                     .catch(() => setNotice("Could not copy the address. Select it and copy manually."));
                 }}><Copy size={15} /> Copy address</button>
-                <small>{initiatorAddressConfirmed ? "Confirmed from Selene's current Receive screen" : "Candidate address derived from this connected wallet · not yet matched to Selene's displayed Receive address"}</small>
+                <small>{initiatorAddressConfirmed ? "Address confirmed ✓" : "Pick the address shown in Selene before using it."}</small>
               </>
             : "Connect Selene and sync the address currently shown on its Mainnet Receive screen. Your address will be added first automatically."}
           {initiatorAddress && !initiatorAddressConfirmed && (
@@ -828,7 +828,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
           {busy ? "Preparing circle setup…" : "Continue"} <ArrowRight size={15} />
         </button>
         </div>
-        <small className="field-hint">Member order is fixed at creation: your connected Mainnet address is Member 1, followed by the addresses above. Each address is a specific receive key from a wallet seed, so use the address currently shown by Selene before creating the circle.</small>
+        <small className="field-hint">Your address is Member 1. Others follow your chosen order.</small>
       </form>
 
       {preview && genesisSigningPlan && (
