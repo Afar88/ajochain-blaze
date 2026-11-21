@@ -3,7 +3,13 @@ import {
   getCancelledDiscoveryStatus,
   getDiscoveryEffectDependencies,
   getDiscoveryNetworkStatus,
+  getWalletAddressChoiceKey,
+  getDefaultReceiveAddressIndex,
+  getDefaultWalletDisplayAddressKey,
   getWalletBchBalanceSummary,
+  readWalletDiscoveryCache,
+  shouldScanWalletDiscovery,
+  writeWalletDiscoveryCache,
 } from "./App";
 
 describe("App wallet discovery lifecycle", () => {
@@ -13,8 +19,8 @@ describe("App wallet discovery lifecycle", () => {
     const addressSetRevision = 8;
     const discoveryRun = 0;
 
-    const beforeChoices = [{ address: "bitcoincash:qfirst", confirmedSatoshis: "5" }];
-    const afterChoices = [{ address: "bitcoincash:qsecond", confirmedSatoshis: "12" }];
+    const beforeChoices = [{ branch: "receive" as const, index: 0, address: "bitcoincash:qfirst", confirmedSatoshis: "5" }];
+    const afterChoices = [{ branch: "receive" as const, index: 1, address: "bitcoincash:qsecond", confirmedSatoshis: "12" }];
     const beforeReceiveIndex = 0;
     const afterReceiveIndex = 17;
 
@@ -72,20 +78,20 @@ describe("App wallet BCH balance summary", () => {
       ...baseInput,
       receiveAddressChoices: [
         {
-          index: 0, address: "bitcoincash:qone",
+          branch: "receive", index: 0, address: "bitcoincash:qone",
           confirmedSatoshis: "100000000", unconfirmedSatoshis: "25",
           hasHistory: true, hasPendingHistory: false, status: "confirmed", newest: false,
         },
         {
-          index: 1, address: "bitcoincash:qtwo",
+          branch: "receive", index: 1, address: "bitcoincash:qtwo",
           confirmedSatoshis: "2", unconfirmedSatoshis: "3",
           hasHistory: true, hasPendingHistory: true, status: "pending", newest: true,
         },
       ],
     });
     expect(summary.balanceLabel).toBe("1.00000030 BCH");
-    expect(summary.detailLabel).toBe("Across your wallet addresses");
-    expect(summary.sourceLabel).toBe("Receive-address activity across your wallet addresses");
+    expect(summary.detailLabel).toBe("Across all wallet addresses");
+    expect(summary.sourceLabel).toBe("All receive and change addresses");
   });
 
   it("falls back to the existing gather scan before showing the running state", () => {
@@ -116,5 +122,62 @@ describe("App wallet BCH balance summary", () => {
     });
     expect(summary.balanceLabel).toBe("Not checked yet");
     expect(summary.sourceLabel).toBe("No wallet scan in this session");
+  });
+});
+
+
+describe("wallet-wide address and discovery cache helpers", () => {
+  function createStorage() {
+    const values = new Map<string, string>();
+    return {
+      getItem(key: string) { return values.get(key) ?? null; },
+      setItem(key: string, value: string) { values.set(key, value); },
+    };
+  }
+
+  it("counts BCH held on both receive and change addresses", () => {
+    const summary = getWalletBchBalanceSummary({
+      network: "mainnet",
+      connected: true,
+      currentBchBalanceScan: null,
+      receiveAddressScanLoading: false,
+      receiveAddressChoices: [
+        {
+          branch: "receive", index: 0, address: "bitcoincash:qreceive",
+          confirmedSatoshis: "100000000", unconfirmedSatoshis: "0",
+          hasHistory: true, hasPendingHistory: false, status: "confirmed", newest: false,
+        },
+        {
+          branch: "change", index: 0, address: "bitcoincash:qchange",
+          confirmedSatoshis: "50000000", unconfirmedSatoshis: "30",
+          hasHistory: true, hasPendingHistory: true, status: "pending", newest: false,
+        },
+      ],
+    });
+    expect(summary.balanceLabel).toBe("1.50000030 BCH");
+  });
+
+  it("keeps the highest-funded wallet address as the display default while receive selection stays on a receive path", () => {
+    const choices = [
+      { branch: "receive" as const, index: 0, address: "bitcoincash:qreceive", confirmedSatoshis: "100", unconfirmedSatoshis: "0", hasHistory: true, hasPendingHistory: false, status: "confirmed" as const, newest: false },
+      { branch: "change" as const, index: 0, address: "bitcoincash:qchange", confirmedSatoshis: "900", unconfirmedSatoshis: "0", hasHistory: true, hasPendingHistory: false, status: "confirmed" as const, newest: false },
+      { branch: "receive" as const, index: 1, address: "bitcoincash:qempty", confirmedSatoshis: "0", unconfirmedSatoshis: "0", hasHistory: false, hasPendingHistory: false, status: "unused" as const, newest: true },
+    ];
+    expect(getDefaultWalletDisplayAddressKey(choices)).toBe("change:0");
+    expect(getDefaultReceiveAddressIndex(choices)).toBe(0);
+    expect(getWalletAddressChoiceKey(choices[1])).toBe("change:0");
+  });
+
+  it("shows cached circles immediately after reopening and scans only after 30 minutes or a manual check", () => {
+    const storage = createStorage();
+    const now = 1_800_000_000_000;
+    writeWalletDiscoveryCache(storage, "bitcoincash:qfirst", "mainnet", ["circle-a", "circle-b"], now);
+    const firstOpen = readWalletDiscoveryCache(storage, "bitcoincash:qfirst", "mainnet");
+    const reopened = readWalletDiscoveryCache(storage, "bitcoincash:qfirst", "mainnet");
+    expect(firstOpen?.circles).toEqual(["circle-a", "circle-b"]);
+    expect(reopened?.circles).toEqual(["circle-a", "circle-b"]);
+    expect(shouldScanWalletDiscovery(reopened, false, now + 29 * 60_000)).toBe(false);
+    expect(shouldScanWalletDiscovery(reopened, false, now + 31 * 60_000)).toBe(true);
+    expect(shouldScanWalletDiscovery(reopened, true, now + 1_000)).toBe(true);
   });
 });
