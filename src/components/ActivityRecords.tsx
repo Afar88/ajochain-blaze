@@ -200,7 +200,7 @@ function loadCircleRefs(): CircleRef[] {
     ...readActivePusd(),
   );
   const unique = new Map(refs.map((ref) => [ref.id, ref]));
-  return [...unique.values()].slice(0, 30);
+  return [...unique.values()];
 }
 
 
