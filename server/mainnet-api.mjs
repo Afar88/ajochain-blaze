@@ -38,6 +38,10 @@ export const BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HEIGHT = 556_767;
 export const BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH =
   "0000000000000000004626ff6e3b936941d341c5932ece4357eeccac44e6d56c";
 const DEFAULT_TIMEOUT_MS = 12_000;
+const FIRST_ANSWER_TIMEOUT_MS = 5_000;
+const ELECTRUM_SELECTION_ATTEMPTS = 2;
+const ELECTRUM_QUORUM_UNAVAILABLE = "ELECTRUM_QUORUM_UNAVAILABLE";
+const ELECTRUM_TIP_DISAGREEMENT = "ELECTRUM_TIP_DISAGREEMENT";
 // BCH blocks are random; gaps over 30 minutes happen. 90 minutes avoids false "unavailable".
 const MAX_TIP_AGE_MS = 90 * 60 * 1000;
 const MAX_UTXOS_PER_ADDRESS = 1_000;
@@ -63,8 +67,8 @@ export function parseMainnetElectrumProviderConfig(
     throw new Error("ELECTRUM_SERVERS and ELECTRUM_PROVIDER_OPERATORS must be comma-separated strings.");
   }
   const servers = serverValue.split(",").map((item) => item.trim()).filter(Boolean);
-  if (servers.length < 2 || new Set(servers).size !== servers.length) {
-    throw new Error("Configure at least two unique ELECTRUM_SERVERS endpoints for Mainnet quorum.");
+  if (servers.length < 2 || servers.length > 6 || new Set(servers).size !== servers.length) {
+    throw new Error("Configure between two and six unique ELECTRUM_SERVERS endpoints for Mainnet quorum.");
   }
   const operators = operatorValue.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
   if (operators.length !== servers.length) {
@@ -73,8 +77,10 @@ export function parseMainnetElectrumProviderConfig(
   if (operators.some((operator) => !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(operator))) {
     throw new Error("Electrum operator IDs must be 1–64 lowercase letters, digits, dots, underscores or hyphens.");
   }
-  if (new Set(operators).size !== operators.length) {
-    throw new Error("Electrum quorum endpoints must declare distinct operator IDs; two hostnames alone do not prove operator independence.");
+  // Redundant endpoints from one operator may be configured as backups, but
+  // at least two operator labels must exist so the selected quorum can be diverse.
+  if (new Set(operators).size < 2) {
+    throw new Error("Electrum provider configuration must declare at least two distinct operators for quorum.");
   }
   const hostnames = new Set();
   const providers = servers.map((endpoint, index) => {
@@ -248,19 +254,112 @@ class ElectrumSession {
   }
 }
 
-async function withElectrumSessions(callback) {
-  if (typeof WebSocket === "undefined") {
+async function selectElectrumProviderSessions(providers, {
+  timeoutMs,
+  sessionFactory,
+  readTip,
+}) {
+  for (let attempt = 0; attempt < ELECTRUM_SELECTION_ATTEMPTS; attempt += 1) {
+    // Construct every socket before awaiting any one provider, so endpoint
+    // connection and first-tip checks run concurrently.
+    const created = providers.map((provider) => {
+      try {
+        return sessionFactory(provider);
+      } catch {
+        return null;
+      }
+    });
+    const sessions = created.filter(Boolean);
+    for (const session of sessions) session.providersConfigured = providers.length;
+
+    const selection = await new Promise((resolve) => {
+      let completed = created.length - sessions.length;
+      let finished = false;
+      const selected = [];
+      const finish = (result) => {
+        if (finished) return;
+        finished = true;
+        resolve(result);
+      };
+
+      if (sessions.length === 0 || completed === providers.length) {
+        finish({ type: "insufficient" });
+        return;
+      }
+
+      for (const session of sessions) {
+        Promise.resolve()
+          .then(() => readTip(session))
+          .then((tip) => {
+            if (finished) return;
+            completed += 1;
+            session.firstTip = tip;
+            // The 5-second limit applies only through connection and this
+            // first chain-identity-checked answer. Later RPCs retain the
+            // configured timeout.
+            session.timeoutMs = timeoutMs;
+
+            // A second endpoint carrying the same declared operator label
+            // is a backup, not a second quorum vote.
+            if (!selected.some((candidate) => candidate.operatorId === session.operatorId)) {
+              selected.push(session);
+            }
+
+            if (selected.length === 2) {
+              try {
+                assertTipQuorum(selected.map((candidate) => candidate.firstTip));
+                finish({ type: "selected", sessions: selected });
+              } catch {
+                finish({ type: "disagree" });
+              }
+            } else if (completed === providers.length) {
+              finish({ type: "insufficient" });
+            }
+          })
+          .catch(() => {
+            if (finished) return;
+            completed += 1;
+            if (completed === providers.length) finish({ type: "insufficient" });
+          });
+      }
+    });
+
+    if (selection.type === "selected") {
+      for (const session of sessions) {
+        if (!selection.sessions.includes(session)) session.close();
+      }
+      return selection.sessions;
+    }
+
+    sessions.forEach((session) => session.close());
+    if (selection.type === "disagree") {
+      throw new Error(ELECTRUM_TIP_DISAGREEMENT);
+    }
+  }
+
+  throw new Error(ELECTRUM_QUORUM_UNAVAILABLE);
+}
+
+export async function withElectrumSessions(callback, options = {}) {
+  const sessionFactory = options.sessionFactory ??
+    (({ endpoint, operatorId }) => new ElectrumSession(endpoint, FIRST_ANSWER_TIMEOUT_MS, operatorId));
+  if (typeof WebSocket === "undefined" && !options.sessionFactory) {
     throw new Error("This Node.js runtime does not provide the WebSocket client required for Electrum.");
   }
-  const timeoutMs = Number(process.env.ELECTRUM_RPC_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
+  const timeoutMs = options.rpcTimeoutMs ??
+    Number(process.env.ELECTRUM_RPC_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 60_000) {
     throw new Error("ELECTRUM_RPC_TIMEOUT_MS must be between 1000 and 60000.");
   }
-  const providers = parseMainnetElectrumProviderConfig();
-  const sessions = providers.map(({ endpoint, operatorId }) =>
-    new ElectrumSession(endpoint, timeoutMs, operatorId),
-  );
+  const providers = options.providers ?? parseMainnetElectrumProviderConfig();
+  const sessions = await selectElectrumProviderSessions(providers, {
+    timeoutMs,
+    sessionFactory,
+    readTip: options.readTip ?? getServerTip,
+  });
   try {
+    // Selection and retry are complete before the callback starts. In
+    // particular, no connection retry can ever replay a relayed transaction.
     return await callback(sessions);
   } finally {
     sessions.forEach((session) => session.close());
@@ -328,10 +427,10 @@ async function getServerTip(session) {
 }
 
 function assertTipQuorum(tips) {
-  if (tips.length < 2) throw new Error("Electrum mainnet quorum is unavailable.");
+  if (tips.length !== 2) throw new Error(ELECTRUM_QUORUM_UNAVAILABLE);
   const first = tips[0];
   if (tips.some((tip) => tip.height !== first.height || tip.hash !== first.hash || tip.headerHex !== first.headerHex)) {
-    throw new Error("Configured Electrum servers disagree on the Bitcoin Cash mainnet tip.");
+    throw new Error(ELECTRUM_TIP_DISAGREEMENT);
   }
   return { height: first.height, hash: first.hash, timestamp: first.timestamp };
 }
@@ -2843,7 +2942,7 @@ export function mainnetApiErrorStatus(message) {
   if (/input outpoint .*already reserved|input reservation exists/i.test(text)) return 409;
   // Provider, network and durable-ledger failures are service errors, not
   // client validation errors. Do not expose their raw messages to API callers.
-  if (/result is UNKNOWN|durable broadcast ledger|UPSTASH_REDIS_REST|input reservation|Electrum|WebSocket|fetch failed|ECONN[A-Z]*|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|Unable to connect|Timed out connecting/i.test(text)) return 503;
+  if (/ELECTRUM_QUORUM_UNAVAILABLE|ELECTRUM_TIP_DISAGREEMENT|result is UNKNOWN|durable broadcast ledger|UPSTASH_REDIS_REST|input reservation|Electrum|WebSocket|fetch failed|ECONN[A-Z]*|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|Unable to connect|Timed out connecting/i.test(text)) return 503;
   if (/TypeError|ReferenceError|SyntaxError|RangeError|Cannot read properties|is not a function/i.test(text)) return 500;
   return 400;
 }
@@ -2856,6 +2955,12 @@ export function mainnetApiPublicError(message) {
   if (unknownSubmission) {
     return "Transaction submission status is unknown for " + unknownSubmission[1].toLowerCase() +
       ". Check this transaction before attempting any retry.";
+  }
+  if (/ELECTRUM_QUORUM_UNAVAILABLE/.test(text)) {
+    return "Couldn't reach enough BCH servers. Nothing was sent. Try again.";
+  }
+  if (/ELECTRUM_TIP_DISAGREEMENT/.test(text)) {
+    return "BCH servers disagree right now. Nothing was sent. Try again soon.";
   }
   return "Mainnet service is temporarily unavailable. Check transaction status before retrying.";
 }
@@ -2892,6 +2997,8 @@ export function createMainnetApiServer() {
             network: "mainnet",
             providerId: "ajochain-electrum-quorum",
             providerConfidence: sessions.length,
+            providersConfigured: sessions[0]?.providersConfigured ?? sessions.length,
+            providersAnswered: sessions.length,
             providerOperatorsDeclared: sessions.map((session) => session.operatorId),
             providerOperatorLabelsUnique: new Set(sessions.map((session) => session.operatorId)).size === sessions.length,
             providerOperatorIndependenceVerified: false,
