@@ -731,7 +731,7 @@ export default function App() {
           throw cause;
         }
       }
-      throw new Error("No read-only status checker is available for this saved circle type.");
+      throw new Error("This saved circle type can't be checked here yet.");
     };
 
     void (async () => {
@@ -2068,7 +2068,7 @@ export default function App() {
             <section className="welcome-hero">
               <div className="welcome-kicker"><span /> AJO · ESUSU · ON BITCOIN CASH</div>
               <h1>Your Ajo savings circle,<br /><em>on Bitcoin Cash.</em></h1>
-              <p>Save with people you trust. Everyone puts in the same amount, one member collects each round, and the rules stay on the blockchain.</p>
+              
               <div className="hero-actions">
                 <button className="primary-button hero-cta" type="button" onClick={() => navigate("create-circle")}>
                   Create a circle <ArrowRight size={16} />
