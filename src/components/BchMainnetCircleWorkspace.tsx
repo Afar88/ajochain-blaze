@@ -774,9 +774,9 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
       {shouldRenderCircleCreation(isCircleOpen) && <>
       <div className="section-heading">
         <div>
-          <span className="section-kicker">BITCOIN CASH · MAINNET SAVINGS</span>
-          <h2 id="bch-mainnet-title">Create a BCH Mainnet circle</h2>
-          <p>Tracks member payments, next-round reserves and a 1% fee.</p>
+          <span className="section-kicker">SAVE IN BCH</span>
+          <h2 id="bch-mainnet-title">Start a BCH circle</h2>
+          <p>Everyone pays in. Each round, one person gets the pot.</p>
         </div>
         <span className="classic-network mainnet">Bitcoin Cash Mainnet</span>
       </div>
@@ -791,12 +791,12 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
         <label>Circle name
           <input value={name} onChange={(event) => setName(event.target.value)} maxLength={60} required />
         </label>
-        <label>Contribution per member (BCH)
+        <label>Amount each person pays (BCH)
           <input value={contribution} onChange={(event) => setContribution(event.target.value)} inputMode="decimal" placeholder="0.002" required />
-          <small>Minimum 0.002 BCH. Up to 8 decimal places.</small>
+          <small>Minimum 0.002 BCH.</small>
         </label>
         <div className="creator-member-preview">
-          <b>Member 1 · You, the initiator</b>
+          <b>You · Member 1</b>
           {initiatorAddress
             ? <>
                 <code>{toCashTokenAddress(initiatorAddress)}</code>
@@ -815,43 +815,45 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
             </button>
           )}
         </div>
-        <label>Other members' Mainnet addresses · one per line
+        <label>Other members' BCH addresses · one per line
           <textarea value={membersText} onChange={(event) => { setMembersText(event.target.value); setMemberOrderErrorDismissed(false); }} rows={4} placeholder={"bitcoincash:…\nbitcoincash:…"} required />
-          <small>Add 1–4 Mainnet addresses. Your wallet is Member 1.</small>
+          <small>Add 1 to 4 people. z or q addresses both work.</small>
         </label>
         {memberOrder.error && !memberOrderErrorDismissed && <div className="classic-error" role="alert">
           <span>{plainErrorSummary(memberOrder.error)}</span>
           <details className="technical-details"><summary>Details</summary><p>{memberOrder.error}</p></details>
           <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setMemberOrderErrorDismissed(true)}>×</button>
         </div>}
-        <label>Maximum BCH miner fee per action (satoshis)
-          <input value={maxFee} onChange={(event) => setMaxFee(event.target.value)} inputMode="numeric" required />
-          <small>Miner fees are separate from the pot.</small>
-        </label>
-
-        <div className="pusd-mainnet-treasury">
-          <span>Immutable 1% project-fee destination shared with PUSD Mainnet</span>
-          <code>{MAINNET_PROJECT_TREASURY_ADDRESS}</code>
-        </div>
+        <details className="technical-details create-advanced">
+          <summary>Advanced settings</summary>
+          <label>Network fee limit per step (satoshis)
+            <input value={maxFee} onChange={(event) => setMaxFee(event.target.value)} inputMode="numeric" required />
+            <small>The default is fine for most circles.</small>
+          </label>
+          <div className="pusd-mainnet-treasury">
+            <span>1% app fee goes to</span>
+            <code>{MAINNET_PROJECT_TREASURY_ADDRESS}</code>
+          </div>
+          <button className="secondary-button" type="button" onClick={saveDraft} disabled={network !== "mainnet" || !walletConnected || !initiatorAddressConfirmed}>Save draft on this device</button>
+        </details>
 
         {economics && (
           <div className="pusd-mainnet-breakdown">
-            <b>Round payout rules preview</b>
-            <div><span>Gross BCH pot</span><strong>{formatAssetAmount("BCH", economics.gross)} BCH</strong></div>
-            <div><span>Project fee · 1%</span><strong>{formatAssetAmount("BCH", economics.fee)} BCH</strong></div>
-            <div><span>Reserve for non-final recipient</span><strong>{formatAssetAmount("BCH", economics.reserve)} BCH</strong></div>
-            <div><span>First recipient receives</span><strong>{formatAssetAmount("BCH", economics.firstPayout)} BCH</strong></div>
-            <div><span>Final recipient receives · no reserve</span><strong>{formatAssetAmount("BCH", economics.finalPayout)} BCH</strong></div>
+            <b>What each round looks like</b>
+            <div><span>Total pot</span><strong>{formatAssetAmount("BCH", economics.gross)} BCH</strong></div>
+            <div><span>App fee · 1%</span><strong>{formatAssetAmount("BCH", economics.fee)} BCH</strong></div>
+            <div><span>Kept for your next payment</span><strong>{formatAssetAmount("BCH", economics.reserve)} BCH</strong></div>
+            <div><span>Each person gets</span><strong>{formatAssetAmount("BCH", economics.firstPayout)} BCH</strong></div>
+            <div><span>Last person gets</span><strong>{formatAssetAmount("BCH", economics.finalPayout)} BCH</strong></div>
           </div>
         )}
 
         <div className="pusd-mainnet-actions">
-          <button className="secondary-button" type="button" onClick={saveDraft} disabled={network !== "mainnet" || !walletConnected || !initiatorAddressConfirmed}>Save local draft</button>
         <button className="primary-button" type="submit" disabled={busy || network !== "mainnet" || !walletConnected || !initiatorAddressConfirmed || Boolean(memberOrder.error)}>
           {busy ? "Preparing circle setup…" : "Continue"} <ArrowRight size={15} />
         </button>
         </div>
-        <small className="field-hint">Your address is Member 1. Others follow your chosen order.</small>
+        <small className="field-hint">Payouts follow the order you listed.</small>
       </form>
 
       {preview && genesisSigningPlan && (
