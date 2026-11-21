@@ -430,9 +430,9 @@ export default function V2FeeBchWorkspace({
       const signed = await wallet.signAndVerify(plan.wc, plan.walletInputs, "Pay my AjoChain member share");
       const provider = await getClassicProvider("chipnet");
       const txid = await provider.sendRawTransaction(signed.signedTransaction);
-      window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
       setNotice("Member credit deposit broadcast. Transaction: " + txid);
       await refresh(active);
+      window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
     } catch (cause) { setError(errorText(cause)); }
     finally { setBusy(false); }
   };
@@ -468,9 +468,9 @@ export default function V2FeeBchWorkspace({
       );
       const provider = await getClassicProvider("chipnet");
       const txid = await provider.sendRawTransaction(signed.signedTransaction);
-      window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
       setNotice("V2 fee payout broadcast. The 1% project fee and member payout were paid from the circle pot; miner fee came from the connected wallet. Transaction: " + txid);
       await refresh(active);
+      window.dispatchEvent(new Event("ajochain:wallet-balances-changed"));
     } catch (cause) { setError(errorText(cause)); }
     finally { setBusy(false); }
   };
