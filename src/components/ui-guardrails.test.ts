@@ -150,7 +150,8 @@ describe("saved circle and homepage guardrails", () => {
   });
 
   it("refreshes wallet balances on foreground, every minute and after circle payments", () => {
-    expect(appSource).toContain("window.setInterval(refresh, 60_000)");
+    expect(appSource).toContain("window.setInterval(tick, 60_000)");
+    expect(appSource).toContain("if (!walletScanSchedulerRef.current.running) refresh();");
     expect(appSource).toContain('document.addEventListener("visibilitychange", refresh)');
     expect(appSource).toContain('window.addEventListener("ajochain:wallet-balances-changed", refresh)');
     for (const source of [

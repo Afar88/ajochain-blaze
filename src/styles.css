@@ -2112,3 +2112,13 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
 .wallet-pusd-warning .inline-dismiss {
   margin-left:auto;
 }
+
+/* Wallet: partial PUSD note and selected-address balance */
+.wallet-pusd-partial,
+.wallet-selected-balance {
+  display: block;
+  margin-top: 6px;
+  font-weight: 700;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
