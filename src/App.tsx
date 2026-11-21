@@ -1050,6 +1050,22 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
+    const value = showWalletAddressQr ? displayWalletAddress : null;
+    if (!value) {
+      setWalletAddressQrDataUrl("");
+      return () => { active = false; };
+    }
+    void import("qrcode")
+      .then(({ default: QRCode }) => QRCode.toDataURL(value, {
+        errorCorrectionLevel: "M", margin: 1, width: 220,
+      }))
+      .then((url) => { if (active) setWalletAddressQrDataUrl(url); })
+      .catch(() => { if (active) setWalletAddressQrDataUrl(""); });
+    return () => { active = false; };
+  }, [showWalletAddressQr, displayWalletAddress]);
+
+  useEffect(() => {
+    let active = true;
     const uri = walletView.qrUri;
     if (!uri) {
       setQrDataUrl("");
@@ -1148,7 +1164,8 @@ export default function App() {
           try { return window.localStorage.getItem(getWalletAddressSelectionKey(firstReceiveAddress, network)); }
           catch { return null; }
         })();
-        const nextDisplayAddress = getMostFundedWalletAddress(choices, selectedWalletAddress ?? storedSelected)?.address
+        const nextDisplayAddress = getMostFundedWalletAddress(choices, selectedWalletAddress)?.address
+          ?? getMostFundedWalletAddress(choices, storedSelected)?.address
           ?? getMostFundedWalletAddress(choices)?.address ?? null;
         if (nextDisplayAddress) {
           setSelectedWalletAddress(nextDisplayAddress);
@@ -1223,14 +1240,16 @@ export default function App() {
 
   useEffect(() => {
     const requestRefresh = () => setWalletBalanceRefreshRequest((value) => value + 1);
-    window.addEventListener("visibilitychange", () => {
+    const onVisibilityChange = () => {
       if (document.visibilityState === "visible") requestRefresh();
-    });
+    };
+    window.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("ajochain:wallet-balances-refresh", requestRefresh);
     const interval = page === "assets" || showWallet
       ? window.setInterval(requestRefresh, 60_000)
       : undefined;
     return () => {
+      window.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("ajochain:wallet-balances-refresh", requestRefresh);
       if (interval !== undefined) window.clearInterval(interval);
     };
@@ -1747,20 +1766,48 @@ export default function App() {
   // screen has been explicitly matched. Users need to compare this candidate
   // with the address shown in Selene before confirming it in Wallet Details.
   const shortAddress = (value: string | null) =>
-    value ? value.slice(0, 10) + "…" + value.slice(-6) : "Address unavailable…";
-  const currentBchBalanceScan = bchBalanceScan && walletAddress &&
-    bchBalanceScan.network === network &&
-    bchBalanceScan.address.toLowerCase() === walletAddress.toLowerCase()
+    value ? value.slice(0, 13) + "…" + value.slice(-4) : "Address unavailable…";
+  const updatedAgeLabel = (timestamp: number | null) => {
+    if (!timestamp) return "Not updated yet";
+    const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+    if (seconds < 10) return "Updated just now";
+    if (seconds < 60) return "Updated " + seconds + "s ago";
+    const minutes = Math.floor(seconds / 60);
+    return "Updated " + minutes + "m ago";
+  };
+  const currentBchBalanceScan = bchBalanceScan && bchBalanceScan.network === network
     ? bchBalanceScan
     : null;
   const walletBchBalanceSummary = getWalletBchBalanceSummary({
     network,
     connected,
-    receiveAddressChoices,
+    walletAddressChoices,
     currentBchBalanceScan,
     receiveAddressScanLoading,
   });
-  const selectedReceiveAddressChoice = receiveAddressChoices.find((choice) => choice.index === walletView.receiveIndex) ?? null;
+  const selectedWalletAddressChoice = getMostFundedWalletAddress(walletAddressChoices, selectedWalletAddress);
+  const displayWalletAddress = selectedWalletAddressChoice?.address ?? walletAddress;
+  const firstWalletReceiveAddress = walletAddressChoices.find((choice) =>
+    choice.branch === "receive",
+  )?.address ?? "";
+  const walletAddressSelectionKey = firstWalletReceiveAddress
+    ? getWalletAddressSelectionKey(firstWalletReceiveAddress, network)
+    : null;
+  const selectedReceiveAddressChoice = walletAddressChoices.find((choice) =>
+    choice.branch === "receive" && choice.index === walletView.receiveIndex,
+  ) ?? null;
+  const sortedWalletAddressChoices = [...walletAddressChoices].sort((left, right) => {
+    const leftTotal = BigInt(left.confirmedSatoshis) + BigInt(left.unconfirmedSatoshis);
+    const rightTotal = BigInt(right.confirmedSatoshis) + BigInt(right.unconfirmedSatoshis);
+    if (leftTotal !== rightTotal) return leftTotal > rightTotal ? -1 : 1;
+    if (left.branch !== right.branch) return left.branch === "receive" ? -1 : 1;
+    return left.index - right.index;
+  });
+  const visibleWalletAddressChoices = showAllWalletAddresses
+    ? sortedWalletAddressChoices
+    : sortedWalletAddressChoices.filter((choice) =>
+        BigInt(choice.confirmedSatoshis) + BigInt(choice.unconfirmedSatoshis) > 0n,
+      );
   const selectedAddressPendingOnly = network === "mainnet" && Boolean(selectedReceiveAddressChoice &&
     BigInt(selectedReceiveAddressChoice.confirmedSatoshis) === 0n &&
     (BigInt(selectedReceiveAddressChoice.unconfirmedSatoshis) > 0n || selectedReceiveAddressChoice.hasPendingHistory));
