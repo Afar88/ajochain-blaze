@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { plainErrorSummary } from "./error-copy";
 import { RefreshCw, ShieldCheck } from "lucide-react";
 import { decodeClassicCircle, getClassicProvider, readClassicCircle } from "../core/classic-bch";
 import { loadSavedClassicCircles } from "../core/circle-account";
@@ -401,9 +402,11 @@ export default function ActivityRecords({ network, compact = false }: { network:
           <RefreshCw size={15} className={busy ? "activity-spin" : ""} /> {busy ? "Refreshing…" : "Refresh"}
         </button>
       </div>
-      {refreshError && <p className="classic-error" role="alert">{refreshError}
+      {refreshError && <div className="classic-error" role="alert">
+        <span>{plainErrorSummary(refreshError)}</span>
+        <details className="technical-details"><summary>Details</summary><p>{refreshError}</p></details>
         <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setRefreshError("")}>×</button>
-      </p>}
+      </div>}
       {circles.length === 0 ? (
         <article className="asset-detail-card activity-empty">
           <h2>No circles saved yet</h2>
