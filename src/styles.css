@@ -1897,7 +1897,10 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
   font:850 17px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   overflow-wrap:anywhere;
   text-align:left;
+  -webkit-user-select:text;
+  user-select:text;
 }
+.creator-member-preview code { -webkit-user-select:all; user-select:all; overflow-wrap:anywhere; }
 .wallet-address-actions {
   display:flex;
   align-items:center;
@@ -2122,3 +2125,7 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
   color: var(--muted);
   overflow-wrap: anywhere;
 }
+.create-advanced{display:grid;gap:12px;padding:12px;border:1px solid var(--line);border-radius:10px}
+.create-advanced[open]>summary{margin-bottom:4px}
+.create-advanced>summary{font-weight:700;cursor:pointer;color:var(--ink)}
+.create-advanced label{display:grid;gap:6px;font-weight:700;color:var(--ink)}

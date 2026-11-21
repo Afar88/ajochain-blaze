@@ -1,10 +1,11 @@
 import { TestSignControl } from "./TestSignControl";
 import { plainErrorSummary } from "./error-copy";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { ArrowRight, Copy, LockKeyhole, ShieldCheck } from "lucide-react";
+import { ArrowRight, Copy, LockKeyhole } from "lucide-react";
 import { PUSD_ASSET, formatAssetAmount, parseAssetAmount } from "../core/assets";
 import { classicAddressToPkh } from "../core/classic-bch";
-import { pkhToTokenAwareAddress } from "../core/bch-address";
+import { pkhToTokenAwareAddress, shortClassic, toCashTokenAddress } from "../core/bch-address";
+import { copyText } from "../core/copy-text";
 import { calculatePusdCircleEconomics } from "../core/pusd-circle-economics";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "../core/project-treasury";
 import { MAX_CIRCLE_MEMBERS, MIN_CIRCLE_MEMBERS } from "../core/member-ledger";
@@ -696,17 +697,13 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
       {shouldRenderCircleCreation(isCircleOpen) && <>
       <div className="section-heading">
         <div>
-          <span className="section-kicker">PARYONUSD · DOLLAR TOKEN</span>
-          <h2 id="pusd-mainnet-title">Create a PUSD Mainnet circle</h2>
-          <p>Members control their PUSD. A 1% fee applies.</p>
+          <span className="section-kicker">SAVE IN DOLLARS · PUSD</span>
+          <h2 id="pusd-mainnet-title">Start a PUSD circle</h2>
+          <p>Everyone pays in dollars. Each round, one person gets the pot.</p>
         </div>
         <span className="classic-network mainnet">Bitcoin Cash Mainnet</span>
       </div>
 
-      <div className="pusd-mainnet-safety">
-        <div><ShieldCheck size={17} /><span><b>Mainnet asset selected</b><small>Official ParyonUSD asset · Mainnet only</small></span></div>
-        <span className="asset-state neutral">Transactions locked during build</span>
-      </div>
 
       {network !== "mainnet" && (
         <p className="classic-error" role="status">Switch to Mainnet for PUSD circles. Chipnet isn't supported.</p>
@@ -716,51 +713,53 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         <label>Circle name
           <input value={name} onChange={(event) => setName(event.target.value)} maxLength={60} required />
         </label>
-        <label>Contribution per member (PUSD)
+        <label>Amount each person pays (PUSD)
           <input value={contribution} onChange={(event) => setContribution(event.target.value)} inputMode="decimal" placeholder="10.00" required />
-          <small>Use two decimal places.</small>
+          <small>For example, 10.00</small>
         </label>
         <div className="creator-member-preview">
-          <b>Member 1 · You, the initiator</b>
+          <b>You · Member 1</b>
           {initiatorAddress ? <>
-            <code>{initiatorAddress}</code>
+            <code>{toCashTokenAddress(initiatorAddress)}</code>
+            {toCashTokenAddress(initiatorAddress) !== initiatorAddress && <small className="wallet-classic-address">Same as {shortClassic(initiatorAddress)}</small>}
             <button className="secondary-button wallet-copy-address" type="button" onClick={() => {
-              const pendingCopy = navigator.clipboard?.writeText(initiatorAddress);
-              if (!pendingCopy) { setNotice("Copy is unavailable. Select the address and copy it manually."); return; }
-              void pendingCopy.then(() => setNotice("Member 1 address copied."))
-                .catch(() => setNotice("Could not copy the address. Select it and copy manually."));
+              void copyText(toCashTokenAddress(initiatorAddress)).then((ok) => setNotice(ok
+                ? "Member 1 address copied."
+                : "Couldn't copy. Press and hold the address to copy it."));
             }}><Copy size={15} /> Copy address</button>
             <small>{wallet.isReceiveAddressConfirmed("mainnet") ? "Address confirmed ✓" : "Pick the address shown in Selene first."}</small>
           </> : "Connect Selene and choose your receive address. It will be Member 1 automatically."}
         </div>
-        <label>Other members' Mainnet BCH addresses · one per line
+        <label>Other members' BCH addresses · one per line
           <textarea value={membersText} onChange={(event) => setMembersText(event.target.value)} rows={4} placeholder={"bitcoincash:…\nbitcoincash:…"} required />
-          <small>Add 1–4 other Mainnet addresses. Your address receives your payout.</small>
+          <small>Add 1 to 4 people. z or q addresses both work.</small>
         </label>
         {selectedAddressPendingOnly && <p className="receive-address-pending-warning" role="alert">Wait 1 confirmation, then create.</p>}
-        <label>Maximum BCH miner fee per action (satoshis)
-          <input value={maxFee} onChange={(event) => setMaxFee(event.target.value)} inputMode="numeric" required />
-          <small>BCH fees are separate from PUSD contributions.</small>
-        </label>
-
-        <div className="pusd-mainnet-treasury">
-          <span>1% project fee goes to this published address</span>
-          <code>{MAINNET_PROJECT_TREASURY_ADDRESS}</code>
-        </div>
+        <details className="technical-details create-advanced">
+          <summary>Advanced settings</summary>
+          <label>Network fee limit per step (satoshis)
+            <input value={maxFee} onChange={(event) => setMaxFee(event.target.value)} inputMode="numeric" required />
+            <small>Paid in BCH. The default is fine.</small>
+          </label>
+          <div className="pusd-mainnet-treasury">
+            <span>1% app fee goes to</span>
+            <code>{MAINNET_PROJECT_TREASURY_ADDRESS}</code>
+          </div>
+          <button className="secondary-button" type="submit" disabled={network !== "mainnet"}>Save draft on this device</button>
+        </details>
 
         {economics && (
           <div className="pusd-mainnet-breakdown">
-            <b>First-round savings preview</b>
-            <div><span>Gross PUSD pot</span><strong>{formatAssetAmount("PUSD", economics.grossPot)} PUSD</strong></div>
-            <div><span>Project fee · 1%</span><strong>{formatAssetAmount("PUSD", economics.projectFee)} PUSD</strong></div>
-            <div><span>Next contribution reserved to first recipient</span><strong>{formatAssetAmount("PUSD", economics.firstPayoutReserve)} PUSD</strong></div>
-            <div><span>First recipient receives</span><strong>{formatAssetAmount("PUSD", economics.firstRecipientPayout)} PUSD</strong></div>
-            <div><span>Final recipient receives · no reserve</span><strong>{formatAssetAmount("PUSD", economics.finalRecipientPayout)} PUSD</strong></div>
+            <b>What each round looks like</b>
+            <div><span>Total pot</span><strong>{formatAssetAmount("PUSD", economics.grossPot)} PUSD</strong></div>
+            <div><span>App fee · 1%</span><strong>{formatAssetAmount("PUSD", economics.projectFee)} PUSD</strong></div>
+            <div><span>Kept for your next payment</span><strong>{formatAssetAmount("PUSD", economics.firstPayoutReserve)} PUSD</strong></div>
+            <div><span>Each person gets</span><strong>{formatAssetAmount("PUSD", economics.firstRecipientPayout)} PUSD</strong></div>
+            <div><span>Last person gets</span><strong>{formatAssetAmount("PUSD", economics.finalRecipientPayout)} PUSD</strong></div>
           </div>
         )}
 
         <div className="pusd-mainnet-actions">
-          <button className="secondary-button" type="submit" disabled={network !== "mainnet"}>Save Mainnet circle draft</button>
           <button className="primary-button" type="button" onClick={() => void prepareCreationPlan()} disabled={network !== "mainnet" || !walletConnected || busy}>
             {busy ? "Preparing preview…" : "Continue"} <ArrowRight size={15} />
           </button>
@@ -772,7 +771,7 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
           <b>Review your circle</b>
           <p className="receive-address-payout-note">Your payout goes to {genesisSigningPlan.circle.initiator.slice(0, 10)}…{genesisSigningPlan.circle.initiator.slice(-6)}.</p>
           {selectedAddressPendingOnly && <p className="receive-address-pending-warning" role="alert">Wait 1 confirmation, then create.</p>}
-          <div><span>Member 1 · payout address</span><strong><code>{genesisSigningPlan.circle.members[0]}</code></strong></div>
+          <div><span>Member 1 · payout address</span><strong><code>{toCashTokenAddress(genesisSigningPlan.circle.members[0])}</code></strong></div>
           <button type="button" className="primary-button mainnet-create-primary" disabled={lifecycleBusy || busy || !walletConnected || selectedAddressPendingOnly}
             onClick={() => void createCircleInSelene()}>
             {lifecycleBusy ? "Approve in Selene…" : "Create circle in Selene"}
@@ -803,10 +802,9 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
             <span>Invite link to share</span>
             <a href={creationResult.inviteUrl}>{creationResult.inviteUrl}</a>
             <button type="button" className="secondary-button" onClick={() => {
-              void navigator.clipboard.writeText(creationResult.inviteUrl).then(
-                () => setNotice("Invite link copied. Share it with your circle members."),
-                () => setNotice("Invite link: " + creationResult.inviteUrl),
-              );
+              void copyText(creationResult.inviteUrl).then((ok) => setNotice(ok
+                ? "Invite link copied. Share it with your circle members."
+                : "Couldn't copy. Invite link: " + creationResult.inviteUrl));
             }}>Copy invite link</button>
           </div>
         </div>
@@ -880,10 +878,9 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
         <div className="pusd-mainnet-invite">
           <button type="button" className="secondary-button" onClick={() => {
             const link = window.location.origin + window.location.pathname + INVITE_ROUTE + encodeCircleInvite(activeCircle);
-            void navigator.clipboard.writeText(link).then(
-              () => setNotice("Invite link copied. Share it with members so their browser loads this circle."),
-              () => setNotice("Invite link: " + link),
-            );
+            void copyText(link).then((ok) => setNotice(ok
+              ? "Invite link copied. Share it with members so their browser loads this circle."
+              : "Couldn't copy. Invite link: " + link));
           }}>Copy invite</button>
           <small>Invite members to open this circle. It contains no keys.</small>
         </div>
