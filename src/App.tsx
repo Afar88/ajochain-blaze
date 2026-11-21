@@ -352,7 +352,7 @@ export function getWalletBchBalanceSummary(input: {
   return {
     balanceLabel: "Not checked yet",
     detailLabel: "BCH coins found in your connected wallet",
-    sourceLabel: "No wallet scan in this session",
+    sourceLabel: "No wallet scan yet",
   };
 }
 
@@ -1239,7 +1239,7 @@ export default function App() {
   const verifyPusdTransferSignature = async () => {
     setPusdSignatureMessage("");
     if (!walletClient || walletClient.state !== "connected" || !connected) {
-      setPusdSignatureMessage("Connect Selene through WizardConnect before testing the PUSD signature path.");
+      setPusdSignatureMessage("Connect Selene before testing this signature.");
       return;
     }
     if (network !== "mainnet" || pusdView.status !== "ready") {
@@ -1597,7 +1597,7 @@ export default function App() {
       }
       const gatherWalletIdentity = gatherNetwork === "mainnet" ? walletClient.getSessionIdentity() : null;
       if (gatherNetwork === "mainnet" && !gatherWalletIdentity) {
-        setGatherResult({ status: "error", message: "WizardConnect has not supplied a verifiable Selene wallet identity. Reconnect Selene before gathering Mainnet BCH." });
+        setGatherResult({ status: "error", message: "Connect Selene first. Check again before gathering BCH." });
         return;
       }
       setGatherBusy(true);
@@ -1709,7 +1709,7 @@ export default function App() {
           broadcast?: boolean;
         };
         if (!response.ok) {
-          throw new Error(typeof payload.error === "string" ? payload.error : "Mainnet BCH gather could not be verified or relayed.");
+          throw new Error(typeof payload.error === "string" ? payload.error : "Mainnet BCH gather could not be checked or sent.");
         }
         if (payload.network !== "mainnet" || payload.broadcast !== true ||
             typeof payload.txid !== "string" || !/^[0-9a-f]{64}$/i.test(payload.txid)) {
@@ -1922,7 +1922,7 @@ export default function App() {
               <div className="dropdown-divider" />
               <button type="button" className="dropdown-wallet" onClick={openWallet}>
                 <span className="dropdown-wallet-icon"><Wallet size={17} /></span>
-                <span><b>{connected ? walletView.walletName ?? "Wallet connected" : "Connect wallet"}</b><small>{connected ? shortAddress(walletAddress) : walletView.state === "reconnecting" ? "Restoring Selene session…" : "Connect Selene"}</small></span>
+                <span><b>{connected ? walletView.walletName ?? "Wallet connected" : "Connect wallet"}</b><small>{connected ? shortAddress(walletAddress) : walletView.state === "reconnecting" ? "Reconnecting…" : "Connect Selene"}</small></span>
                 <ArrowRight size={16} />
               </button>
             </section>
@@ -2365,7 +2365,7 @@ export default function App() {
               </div>
             ) : (
               <div className="wallet-detail-body">
-                {qrDataUrl && <img className="wallet-qr" src={qrDataUrl} alt="WizardConnect pairing QR code" />}
+                {qrDataUrl && <img className="wallet-qr" src={qrDataUrl} alt="Selene pairing QR code" />}
                 {walletView.uri && <a className="primary-button wallet-open-link" href={walletView.uri}>Open in Selene <ArrowRight size={15} /></a>}
                 {walletView.state === "connecting" && <p className="wallet-match-message">Approve in Selene, then come back.</p>}
                 {walletView.state === "reconnecting" && <p className="wallet-match-message" role="status">Reconnecting…</p>}
