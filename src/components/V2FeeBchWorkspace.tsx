@@ -236,7 +236,7 @@ export default function V2FeeBchWorkspace({
       return;
     }
     const initiator = wallet.address("chipnet");
-    if (!initiator) { setError("No verified Chipnet receive address is available for this wallet."); return; }
+    if (!initiator) { setError("No Chipnet address is available for this wallet."); return; }
     setBusy(true);
     try {
       const additionalMembers = membersText.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean);
@@ -416,7 +416,7 @@ export default function V2FeeBchWorkspace({
       return;
     }
     const address = wallet.address("chipnet");
-    if (!address) { setError("No verified Chipnet receive address is available."); return; }
+    if (!address) { setError("No Chipnet address is available."); return; }
     setBusy(true);
     try {
       const units = parseAssetAmount("BCH", depositAmount);
