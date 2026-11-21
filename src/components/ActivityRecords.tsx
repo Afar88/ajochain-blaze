@@ -249,7 +249,7 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
       );
       return {
         ref, status: "ready",
-        stateLabel: snapshot.completed ? "Rotation complete" : snapshot.ready ? "Payout ready" : "Awaiting member credits",
+        stateLabel: snapshot.completed ? "Circle complete" : snapshot.ready ? "Payout ready" : "Waiting for contributions",
         roundLabel: snapshot.completed ? snapshot.round + " / " + ref.params.members.length
           : (snapshot.round + 1) + " / " + ref.params.members.length,
         recipient: snapshot.recipient,
@@ -296,7 +296,7 @@ async function readOneCircle(ref: CircleRef): Promise<CircleResult> {
     );
     return {
       ref, status: "ready",
-      stateLabel: snapshot.completed ? "Rotation complete" : snapshot.ready ? "Payout ready" : "Awaiting member credits",
+      stateLabel: snapshot.completed ? "Circle complete" : snapshot.ready ? "Payout ready" : "Waiting for contributions",
       roundLabel: snapshot.completed ? snapshot.round + " / " + ref.params.members.length
         : (snapshot.round + 1) + " / " + ref.params.members.length,
       recipient: snapshot.recipient,
@@ -324,7 +324,7 @@ function shortTxid(txid: string) {
 
 function txStatusLabel(record: CircleTransactionRecord) {
   if (record.status === "confirmed") {
-    return "Confirmed · " + (record.confirmations ?? 0).toLocaleString() + " checks";
+    return "Confirmed · " + (record.confirmations ?? 0).toLocaleString() + " confirmations";
   }
   if (record.status === "pending") return "Waiting for confirmation";
   return "Not confirmed";
@@ -424,7 +424,7 @@ export default function ActivityRecords({ network, compact = false }: { network:
                 </span>
               </div>
               {result.status === "loading" ? (
-                <p className="classic-empty">Reading contract state and transaction history from {result.ref.network}…</p>
+                <p className="classic-empty">Checking circle details and recent payments…</p>
               ) : result.status === "unavailable" ? (
                 <div className="activity-unavailable">
                   <b>Couldn't confirm this circle yet</b>
@@ -442,19 +442,19 @@ export default function ActivityRecords({ network, compact = false }: { network:
                   {result.details && <details className="technical-details activity-source-note"><summary>Details</summary><p>{result.details}</p></details>}
                   {result.aggregatePool && (
                     <div className="activity-state-grid">
-                      <div><span>On-chain aggregate pot</span><b>{formatBch(result.aggregatePool.available)}</b></div>
+                      <div><span>Circle balance</span><b>{formatBch(result.aggregatePool.available)}</b></div>
                       <div><span>Required for payout</span><b>{formatBch(result.aggregatePool.required)}</b></div>
                       <div><span>Pot shortfall</span><b>{formatBch(result.aggregatePool.shortfall)}</b></div>
                     </div>
                   )}
                   {result.memberRecords && (
                     <div className="activity-member-records">
-                      <div className="activity-subheading"><b>Member balances</b><small>Current balances from the blockchain</small></div>
+                      <div className="activity-subheading"><b>Member balances</b><small>Current member balances</small></div>
                       {result.memberRecords.map((member, index) => (
                         <div className="activity-member-row" key={member.address}>
                           <span><b>Member {index + 1}</b><small>{member.address}</small></span>
                           <span>
-                            <b>Current credit: {result.ref.kind === "pusd" ? formatAssetAmount("PUSD", member.credit) + " PUSD" : formatBch(member.credit)}</b>
+                            <b>Member balance: {result.ref.kind === "pusd" ? formatAssetAmount("PUSD", member.credit) + " PUSD" : formatBch(member.credit)}</b>
                             <small>{member.due > 0n ? "Still due: " + (result.ref.kind === "pusd" ? formatAssetAmount("PUSD", member.due) + " PUSD" : formatBch(member.due)) : member.status}</small>
                             {member.totalPaidIn !== undefined && member.totalPaidIn !== null && (
                               <small>Total paid in: {formatBch(member.totalPaidIn)}</small>
