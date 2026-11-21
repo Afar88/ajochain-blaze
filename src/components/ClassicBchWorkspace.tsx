@@ -205,12 +205,12 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
         } else {
           const setup = await planClassicGenesisSetup(walletAddress);
           if (!window.confirm(
-            "Step 1 of 2 · Prepare the CashTokens genesis coin on Chipnet?\n\n" +
-            "AjoChain will send " + setup.outputSatoshis.toString() + " sats to your wallet as output 0. " +
-            "The remaining BCH returns to your wallet as change, minus an estimated " + setup.fee.toString() +
-            "-sat miner fee, with " + setup.changeSatoshis.toString() + " sats returned as wallet change.\n\n" +
-            "This does not create the circle NFT yet. After output 0 appears in your wallet, a second " +
-            "Selene approval will create the circle. No new deposit is requested.",
+            "Step 1 of 2 · Prepare your small Chipnet setup coin?\n\n" +
+            "AjoChain will send " + setup.outputSatoshis.toString() + " sats to your wallet. " +
+            "The rest returns to your wallet, minus an estimated " + setup.fee.toString() +
+            "-sat miner fee.\n\n" +
+            "This does not create your circle yet. After the setup coin appears, approve again in Selene. " +
+            "You won't need to make another deposit.",
           )) return;
 
           // Reserve this wallet/network operation before requesting a signature so
@@ -229,7 +229,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
             signedSetup = await wallet.signAndVerify(
               setup.wc,
               setup.walletInputs,
-              "Prepare CashTokens genesis output for AjoChain",
+              "Prepare your Chipnet setup coin for AjoChain",
             );
           } catch (cause) {
             try { window.localStorage.removeItem(pendingKey); } catch { /* best effort */ }
