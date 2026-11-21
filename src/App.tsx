@@ -1056,14 +1056,14 @@ export default function App() {
   }, [walletView.qrUri]);
 
   useEffect(() => {
-    if (!(showWallet || page === "assets") ||
-        walletView.state !== "connected" || !walletClient || walletClient.state !== "connected") {
+    if (walletView.state !== "connected" || !walletClient || walletClient.state !== "connected") {
       if (walletView.state !== "connected") {
         setReceiveAddressChoices([]);
         setWalletPusdTotal(null);
         setWalletPusdError("");
       }
       setReceiveAddressScanLoading(false);
+      setWalletBalanceRefreshing(false);
       return;
     }
 
@@ -1211,10 +1211,16 @@ export default function App() {
     })();
 
     return () => { cancelled = true; };
-  }, [showWallet, page, network, walletClient, walletView.state, walletView.addressSetRevision, walletBalanceRefreshRun]);
+  }, [network, walletClient, walletView.state, walletView.addressSetRevision, walletBalanceRefreshRun]);
 
   useEffect(() => {
-    if (!(showWallet || page === "assets")) return;
+    if (page === "assets" || showWallet) {
+      setWalletBalanceRefreshRun((value) => value + 1);
+    }
+  }, [page, showWallet]);
+
+  useEffect(() => {
+    if (!connected) return;
     const refresh = () => {
       if (document.visibilityState === "visible") {
         setWalletBalanceRefreshRun((value) => value + 1);
@@ -1228,7 +1234,7 @@ export default function App() {
       document.removeEventListener("visibilitychange", refresh);
       window.removeEventListener("ajochain:wallet-balances-changed", refresh);
     };
-  }, [showWallet, page]);
+  }, [connected]);
 
   useEffect(() => {
     let active = true;
