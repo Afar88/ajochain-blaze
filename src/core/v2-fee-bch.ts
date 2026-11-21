@@ -886,7 +886,7 @@ async function findV2FeeClosingTransaction(
     if (typeof decoded === 'string') continue;
     const closedAs = classifyV2FeeClosingTransaction(params, decoded);
     if (closedAs) {
-      const completedAt = closedAs === "completed" && typeof record.height === "number"
+      const completedAt = typeof record.height === "number" && record.height > 0
         ? await readV2FeeClosingBlockTime(
             electrum as NetworkProvider & { performRequest: (name: string, ...args: (string | number)[]) => Promise<unknown> },
             record.height,
