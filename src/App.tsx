@@ -1310,25 +1310,26 @@ export default function App() {
 
   const verifyPusdTransferSignature = async () => {
     setPusdSignatureMessage("");
+    setPusdSignatureError("");
     if (!walletClient || walletClient.state !== "connected" || !connected) {
-      setPusdSignatureMessage("Connect Selene through WizardConnect before testing the PUSD signature path.");
+      setPusdSignatureError("Connect Selene before checking this transfer.");
       return;
     }
     if (network !== "mainnet" || pusdView.status !== "ready") {
-      setPusdSignatureMessage("A verified Mainnet PUSD balance is required before signature verification.");
+      setPusdSignatureMessage("Check your Mainnet PUSD balance first.");
       return;
     }
     if (!walletClient.isReceiveAddressConfirmed("mainnet")) {
-      setPusdSignatureMessage("Choose a Mainnet receive address in Wallet Details before testing the PUSD signature.");
+      setPusdSignatureMessage("Pick your Mainnet address first.");
       return;
     }
     const senderAddress = walletClient.address("mainnet");
     if (!senderAddress || !pusdRecipient.trim()) {
-      setPusdSignatureMessage("Confirm the connected sender address and a valid recipient address.");
+      setPusdSignatureMessage("Check the sender and recipient addresses.");
       return;
     }
     if (!/^\d+$/.test(pusdMaxFee.trim())) {
-      setPusdSignatureMessage("Maximum miner fee must be entered as whole satoshis.");
+      setPusdSignatureMessage("Enter the maximum fee in satoshis.");
       return;
     }
     setPusdSignatureBusy(true);
@@ -1384,7 +1385,7 @@ export default function App() {
         detail: "Refreshed " + freshBalance.providerConfidence + " wallet coins immediately before checking the signature.",
       }));
     } catch (cause) {
-      setPusdSignatureMessage(cause instanceof Error ? cause.message : "PUSD signature verification failed. Nothing was broadcast.");
+      setPusdSignatureError(cause instanceof Error ? cause.message : "PUSD signature check failed. Nothing was sent.");
     } finally {
       setPusdSignatureBusy(false);
     }
