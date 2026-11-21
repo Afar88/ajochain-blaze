@@ -1286,7 +1286,7 @@ export default function App() {
     if (!walletClient.isReceiveAddressConfirmed("mainnet")) {
       setPusdView({
         status: "idle", amount: 0n,
-        detail: "Choose a Mainnet receive address in Wallet Details before checking this wallet's PUSD balance.",
+        detail: "Pick an address first.",
         utxoCount: 0, providerConfidence: 0, tipHeight: 0, utxos: [], rawPreviousTransactions: {},
       });
       setPusdTransferPlan(null);
@@ -1349,7 +1349,7 @@ export default function App() {
       return;
     }
     if (!walletClient.isReceiveAddressConfirmed("mainnet")) {
-      setPusdPlanError("Choose a Mainnet receive address in Wallet Details before preparing a PUSD transfer.");
+      setPusdPlanError("Pick an address first.");
       return;
     }
     if (pusdView.status !== "ready") {
@@ -2049,7 +2049,7 @@ export default function App() {
                   <Wallet size={17} /><span>Wallet &amp; assets</span>{page === "assets" && <Check size={15} />}
                 </button>
                 <button className={page === "activity" ? "dropdown-item active" : "dropdown-item"} onClick={() => navigate("activity")}>
-                  <Activity size={17} /><span>Activity & records</span>{page === "activity" && <Check size={15} />}
+                  <Activity size={17} /><span>Activity</span>{page === "activity" && <Check size={15} />}
                 </button>
               </nav>
               <div className="dropdown-divider" />
@@ -2414,7 +2414,7 @@ export default function App() {
         )}
 
         {page === "activity" && (
-          <Suspense fallback={<section className="page-section"><p className="classic-empty">Loading chain-backed activity…</p></section>}>
+          <Suspense fallback={<section className="page-section"><p className="classic-empty">Loading your activity…</p></section>}>
             <ActivityRecords network={network} key={"activity-" + network} />
           </Suspense>
         )}
