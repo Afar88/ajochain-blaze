@@ -142,7 +142,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
     }
     const walletAddress = wallet.address(network);
     if (!walletAddress) {
-      setError("The connected wallet does not have a verified receive address for this network.");
+      setError("No wallet address is available for this network. Reconnect Selene first.");
       return;
     }
     const members = membersText.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean);
@@ -425,7 +425,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
           <p>Create Chipnet circles, contribute, collect payouts, and restore with an invite.</p>
         </div>
         <span className={network === "mainnet" ? "classic-network mainnet" : "classic-network"}>
-          {network === "mainnet" ? "Mainnet · read-only" : "Chipnet · test"}
+          {network === "mainnet" ? "Mainnet" : "Chipnet · test"}
         </span>
       </div>
 
@@ -486,7 +486,7 @@ export default function ClassicBchWorkspace({ network, walletConnected, selected
             <>
               <div className="classic-account-summary classic-chain-stats">
                 <div><b>{status.round === null ? "Not started" : status.completed ? "Complete" : (status.round + 1) + " / " + activeCircle.members.length}</b><span>Current round</span></div>
-                <div><b>{formatBch(status.available)}</b><span>Observed pot (single provider)</span></div>
+                <div><b>{formatBch(status.available)}</b><span>Observed pot</span></div>
                 <div><b>{status.ready ? "Ready" : formatBch(status.shortfall) + " short"}</b><span>Next payout condition</span></div>
               </div>
               {status.issues.length > 0 && <ul className="classic-issues">{status.issues.map((item) => <li key={item}>{item}</li>)}</ul>}
