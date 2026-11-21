@@ -216,7 +216,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
           setNotice(
             "Your wallet matches Member " +
             (activeCircle.members.findIndex((member) => sameMainnetAddress(member, memberAddress)) + 1) +
-            " (" + matchedIndex + ").",
+            ".",
           );
           return;
         }
