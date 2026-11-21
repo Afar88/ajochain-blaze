@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { circleRiskNoticeText } from "../App";
+import { plainErrorSummary } from "./error-copy";
 const here = dirname(fileURLToPath(import.meta.url));
 const stylesSource = readFileSync(resolve(here, "../styles.css"), "utf8");
 const appSource = readFileSync(resolve(here, "../App.tsx"), "utf8");
@@ -213,5 +214,21 @@ describe("saved circle and homepage guardrails", () => {
       "Done. Confirms in a few minutes.",
       "Couldn't combine your BCH. Try again.",
     ]) expect(walletDetails).toContain(expected);
+  });
+});
+
+
+describe("plain error copy", () => {
+  it("keeps technical messages behind a simple user-facing summary", () => {
+    const cases = [
+      ["Wallet address could not be confirmed by the Electrum provider.", "Check your wallet and try again."],
+      ["Network request timed out while reading the transaction.", "Can't connect right now. Try again."],
+      ["Signed transaction broadcast verification failed.", "This step couldn't be completed. Check details."],
+      ["Unclassified failure.", "Something went wrong. Try again."],
+    ] as const;
+    for (const [technical, summary] of cases) {
+      expect(plainErrorSummary(technical)).toBe(summary);
+      expect(summary.split(/\s+/).length).toBeLessThanOrEqual(10);
+    }
   });
 });
