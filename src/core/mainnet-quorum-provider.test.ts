@@ -101,11 +101,17 @@ describe("BCH Mainnet quorum provider", () => {
       { height: 900_000, headerHex: fresh, genesisHeaderHex: wrongGenesis, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
       { height: 900_000, headerHex: fresh, genesisHeaderHex: wrongGenesis, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
     ], now)).toThrow(/genesis chain/);
-    const stale = headerWithTimestamp(Math.floor(now / 1000) - 31 * 60, "01");
+    const stale = headerWithTimestamp(Math.floor(now / 1000) - 91 * 60, "01");
     expect(() => validateMainnetTipQuorum([
       { height: 900_000, headerHex: stale, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
       { height: 900_000, headerHex: stale, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
     ], now)).toThrow(/stale/);
+    // A normal slow block (60 minutes) is still accepted.
+    const slow = headerWithTimestamp(Math.floor(now / 1000) - 60 * 60, "01");
+    expect(() => validateMainnetTipQuorum([
+      { height: 900_000, headerHex: slow, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
+      { height: 900_000, headerHex: slow, genesisHeaderHex: genesisHeader, forkCheckpointHash: BCH_MAINNET_FORK_CHECKPOINT_HASH, postBsvForkCheckpointHash: BCH_MAINNET_POST_BSV_FORK_CHECKPOINT_HASH },
+    ], now)).not.toThrow(/stale/);
   });
 
   it("requires exact agreement across provider UTXO snapshots regardless of ordering", () => {
