@@ -327,7 +327,7 @@ function txStatusLabel(record: CircleTransactionRecord) {
     return "Confirmed · " + (record.confirmations ?? 0).toLocaleString() + " confirmations";
   }
   if (record.status === "pending") return "Pending · not confirmed";
-  return "Not verified";
+  return "Needs checking";
 }
 
 export default function ActivityRecords({ network, compact = false }: { network: "chipnet" | "mainnet"; compact?: boolean }) {
@@ -428,7 +428,7 @@ export default function ActivityRecords({ network, compact = false }: { network:
               ) : result.status === "unavailable" ? (
                 <div className="activity-unavailable">
                   <b>Couldn't confirm this circle yet</b>
-                  <details className="technical-details"><summary>Details</summary><p>{result.error}</p></details>
+                  <details className="technical-details"><summary>Details</summary><details className="technical-details"><summary>Details</summary><p>{result.error}</p></details></details>
                   <small>This saved circle hasn't been confirmed yet.</small>
                 </div>
               ) : (
@@ -470,13 +470,13 @@ export default function ActivityRecords({ network, compact = false }: { network:
                   )}
                   <div className="activity-history">
                     <div className="activity-subheading">
-                      <b>Recent on-chain activity</b>
+                      <b>Recent payments</b>
                       <small>{result.historyError ? "Network check failed" : result.history?.truncated ? "Latest 20 payments" : "Payment history"}</small>
                     </div>
                     {result.historyError ? (
                       <div className="activity-unavailable">
                         <b>Couldn't load payment history</b>
-                        <p>{result.historyError}</p>
+                        <details className="technical-details"><summary>Details</summary><p>{result.historyError}</p></details>
                         <small>Circle details are available, but payment history isn't.</small>
                       </div>
                     ) : result.history?.records.length ? (
@@ -485,12 +485,12 @@ export default function ActivityRecords({ network, compact = false }: { network:
                           <span className="activity-transaction-icon"><ShieldCheck size={15} /></span>
                           <span className="activity-transaction-main">
                             <b>{result.ref.kind === "pusd" && record.scriptIndexes.some((index) => index > 0)
-                              ? "Member " + record.scriptIndexes.filter((index) => index > 0).map((index) => index).join(", ") + " escrow transaction"
-                              : "Circle contract transaction"}</b>
+                              ? "Member " + record.scriptIndexes.filter((index) => index > 0).map((index) => index).join(", ") + " payment"
+                              : "Circle payment"}</b>
                             <code>{shortTxid(record.txid)}</code>
                             <small>{record.status === "confirmed" && record.blockTimestamp
                               ? new Date(record.blockTimestamp).toLocaleString() + " · block " + record.height
-                              : record.status === "pending" ? "Seen in mempool · awaiting confirmation" : record.reason ?? "Provider history could not be verified"}</small>
+                              : record.status === "pending" ? "Seen in mempool · awaiting confirmation" : record.reason ?? "Payment couldn't be confirmed"}</small>
                           </span>
                           <span className={"activity-state-pill " + record.status}>{txStatusLabel(record)}</span>
                         </div>
@@ -506,7 +506,7 @@ export default function ActivityRecords({ network, compact = false }: { network:
           ))}
         </div>
       )}
-      <p className="activity-footnote">Saved circles and draft timestamps are not transactions. Mainnet history requires agreement from independent Electrum providers and a valid block-inclusion proof. Chipnet history uses one provider and a merkle proof, so its source confidence is lower.</p>
+      <p className="activity-footnote">Confirmed payments are final. Pending payments may still change.</p>
     </section>
   );
 }
