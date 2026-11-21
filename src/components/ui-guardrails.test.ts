@@ -160,8 +160,9 @@ describe("wallet, circle memory and clean homepage guardrails", () => {
     const end = appSource.indexOf('<footer className="app-footer"', start);
     const walletModal = appSource.slice(start, end);
     expect(start).toBeGreaterThanOrEqual(0);
-    const helperTexts = [...walletModal.matchAll(/<(?:p|small|label)[^>]*>([^<{}]+)<\\/(?:p|small|label)>/g)]
-      .map((match) => match[1].replaceAll("\\n", " ").trim().split(" ").filter(Boolean))
+    const helperPattern = new RegExp("<(?:p|small|label)[^>]*>([^<{}]+)</(?:p|small|label)>", "g");
+    const helperTexts = [...walletModal.matchAll(helperPattern)]
+      .map((match) => match[1].split(String.fromCharCode(10)).join(" ").trim().split(" ").filter(Boolean))
       .filter((words) => words.length > 0);
     for (const words of helperTexts) {
       expect(words.length, words.join(" ")).toBeLessThanOrEqual(15);
