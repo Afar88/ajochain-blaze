@@ -240,3 +240,10 @@ describe("wallet connection controls", () => {
     expect(appSource).toContain('(walletView.state === "connecting" || walletView.state === "reconnecting") && walletClient');
   });
 });
+
+describe("wallet new connection", () => {
+  it("offers New connection whenever the wallet is not connected", () => {
+    expect(appSource.match(/>New connection</g)?.length ?? 0).toBeGreaterThanOrEqual(1);
+    expect(appSource).toContain("walletClient.startFreshPairing();");
+  });
+});

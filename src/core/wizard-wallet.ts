@@ -2,7 +2,7 @@
 // Pairing is handled by WizardConnect. The wallet supplies xpubs; AjoChain
 // derives receive addresses locally and asks the wallet to sign transactions.
 import { initiateDappRelay, RelayMsgAction, type DappRelayResult } from '@wizardconnect/core';
-import { DappConnectionManager, loadSession } from '@wizardconnect/dapp';
+import { DappConnectionManager, clearSession, loadSession } from '@wizardconnect/dapp';
 import { binToHex, createVirtualMachineBch2026, decodeCashAddress, decodeTransactionBCH, encodeTransactionOutputs, hash160, hexToBin } from '@bitauth/libauth';
 import { sourceOutputToRelay, transactionToHex } from '@wizardconnect/core/hdwalletv1-serialize';
 import { pkhToAddress, type Net } from './bch-address';
@@ -150,6 +150,11 @@ export function deriveWizardConnectReceiveAddress(
 }
 
 export type WalletState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnecting' | 'disconnected';
+
+/** Remove the saved WizardConnect pairing from this browser. */
+export function clearSavedWizardSession() {
+  clearSession();
+}
 
 export function canRestoreWizardSession(state: WalletState, hasStoredSession: boolean): boolean {
   return hasStoredSession && (state === "idle" || state === "disconnected");
@@ -607,8 +612,16 @@ class WizardWallet {
     this.connectionWatchdog = setTimeout(() => {
       if (!this.isCurrent(mgr, generation) || (this.state !== "connecting" && this.state !== "reconnecting")) return;
       this.error = wizardConnectionTimeoutMessage(existing);
-      // Stop showing an endless connecting state. Keep the current session
-      // available for explicit retry or a late wallet_ready handshake.
+      // Stop the attempt for real so the relay cannot flip the page back to
+      // "Reconnecting…". The saved session stays for an explicit retry.
+      const relay = this.relay;
+      this.generation++;
+      this.mgr = null;
+      this.relay = null;
+      this.cleanup(mgr, relay, false);
+      this.uri = null;
+      this.qrUri = null;
+      this.autoResumePaused = true;
       this.state = "disconnected";
       this.emit();
     }, 20_000);
@@ -622,6 +635,9 @@ class WizardWallet {
     try { relay?.cleanup(); } catch { /* cleanup must not block local disconnect */ }
     if (clearSession) {
       try { mgr?.clearStoredSession(); } catch { /* best effort */ }
+      // Also clear storage directly: after a cancel or timeout there is no
+      // manager, and a stale saved session would block every fresh pairing.
+      try { clearSavedWizardSession(); } catch { /* best effort */ }
     }
     try { mgr?.destroy(); } catch { /* best effort */ }
   }
