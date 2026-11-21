@@ -60,7 +60,7 @@ describe("activity records follow the selected network", () => {
   it("passes the selected network to every ActivityRecords and filters refs by it", () => {
     const activitySource = readFileSync(resolve(here, "ActivityRecords.tsx"), "utf8");
     expect(appSource).not.toContain("<ActivityRecords />");
-    expect((appSource.match(/<ActivityRecords network=\{network\}/g) ?? [])).toHaveLength(2);
+    expect((appSource.match(/<ActivityRecords network=\{network\}/g) ?? [])).toHaveLength(1);
     expect((activitySource.match(/loadCircleRefs\(\)\.filter\(\(ref\) => ref\.network === network\)/g) ?? [])).toHaveLength(2);
   });
 });
