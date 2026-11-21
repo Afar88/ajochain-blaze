@@ -111,6 +111,17 @@ describe("phone-width layout guardrails", () => {
 
 
 describe("saved circle and homepage guardrails", () => {
+  it("restores fresh circle results before starting another blockchain scan", () => {
+    const restoreIndex = appSource.indexOf("restoreCachedCircles");
+    const scanIndex = appSource.indexOf('const provider = await getClassicProvider("chipnet");', restoreIndex);
+    expect(restoreIndex).toBeGreaterThanOrEqual(0);
+    expect(scanIndex).toBeGreaterThan(restoreIndex);
+    expect(appSource).toContain("isWalletDiscoveryCacheFresh(chipnetCache)");
+    expect(appSource).toContain("isWalletDiscoveryCacheFresh(mainnetCache)");
+    expect(appSource).toContain("skipChipnetScan");
+    expect(appSource).toContain("skipMainnetScan");
+  });
+
   it("loads saved BCH and PUSD Mainnet circles into Activity", () => {
     expect(activitySource).toContain("ajochain-blaze:bch-mainnet-circles-deployed:v1");
     expect(activitySource).toContain("ajochain-blaze:pusd-mainnet-circles-deployed:v1");
@@ -144,11 +155,11 @@ describe("saved circle and homepage guardrails", () => {
     const start = appSource.indexOf("{showWallet && (");
     const end = appSource.indexOf('<footer className="app-footer"', start);
     const walletDetails = appSource.slice(start, end);
-    const plainHelpers = [...walletDetails.matchAll(/<(?:p|small)\\b[^>]*>([^<{]+)<\\/(?:p|small)>/g)]
+    const plainHelpers = [...walletDetails.matchAll(/<(?:p|small)\b[^>]*>([^<{]+)<\/(?:p|small)>/g)]
       .map((match) => match[1].trim())
       .filter(Boolean);
     for (const helper of plainHelpers) {
-      const words = helper.split(/\\s+/).filter(Boolean);
+      const words = helper.split(/\s+/).filter(Boolean);
       expect(words.length, helper).toBeLessThanOrEqual(15);
     }
     for (const forbidden of ["derived", "receive key", "indices", "xpub", "verified picker", "relay", "session", "provider", "proof checks", "WizardConnect"]) {
