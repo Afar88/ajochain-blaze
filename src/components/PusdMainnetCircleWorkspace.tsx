@@ -1,4 +1,5 @@
 import { TestSignControl } from "./TestSignControl";
+import { plainErrorSummary } from "./error-copy";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ArrowRight, Copy, LockKeyhole, ShieldCheck } from "lucide-react";
 import { PUSD_ASSET, formatAssetAmount, parseAssetAmount } from "../core/assets";
@@ -867,9 +868,11 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
           )}       </div>
       )}
 
-      {error && <p className="classic-error" role="alert">{error}
+      {error && <div className="classic-error" role="alert">
+        <span>{plainErrorSummary(error)}</span>
+        <details className="technical-details"><summary>Details</summary><p>{error}</p></details>
         <button type="button" className="inline-dismiss" aria-label="Close error" onClick={() => setError("")}>×</button>
-      </p>}
+      </div>}
       {notice && <p className="classic-notice" role="status">{notice}</p>}
 
       {isCircleOpen && activeCircle && (
