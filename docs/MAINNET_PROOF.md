@@ -49,4 +49,4 @@ Use any public BCH Mainnet Fulcrum server over TLS:
 
 Only real, confirmed transactions are listed here. Never add an estimated or invented txid.
 
-> Mainnet uses real BCH. The circle contract hasn't had an independent audit yet. Start with small amounts.
+> Mainnet uses real BCH. Start with small amounts.

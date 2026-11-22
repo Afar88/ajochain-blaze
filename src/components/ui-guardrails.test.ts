@@ -23,7 +23,7 @@ export function isInsideAdvancedToggle(source: string, label: string, from = 0):
 describe("front-end warning and advanced-action guardrails", () => {
   it("renders one shared notice copy for each selected network", () => {
     expect(circleRiskNoticeText("mainnet")).toBe(
-      "Real BCH. The circle contract hasn't had an independent audit yet. Start with small amounts.",
+      "Real BCH. Start with small amounts.",
     );
     expect(circleRiskNoticeText("chipnet")).toBe("Test network. No real money.");
     expect((appSource.match(/className="circle-risk-notice"/g) ?? [])).toHaveLength(1);

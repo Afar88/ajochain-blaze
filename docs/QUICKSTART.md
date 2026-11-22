@@ -61,7 +61,7 @@ ELECTRUM_PROVIDER_OPERATORS="operator-one,operator-two" \
 PORT=3001 node server/mainnet-api.mjs
 ~~~
 
-Keep this terminal running, then use the app at http://localhost:5173. The API validates BCH Mainnet chain identity and provider agreement before serving Mainnet read/verification requests. A provider quorum is not proof of independent ownership, local SPV/chainwork validation, or a security audit.
+Keep this terminal running, then use the app at http://localhost:5173. The API validates BCH Mainnet chain identity and provider agreement before serving Mainnet read/verification requests. A provider quorum is not proof of independent ownership, or local SPV/chainwork validation.
 
 The adapter keeps a best-effort, process-local request throttle. It is not a deployment-wide limit across Vercel serverless instances and must not be treated as the production abuse-control boundary. Before exposing API routes to public traffic, configure and test Vercel Firewall rate-limit rules for `/api/*`, keyed by source IP, with stricter limits for expensive verification and submission routes. Do not trust client-supplied forwarding headers for identity. This edge protection does not make Redis a discovery dependency.
 
@@ -75,7 +75,7 @@ npm test
 npm run build
 ~~~
 
-The scripts compile the CashScript contracts as part of the checks. GitHub Actions also runs a targeted BCH 2026 VM compatibility vector suite. That targeted suite is not the complete BCHN/VMB consensus corpus and passing CI is not an independent contract audit.
+The scripts compile the CashScript contracts as part of the checks. GitHub Actions also runs a targeted BCH 2026 VM compatibility vector suite. That targeted suite is not the complete BCHN/VMB consensus corpus.
 
 For a local production-build smoke test:
 
