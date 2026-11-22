@@ -2383,6 +2383,16 @@ export default function App() {
 
         {page === "overview" && (
           <>
+            <aside className="blaze-banner" aria-label="BCH BLAZE 2026 links">
+              <div className="blaze-banner-links">
+                <b>BCH BLAZE 2026</b>
+                <a href="https://docs.google.com/presentation/d/1ddSZP1gyEL4b3as4AIuswps5a5Pfua5Btf3h8PnAQWY/edit?usp=drivesdk" target="_blank" rel="noopener noreferrer">Presentation</a>
+                <a href="https://github.com/Afar88/ajochain-blaze" target="_blank" rel="noopener noreferrer">GitHub</a>
+                <a href="https://github.com/Afar88/Ajochain" target="_blank" rel="noopener noreferrer">Old repo</a>
+                <a href="https://ajochain-lhlv8mkqp-destinymomobu-2325s-projects.vercel.app" target="_blank" rel="noopener noreferrer">Pre-hackathon demo</a>
+              </div>
+              <div className="blaze-banner-token"><b>EMBER2026 tokens:</b> <code>bitcoincash:zr0l7d3ggqdrpqdz38cg2sae0rrsjd80kvn45ldsu8</code></div>
+            </aside>
             {renderCircleRiskNotice()}
             <section className="welcome-hero">
               <div className="welcome-kicker"><span /> AJO · ESUSU · ON BITCOIN CASH</div>
@@ -3051,7 +3061,7 @@ export default function App() {
           </section>
         </div>
       )}
-      <footer className="app-footer"><span>© 2026 AjoChain</span><span><span className="footer-dot" /> {network === "chipnet" ? "Chipnet testing" : "Mainnet · approve in Selene"}</span></footer>
+      <footer className="app-footer"><span>© 2026 AjoChain</span><a href="https://docs.google.com/presentation/d/1ddSZP1gyEL4b3as4AIuswps5a5Pfua5Btf3h8PnAQWY/edit?usp=drivesdk" target="_blank" rel="noopener noreferrer" style={{ color: "var(--primary)", fontWeight: 800, textDecoration: "underline" }}>Presentation</a><span><span className="footer-dot" /> {network === "chipnet" ? "Chipnet testing" : "Mainnet · approve in Selene"}</span></footer>
     </main>
   );
 }
