@@ -31,9 +31,11 @@
 | **Pre-BLAZE source code** | https://github.com/Afar88/Ajochain (last commit before the Nov 14, 2026 kickoff: [`069acb5`](https://github.com/Afar88/Ajochain/tree/069acb5)) |
 | **Pre-BLAZE demo** | Nov 10, 2026 build, commit [`9f1e15a`](https://github.com/Afar88/Ajochain/commit/9f1e15a11a9bf96c5b596516e4e1af8e9c7f8315): https://ajochain-lhlv8mkqp-destinymomobu-2325s-projects.vercel.app |
 | **CashTokens address (EMBER2026)** | `bitcoincash:zr0upm68xfzyu0smvmkr47pr04ywktaetuyxg89wjw` |
-| **Mainnet proof** | [docs/MAINNET_PROOF.md](docs/MAINNET_PROOF.md) |
+| **Mainnet proof: full circle, Nov 21, 2026** | [Token prep](https://blockchair.com/bitcoin-cash/transaction/a9a3bca6406c0c7abacc272f70b78ccca924ca69df9629652d7345bd5647696c) · [Circle created](https://blockchair.com/bitcoin-cash/transaction/a36b90a9817f1f63105eaa9fc7b1e30ccecba2409a4c8de4a9441fad566b5a80) · [Deposit 1](https://blockchair.com/bitcoin-cash/transaction/cffa514eaf4dff86d487e1fbdff190286fa58a1c1b103cbb49ac28dea19e9543) · [Deposit 2](https://blockchair.com/bitcoin-cash/transaction/96a622416a45788963f3b135f59bce1d567c64a2abe3e2762d1f532eb00f833a) · [Payout 1](https://blockchair.com/bitcoin-cash/transaction/fd8434304adb4d93c83c6079dc57be811a3b0e11b8358a5d61310c01aec60594) · [Deposit 3](https://blockchair.com/bitcoin-cash/transaction/d1c4fa8488d9cc63ede2d745568dc3b54cdb817dea36ff9e2b517654225b4d1c) · [Final payout](https://blockchair.com/bitcoin-cash/transaction/dfc24ec6bc58ac04c9dbfa9dd6fed6ebfbd1ecb5c38ad39ad016a7fcba1d34df) (all confirmed, blocks 978372 to 978387) |
+| **Mainnet proof: earlier transactions** | [First circle created, Nov 20](https://blockchair.com/bitcoin-cash/transaction/48a5840dbe7c5c41525406461e32b31998393411ca793f4dd19131b0369f7473) · [Token prep](https://blockchair.com/bitcoin-cash/transaction/34f2dbff25ebc94102734208c00c0ee8226d5fe8d6418768ab86ef5e31afcf0a) · [Coin gather](https://blockchair.com/bitcoin-cash/transaction/d38a82145869f6717bfbf508bd2d3fe52d2ae040a9feb87c56665ed57ca0abac) |
+| **Mainnet proof: full details** | [docs/MAINNET_PROOF.md](docs/MAINNET_PROOF.md) |
 
-### Mainnet transactions: a full savings circle, start to finish
+### The completed Mainnet circle, step by step
 
 On Nov 21, 2026, two people ran a real 2-member AjoChain circle on Bitcoin Cash Mainnet from start to finish: 0.002 BCH each per round, 2 rounds, signed in Selene. Every step below is confirmed on chain.
 
