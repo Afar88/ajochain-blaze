@@ -2391,6 +2391,7 @@ export default function App() {
                 <a href="https://github.com/Afar88/ajochain-blaze" target="_blank" rel="noopener noreferrer">GitHub</a>
                 <a href="https://github.com/Afar88/Ajochain" target="_blank" rel="noopener noreferrer">Old repo</a>
                 <a href="https://ajochain-lhlv8mkqp-destinymomobu-2325s-projects.vercel.app" target="_blank" rel="noopener noreferrer">Pre-hackathon demo</a>
+                <a href={MAINNET_PROOF_URL} target="_blank" rel="noopener noreferrer">Mainnet proof</a>
               </div>
               <div className="blaze-banner-token"><b>EMBER2026 tokens:</b> <code>bitcoincash:zr0l7d3ggqdrpqdz38cg2sae0rrsjd80kvn45ldsu8</code> <button type="button" className="blaze-copy" onClick={() => { void navigator.clipboard?.writeText("bitcoincash:zr0l7d3ggqdrpqdz38cg2sae0rrsjd80kvn45ldsu8").then(() => { setEmberCopied(true); window.setTimeout(() => setEmberCopied(false), 4000); }); }}>{emberCopied ? "Copied" : "Copy"}</button></div>
             </aside>
@@ -2407,9 +2408,6 @@ export default function App() {
                   My circles
                 </button>
                 {renderFindMyCirclesButton("hero-secondary-cta")}
-                <a className="secondary-button hero-secondary-cta hero-proof-link" href={MAINNET_PROOF_URL} target="_blank" rel="noreferrer">
-                  <ShieldCheck size={16} /> Mainnet proof
-                </a>
               </div>
               {discoveryMessage && <p className="wallet-match-message" role="status">{discoveryMessage}</p>}
               <p className="field-hint find-circles-hint">Added to someone's circle? Tap Find my circles. New circles show up after their first confirmation, usually about 10 minutes.</p>
@@ -3062,7 +3060,7 @@ export default function App() {
           </section>
         </div>
       )}
-      <footer className="app-footer"><span>© 2026 AjoChain</span><a href="https://docs.google.com/presentation/d/1ddSZP1gyEL4b3as4AIuswps5a5Pfua5Btf3h8PnAQWY/edit?usp=drivesdk" target="_blank" rel="noopener noreferrer" style={{ color: "var(--primary)", fontWeight: 800, textDecoration: "underline" }}>Presentation</a><span><span className="footer-dot" /> {network === "chipnet" ? "Chipnet testing" : "Mainnet · approve in Selene"}</span></footer>
+      <footer className="app-footer"><span>© 2026 AjoChain</span><span><span className="footer-dot" /> {network === "chipnet" ? "Chipnet testing" : "Mainnet · approve in Selene"}</span></footer>
     </main>
   );
 }
