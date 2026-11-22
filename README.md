@@ -1,4 +1,4 @@
-![AjoChain BLAZE — Bitcoin Cash savings circles](docs/assets/ajochain-blaze-banner.svg)
+![AjoChain BLAZE live app home screen](docs/assets/screens/home-desktop.png)
 
 <p align="center">
   <strong>Non-custodial rotating savings circles built on Bitcoin Cash.</strong><br/>
@@ -18,6 +18,12 @@
 **Ajo** (also called esusu) is how millions of people in Nigeria and across Africa save: a small group agrees on an amount, everyone pays in each round, and one member takes the whole pot each round until everyone has had a turn. It runs on trust, and when the person holding the money disappears, everyone loses.
 
 **AjoChain BLAZE puts the circle on Bitcoin Cash.** The money sits in a smart contract (a covenant), not with a person. Each member pays from their own Selene wallet, the payout order is written into the contract, and every deposit and payout is a public transaction anyone can check. The contract rules decide who gets paid and when, not a person holding the cash.
+
+### The live app on a phone
+
+![AjoChain on a phone: home, create a circle, my circles](docs/assets/screens/phone-home-create-circles.png)
+
+Screens from the live app at ajochain-blaze.vercel.app, Nov 22, 2026.
 
 ## BCH BLAZE 2026 submission
 
