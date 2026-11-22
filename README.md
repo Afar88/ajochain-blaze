@@ -85,7 +85,7 @@ Nothing is lost while you wait. Your wallet has already signed and sent the tran
 
 - **Cancelled circles show under Completed** in My circles. A circle can only be cancelled before its first payout.
 - **The old demo address changed.** https://ajochain.vercel.app was updated on Nov 19, 2026, so it is not a pure before-hackathon build. Use the Nov 10, 2026 build in the submission table for the before view.
-- **Real money, unaudited contract.** Mainnet uses real BCH. The circle contract hasn't had an independent audit yet. Start with small amounts.
+- **Real money.** Mainnet uses real BCH. Start with small amounts.
 
 ---
 
@@ -93,7 +93,7 @@ Nothing is lost while you wait. Your wallet has already signed and sent the tran
 
 1. **Get ready.** Install the Selene wallet on your phone. You need BCH for network fees and circle actions. Use Chipnet test BCH to practise, or real BCH on Mainnet.
 2. **Open the app.** Go to [ajochain-blaze.vercel.app](https://ajochain-blaze.vercel.app).
-3. **Choose a network.** Choose **Chipnet** for testing with no real money, or **Mainnet** for real BCH. Mainnet uses real funds. The circle contract has not had an independent audit, so start with small amounts.
+3. **Choose a network.** Choose **Chipnet** for testing with no real money, or **Mainnet** for real BCH. Mainnet uses real funds, so start with small amounts.
 4. **Connect Selene.** Tap Connect wallet, then scan the QR code in Selene or tap **Open in Selene** on your phone. Return to the app and check the connected address in the top bar. Open Wallet details to confirm the receive address Selene currently shows.
 5. **Create a circle.** Choose the circle type available on your selected network. Enter its name, contribution amount and the other members' addresses. Your confirmed Selene receive address is **Member 1**. Review the preview before approving anything. The optional **Test sign · no money sent** control is visible beside the main action. It asks Selene to sign, checks the result against the circle rules, then discards it; nothing is broadcast. The helper copy explains this, and a successful check shows **✓ Signature checked · prepare a fresh preview to send**. If the preview expires after 60 seconds, the Test sign control changes to **Refresh preview first**. To create the circle, use the main create/sign-and-send action and approve it in Selene; running Test sign is optional.
 6. **Invite members.** Copy the circle invite link and share it with the other members. The link carries circle details, not wallet keys.
@@ -102,7 +102,7 @@ Nothing is lost while you wait. Your wallet has already signed and sent the tran
 9. **Find your circles.** Open **My circles** and use the **Active** and **Completed** tabs. AjoChain checks eligible circles against blockchain data. Discovery uses your connected wallet's derived address history; saved invite details alone are not proof of membership or payment.
 10. **Troubleshoot.** If Selene disconnects, open Wallet and tap **Reconnect**. If a preview is older than 60 seconds, refresh the circle/chain preview and prepare a new one before asking Selene to sign. If the app and Selene are on different networks, switch to the intended network in Selene, then confirm the receive address again in AjoChain.
 
-**Mainnet reminder:** Mainnet uses real BCH. Confirm the network, address, contribution and miner fee in Selene before approving. Start small while the contract has not been independently audited.
+**Mainnet reminder:** Mainnet uses real BCH. Confirm the network, address, contribution and miner fee in Selene before approving. Start with small amounts.
 
 ## Demo links
 
@@ -169,7 +169,7 @@ Read [BCH, PUSD and member accounting](docs/BCH_PUSD_MEMBER_ACCOUNTING.md) for t
 |---|---|---|
 | BCH V3 automatic-reserve circles | **Chipnet + Mainnet V3 paths** | Discovery is on-chain on both networks. The dedicated V3 Mainnet signing/broadcast path is separate from the Classic BCH guard; real-wallet and lifecycle validation remains important. |
 | Classic / V1 / V2 circles | **Versioned compatibility** | Existing circles retain their original covenant and accounting rules; they are not silently migrated to V3. |
-| BCH Mainnet circles | **V3 send path enabled in code** | The dedicated V3 UI and broadcast gates are enabled separately from the Classic BCH operations gate. This is not a blanket audit or release approval for every contract/version. |
+| BCH Mainnet circles | **V3 send path enabled in code** | The dedicated V3 UI and broadcast gates are enabled separately from the Classic BCH operations gate. |
 | PUSD Mainnet V3 circles | **Separate circle-broadcast path enabled in code** | PRs [#78](https://github.com/Afar88/ajochain-blaze/pull/78) and [#83](https://github.com/Afar88/ajochain-blaze/pull/83) add server-side transaction verification and a durable-ledger-backed, single-relay circle broadcast route for genesis, deposits, payouts and cancellation. This is separate from ordinary PUSD wallet transfers, which remain hard-disabled. Independent contract/security review and operational evidence are still required. |
 | Shared circle registry | **Not used** | Neither Chipnet nor Mainnet circle discovery depends on a centralized registry. Circle identity and lifecycle are reconstructed from BCH transactions and UTXOs. |
 
@@ -233,7 +233,7 @@ Before any real-value PUSD or BCH circle release, the project still needs:
 - A dedicated, idempotent transaction-submission path, conflict handling, confirmation tracking and reorganisation recovery.
 - Monitoring, incident response, rollback procedures and written release-owner approval for the exact deployed commit.
 
-The CI suite includes typechecking, artifact fingerprinting, unit tests, production build and a targeted BCH 2026 VM vector suite. The targeted vector suite is not the complete BCHN/VMB consensus corpus. CI success is necessary engineering evidence, not an external audit or Mainnet launch approval.
+The CI suite includes typechecking, artifact fingerprinting, unit tests, production build and a targeted BCH 2026 VM vector suite. The targeted vector suite is not the complete BCHN/VMB consensus corpus. CI success is engineering evidence, not Mainnet launch approval.
 
 See the [BCH 2026 VM compatibility notes](docs/BCH_2026_VM_COMPATIBILITY.md), [Mainnet release checklist](docs/MAINNET_RELEASE_CHECKLIST.md) and [PUSD Mainnet spending checklist](docs/PUSD_MAINNET_RELEASE_CHECKLIST.md).
 
@@ -271,7 +271,7 @@ Commit-history highlights from the hackathon build include:
 - **Stronger WizardConnect wallet recovery**, including saved-session restoration and clearer reconnect states.
 - **Optional Test sign checks**: Selene approval verification paths that do not broadcast a payment.
 
-These are engineering and product-history milestones, not an independent security audit. The Mainnet safety gates below still apply.
+These are engineering and product-history milestones. The Mainnet safety gates below still apply.
 
 ## Documentation map
 

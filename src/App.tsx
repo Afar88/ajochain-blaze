@@ -351,7 +351,7 @@ type PusdView = {
 
 export function circleRiskNoticeText(network: NetworkId): string {
   return network === "mainnet"
-    ? "Real BCH. The circle contract hasn't had an independent audit yet. Start with small amounts."
+    ? "Real BCH. Start with small amounts."
     : "Test network. No real money.";
 }
 
