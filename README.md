@@ -13,7 +13,83 @@
 
 ---
 
-## How to use AjoChain BLAZE
+## What is AjoChain?
+
+**Ajo** (also called esusu) is how millions of people in Nigeria and across Africa save: a small group agrees on an amount, everyone pays in each round, and one member takes the whole pot each round until everyone has had a turn. It runs on trust, and when the person holding the money disappears, everyone loses.
+
+**AjoChain BLAZE puts the circle on Bitcoin Cash.** The money sits in a smart contract (a covenant), not with a person. Each member pays from their own Selene wallet, the payout order is written into the contract, and every deposit and payout is a public transaction anyone can check. The contract rules decide who gets paid and when, not a person holding the cash.
+
+## BCH BLAZE 2026 submission
+
+| | |
+|---|---|
+| **Track** | Mainnet |
+| **Live app** | https://ajochain-blaze.vercel.app |
+| **Demo video** | https://youtube.com/shorts/EittIMg-jPo |
+| **Pitch deck** | [AjoChain BLAZE slides](https://docs.google.com/presentation/d/1ddSZP1gyEL4b3as4AIuswps5a5Pfua5Btf3h8PnAQWY/edit?usp=drivesdk) |
+| **BLAZE source code** | https://github.com/Afar88/ajochain-blaze |
+| **Pre-BLAZE source code** | https://github.com/Afar88/Ajochain (last commit before the Nov 14, 2026 kickoff: [`069acb5`](https://github.com/Afar88/Ajochain/tree/069acb5)) |
+| **Pre-BLAZE demo** | Nov 10, 2026 build, commit [`9f1e15a`](https://github.com/Afar88/Ajochain/commit/9f1e15a11a9bf96c5b596516e4e1af8e9c7f8315): https://ajochain-lhlv8mkqp-destinymomobu-2325s-projects.vercel.app |
+| **CashTokens address (EMBER2026)** | `bitcoincash:zr0upm68xfzyu0smvmkr47pr04ywktaetuyxg89wjw` |
+| **Mainnet proof: full circle, Nov 21, 2026** | [Token prep](https://blockchair.com/bitcoin-cash/transaction/a9a3bca6406c0c7abacc272f70b78ccca924ca69df9629652d7345bd5647696c) · [Circle created](https://blockchair.com/bitcoin-cash/transaction/a36b90a9817f1f63105eaa9fc7b1e30ccecba2409a4c8de4a9441fad566b5a80) · [Deposit 1](https://blockchair.com/bitcoin-cash/transaction/cffa514eaf4dff86d487e1fbdff190286fa58a1c1b103cbb49ac28dea19e9543) · [Deposit 2](https://blockchair.com/bitcoin-cash/transaction/96a622416a45788963f3b135f59bce1d567c64a2abe3e2762d1f532eb00f833a) · [Payout 1](https://blockchair.com/bitcoin-cash/transaction/fd8434304adb4d93c83c6079dc57be811a3b0e11b8358a5d61310c01aec60594) · [Deposit 3](https://blockchair.com/bitcoin-cash/transaction/d1c4fa8488d9cc63ede2d745568dc3b54cdb817dea36ff9e2b517654225b4d1c) · [Final payout](https://blockchair.com/bitcoin-cash/transaction/dfc24ec6bc58ac04c9dbfa9dd6fed6ebfbd1ecb5c38ad39ad016a7fcba1d34df) (all confirmed, blocks 978372 to 978387) |
+| **Mainnet proof: earlier transactions** | [First circle created, Nov 20](https://blockchair.com/bitcoin-cash/transaction/48a5840dbe7c5c41525406461e32b31998393411ca793f4dd19131b0369f7473) · [Token prep](https://blockchair.com/bitcoin-cash/transaction/34f2dbff25ebc94102734208c00c0ee8226d5fe8d6418768ab86ef5e31afcf0a) · [Coin gather](https://blockchair.com/bitcoin-cash/transaction/d38a82145869f6717bfbf508bd2d3fe52d2ae040a9feb87c56665ed57ca0abac) |
+| **Mainnet proof: full details** | [docs/MAINNET_PROOF.md](docs/MAINNET_PROOF.md) |
+
+### The completed Mainnet circle, step by step
+
+On Nov 21, 2026, two people ran a real 2-member AjoChain circle on Bitcoin Cash Mainnet from start to finish: 0.002 BCH each per round, 2 rounds, signed in Selene. Every step below is confirmed on chain.
+
+| Step | Block | Transaction |
+|---|---:|---|
+| Circle token prepared | 978372 | [`a9a3bca6…`](https://blockchair.com/bitcoin-cash/transaction/a9a3bca6406c0c7abacc272f70b78ccca924ca69df9629652d7345bd5647696c) |
+| Circle created (genesis) | 978376 | [`a36b90a9…`](https://blockchair.com/bitcoin-cash/transaction/a36b90a9817f1f63105eaa9fc7b1e30ccecba2409a4c8de4a9441fad566b5a80) |
+| Round 1: member 1 deposit | 978382 | [`cffa514e…`](https://blockchair.com/bitcoin-cash/transaction/cffa514eaf4dff86d487e1fbdff190286fa58a1c1b103cbb49ac28dea19e9543) |
+| Round 1: member 2 deposit | 978384 | [`96a62241…`](https://blockchair.com/bitcoin-cash/transaction/96a622416a45788963f3b135f59bce1d567c64a2abe3e2762d1f532eb00f833a) |
+| Round 1 payout: 0.00196 BCH to member 1 | 978385 | [`fd843430…`](https://blockchair.com/bitcoin-cash/transaction/fd8434304adb4d93c83c6079dc57be811a3b0e11b8358a5d61310c01aec60594) |
+| Round 2: member 2 deposit | 978386 | [`d1c4fa84…`](https://blockchair.com/bitcoin-cash/transaction/d1c4fa8488d9cc63ede2d745568dc3b54cdb817dea36ff9e2b517654225b4d1c) |
+| Final payout: 0.00396 BCH to member 2, contract emptied | 978387 | [`dfc24ec6…`](https://blockchair.com/bitcoin-cash/transaction/dfc24ec6bc58ac04c9dbfa9dd6fed6ebfbd1ecb5c38ad39ad016a7fcba1d34df) |
+
+Full decoded details, plus earlier Mainnet transactions, are in [docs/MAINNET_PROOF.md](docs/MAINNET_PROOF.md).
+
+## For judges: how to try AjoChain
+
+**What you need:** the Selene wallet on your phone, a second wallet address for member 2 (a friend's, or a second Selene wallet), and a little BCH for the deposits and network fees. On Mainnet, start with a small amount per member. To use free test coins instead, pick **Chipnet**.
+
+**Plan for about an hour** for a full 2-member, 2-round circle on Mainnet, mostly waiting for blocks (see the next section). Our own run took about 90 minutes from creation to final payout.
+
+1. **Open** [ajochain-blaze.vercel.app](https://ajochain-blaze.vercel.app) on your phone or laptop and choose **Mainnet** or **Chipnet** at the top.
+2. **Connect your wallet.** Tap **Connect wallet**, then scan the QR code with Selene (or tap **Open in Selene** on the same phone) and approve.
+3. **Create a circle.** Tap **Create a circle**, pick **BCH**, give it a name, set the amount per member, and paste member 2's address. You are member 1. Check the preview and approve in Selene.
+4. **Wait for the first confirmation (about 10 minutes).** The new circle appears in **My circles** once its creation transaction is in a block.
+5. **Member 2 finds the circle.** On member 2's wallet, open the app, connect, and tap **Find my circles**. The app reads the blockchain and finds every circle that wallet belongs to. No invite link or server is needed.
+6. **Both members deposit.** Open the circle, tap the deposit button, check the amount and approve in Selene. Each deposit needs 1 confirmation before the circle moves on.
+7. **Payout.** When everyone has paid in for the round, the payout button opens. A connected member sends it and pays the small network fee; the contract only lets the money go to the member whose turn it is (minus a 1% project fee).
+8. **Repeat for round 2.** After the last payout the contract is empty and the circle moves to **Completed**.
+9. **Check it on chain.** Every step has a transaction id you can open in any BCH block explorer. Our own completed circle is listed above.
+
+Prefer to watch first? The [demo video](https://youtube.com/shorts/EittIMg-jPo) shows the full circle on Mainnet.
+
+## Why some steps take about 10 minutes
+
+Bitcoin Cash adds a new block about **every 10 minutes**. A transaction counts as confirmed once it is inside a block.
+
+AjoChain **waits for 1 confirmation** before it treats a circle or a payment as real. That is on purpose: until a transaction is in a block it could still be replaced or dropped, and a savings circle should never pay out against money that might not arrive. So:
+
+- **A new circle shows in My circles after its first confirmation,** usually within about 10 minutes, sometimes longer if a block is slow.
+- **Each deposit and payout also waits for 1 confirmation** before the next step opens. Until then the app shows it as waiting.
+- **Public BCH servers can be slow to answer.** The app checks more than one server, but status, balances and the wallet QR code can still take a moment after a refresh. If something looks stuck, wait a minute and refresh.
+
+Nothing is lost while you wait. Your wallet has already signed and sent the transaction; the app is just waiting for the network to confirm it.
+
+## Good to know
+
+- **Cancelled circles show under Completed** in My circles. A circle can only be cancelled before its first payout.
+- **The old demo address changed.** https://ajochain.vercel.app was updated on Nov 19, 2026, so it is not a pure pre-BLAZE build. Use the Nov 10, 2026 build in the submission table for the before view.
+- **Real money, unaudited contract.** Mainnet uses real BCH. The circle contract hasn't had an independent audit yet. Start with small amounts.
+
+---
+
+## Full step-by-step guide
 
 1. **Get ready.** Install the Selene wallet on your phone. You need BCH for network fees and circle actions. Use Chipnet test BCH to practise, or real BCH on Mainnet.
 2. **Open the app.** Go to [ajochain-blaze.vercel.app](https://ajochain-blaze.vercel.app).
@@ -37,7 +113,7 @@
 
 ---
 
-## What is AjoChain BLAZE?
+## More about AjoChain BLAZE
 
 AjoChain BLAZE is a non-custodial savings-circle application for people who want to contribute to a shared rotation and receive payouts according to transparent, enforceable rules.
 
@@ -146,13 +222,7 @@ BLAZE is separate from the legacy AjoChain deployment. It has no Neon/PostgreSQL
 
 ## Mainnet proof
 
-The public proof ledger is maintained in [docs/MAINNET_PROOF.md](docs/MAINNET_PROOF.md). Its transaction table is reserved for transactions decoded from a public Fulcrum server and matched to their confirmed block inclusion.
-
-**Circle genesis candidate (supplied, not yet Fulcrum-verified):** [48a5840dbe7c5c41525406461e32b31998393411ca793f4dd19131b0369f7473](https://blockchair.com/bitcoin-cash/transaction/48a5840dbe7c5c41525406461e32b31998393411ca793f4dd19131b0369f7473)
-
-**BCH Mainnet covenant address:** `p0chq232z0p58nqazzmltt7yw52te48gm5sqj74gn3e3yma7g44tu7k3rz880`
-
-The candidate transaction and output description are project-supplied details pending independent Fulcrum decoding. They are not presented as verified proof until the ledger records a matching raw-transaction decode and block height.
+The public proof ledger is [docs/MAINNET_PROOF.md](docs/MAINNET_PROOF.md). Every row there was decoded from a public Fulcrum server and matched to its confirmed block. It includes a complete 2-member circle (creation, four deposits, two payouts) on circle contract `bitcoincash:pwczq0uttxcglv59mkgugqhtew4v3zd3rsvulcs4eqjktl8lf9u47h4j2wz4a`.
 
 ## Mainnet safety gates
 
