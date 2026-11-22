@@ -35,3 +35,30 @@ export function getDepositDisabledReason(walletConnected: boolean): string | nul
 export function shouldRenderCircleCreation(isCircleOpen: boolean): boolean {
   return !isCircleOpen;
 }
+
+export const CIRCLE_COMPLETE_MESSAGE = "This circle is complete.";
+export const CIRCLE_CANCELLED_MESSAGE = "This circle was cancelled.";
+
+type CircleFinishedState = {
+  /** Latest on-chain read says every payout is done. */
+  snapshotCompleted?: boolean | null;
+  /** Latest on-chain read found the circle closed. */
+  snapshotClosedAs?: "completed" | "cancelled" | null;
+  /** Status saved on this phone from an earlier read (My circles). */
+  savedStatus?: "active" | "completed" | "cancelled" | "unknown" | null;
+};
+
+/**
+ * When a circle is finished (complete, closed or cancelled) there is nothing left
+ * to deposit, pay out or cancel, so the action buttons are replaced by this line.
+ * Returns null while the circle is still running.
+ */
+export function getCircleFinishedMessage(state: CircleFinishedState): string | null {
+  if (state.snapshotClosedAs === "cancelled") return CIRCLE_CANCELLED_MESSAGE;
+  if (state.snapshotClosedAs === "completed" || state.snapshotCompleted) return CIRCLE_COMPLETE_MESSAGE;
+  // Only trust the saved status when no fresh read says otherwise.
+  if (state.snapshotCompleted === false) return null;
+  if (state.savedStatus === "cancelled") return CIRCLE_CANCELLED_MESSAGE;
+  if (state.savedStatus === "completed") return CIRCLE_COMPLETE_MESSAGE;
+  return null;
+}
