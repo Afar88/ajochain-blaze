@@ -222,21 +222,6 @@ This app is separate from the legacy AjoChain deployment. It has no Neon/Postgre
 
 The public proof ledger is [docs/MAINNET_PROOF.md](docs/MAINNET_PROOF.md). Every row there was decoded from a public Fulcrum server and matched to its confirmed block. It includes a complete 2-member circle (creation, four deposits, two payouts) on circle contract `bitcoincash:pwczq0uttxcglv59mkgugqhtew4v3zd3rsvulcs4eqjktl8lf9u47h4j2wz4a`.
 
-## Mainnet safety gates
-
-Before any real-value PUSD or BCH circle release, the project still needs:
-
-- Independent security review of the exact covenant source, constructor arguments and compiled artifact hashes.
-- Issuer-controlled confirmation of the PUSD category, decimals and token policy.
-- Evidence that Electrum providers are independently operated and separated by fault domain; provider quorum alone does not prove independence or validate chainwork locally.
-- Real Selene/WizardConnect lifecycle testing with independent member wallets.
-- A dedicated, idempotent transaction-submission path, conflict handling, confirmation tracking and reorganisation recovery.
-- Monitoring, incident response, rollback procedures and written release-owner approval for the exact deployed commit.
-
-The CI suite includes typechecking, artifact fingerprinting, unit tests, production build and a targeted BCH 2026 VM vector suite. The targeted vector suite is not the complete BCHN/VMB consensus corpus. CI success is engineering evidence, not Mainnet launch approval.
-
-See the [BCH 2026 VM compatibility notes](docs/BCH_2026_VM_COMPATIBILITY.md), [Mainnet release checklist](docs/MAINNET_RELEASE_CHECKLIST.md) and [PUSD Mainnet spending checklist](docs/PUSD_MAINNET_RELEASE_CHECKLIST.md).
-
 ## Deployment
 
 The active AjoChain app is deployed through the dedicated Vercel project **ajochain-blaze**:
@@ -271,7 +256,7 @@ Commit-history highlights from the hackathon build include:
 - **Stronger WizardConnect wallet recovery**, including saved-session restoration and clearer reconnect states.
 - **Optional Test sign checks**: Selene approval verification paths that do not broadcast a payment.
 
-These are engineering and product-history milestones. The Mainnet safety gates below still apply.
+These are engineering and product-history milestones.
 
 ## Documentation map
 
@@ -283,7 +268,3 @@ These are engineering and product-history milestones. The Mainnet safety gates b
 - [BCH 2026 VM compatibility](docs/BCH_2026_VM_COMPATIBILITY.md)
 - [WizardConnect and Selene integration](docs/WIZARDCONNECT_SELENE_PORT.md)
 - [Legacy repository and deployment boundaries](docs/LEGACY_REPO_PORTING_AND_DEPLOYMENTS.md)
-
----
-
-**Safety note:** AjoChain is active development software. Treat Chipnet as the test environment. Do not fund prototype contracts or enable Mainnet spending until all required reviews and release gates have been independently completed.
