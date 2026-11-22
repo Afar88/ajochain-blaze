@@ -2235,3 +2235,4 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
 .blaze-banner-links b { color:var(--primary); font-weight:800; }
 .blaze-banner a { color:var(--ink); font-weight:800; text-decoration:underline; text-decoration-color:var(--primary); }
 .blaze-banner-token code { font-size:12px; font-weight:700; word-break:break-all; color:var(--ink); background:transparent; }
+.blaze-copy { margin-left:6px; padding:3px 10px; border:1px solid var(--primary); border-radius:999px; background:var(--primary); color:var(--ink); font-size:12px; font-weight:800; cursor:pointer; }

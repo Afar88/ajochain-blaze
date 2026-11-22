@@ -515,6 +515,7 @@ const pageLabels: Record<Page, string> = {
 };
 
 export default function App() {
+  const [emberCopied, setEmberCopied] = useState(false);
   const [network, setNetwork] = useState<NetworkId>(() => getDefaultNetwork(import.meta.env.PROD));
   const [riskNoticeCollapsed, setRiskNoticeCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -2391,7 +2392,7 @@ export default function App() {
                 <a href="https://github.com/Afar88/Ajochain" target="_blank" rel="noopener noreferrer">Old repo</a>
                 <a href="https://ajochain-lhlv8mkqp-destinymomobu-2325s-projects.vercel.app" target="_blank" rel="noopener noreferrer">Pre-hackathon demo</a>
               </div>
-              <div className="blaze-banner-token"><b>EMBER2026 tokens:</b> <code>bitcoincash:zr0l7d3ggqdrpqdz38cg2sae0rrsjd80kvn45ldsu8</code></div>
+              <div className="blaze-banner-token"><b>EMBER2026 tokens:</b> <code>bitcoincash:zr0l7d3ggqdrpqdz38cg2sae0rrsjd80kvn45ldsu8</code> <button type="button" className="blaze-copy" onClick={() => { void navigator.clipboard?.writeText("bitcoincash:zr0l7d3ggqdrpqdz38cg2sae0rrsjd80kvn45ldsu8").then(() => { setEmberCopied(true); window.setTimeout(() => setEmberCopied(false), 4000); }); }}>{emberCopied ? "Copied" : "Copy"}</button></div>
             </aside>
             {renderCircleRiskNotice()}
             <section className="welcome-hero">
