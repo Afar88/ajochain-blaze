@@ -25,7 +25,7 @@
 |---|---|
 | **Track** | Mainnet |
 | **Live app** | https://ajochain-blaze.vercel.app |
-| **Demo video** | https://youtube.com/shorts/oBRWzLjJwzk |
+| **Demo video** | https://youtube.com/shorts/EittIMg-jPo |
 | **Pitch deck** | [AjoChain BLAZE slides](https://docs.google.com/presentation/d/1ddSZP1gyEL4b3as4AIuswps5a5Pfua5Btf3h8PnAQWY/edit?usp=drivesdk) |
 | **BLAZE source code** | https://github.com/Afar88/ajochain-blaze |
 | **Pre-BLAZE source code** | https://github.com/Afar88/Ajochain (last commit before the Nov 14, 2026 kickoff: [`069acb5`](https://github.com/Afar88/Ajochain/tree/069acb5)) |
@@ -67,7 +67,7 @@ Full decoded details, plus earlier Mainnet transactions, are in [docs/MAINNET_PR
 8. **Repeat for round 2.** After the last payout the contract is empty and the circle moves to **Completed**.
 9. **Check it on chain.** Every step has a transaction id you can open in any BCH block explorer. Our own completed circle is listed above.
 
-Prefer to watch first? The [demo video](https://youtube.com/shorts/oBRWzLjJwzk) shows the full circle on Mainnet.
+Prefer to watch first? The [demo video](https://youtube.com/shorts/EittIMg-jPo) shows the full circle on Mainnet.
 
 ## Why some steps take about 10 minutes
 
