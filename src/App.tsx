@@ -37,6 +37,8 @@ import {
   shouldAutoHideDiscoveryMessage,
   type ChainCircleSnapshot,
 } from "./circles/on-chain-circle-status";
+
+const MAINNET_PROOF_URL = "https://github.com/Afar88/ajochain-blaze/blob/main/docs/MAINNET_PROOF.md";
 const ClassicBchWorkspace = lazy(() => import("./components/ClassicBchWorkspace"));
 const V2FeeBchWorkspace = lazy(() => import("./components/V2FeeBchWorkspace"));
 const PusdMainnetCircleWorkspace = lazy(() => import("./components/PusdMainnetCircleWorkspace"));
@@ -2378,6 +2380,9 @@ export default function App() {
                   My circles
                 </button>
                 {renderFindMyCirclesButton("hero-secondary-cta")}
+                <a className="secondary-button hero-secondary-cta hero-proof-link" href={MAINNET_PROOF_URL} target="_blank" rel="noreferrer">
+                  <ShieldCheck size={16} /> Mainnet proof
+                </a>
               </div>
               {discoveryMessage && <p className="wallet-match-message" role="status">{discoveryMessage}</p>}
               <p className="field-hint find-circles-hint">Added to someone's circle? Tap Find my circles. New circles show up after their first confirmation, usually about 10 minutes.</p>
@@ -3030,7 +3035,7 @@ export default function App() {
           </section>
         </div>
       )}
-      <footer className="app-footer"><span>© 2026 AjoChain</span><a href="https://github.com/Afar88/ajochain-blaze/blob/main/docs/MAINNET_PROOF.md" style={{ color: "var(--primary)", fontWeight: 800, textDecoration: "underline" }}>Mainnet transaction record</a><span><span className="footer-dot" /> {network === "chipnet" ? "Chipnet testing" : "Mainnet · approve in Selene"}</span></footer>
+      <footer className="app-footer"><span>© 2026 AjoChain</span><span><span className="footer-dot" /> {network === "chipnet" ? "Chipnet testing" : "Mainnet · approve in Selene"}</span></footer>
     </main>
   );
 }
