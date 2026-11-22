@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { circleDisplayName, preferRealCircleName } from "../circles/circle-display-name";
 import { ACTIVITY_READ_CONCURRENCY, ACTIVITY_REFRESH_DEBOUNCE_MS, mapWithConcurrency } from "./activity-refresh";
 import { plainErrorSummary } from "./error-copy";
 import { RefreshCw, ShieldCheck } from "lucide-react";
@@ -203,6 +204,11 @@ function loadCircleRefs(): CircleRef[] {
     ...readActivePusd(),
   );
   const unique = new Map(refs.map((ref) => [ref.id, ref]));
+  // Keep a real creator-set name when the kept copy only has the found-circle stand-in.
+  for (const ref of refs) {
+    const kept = unique.get(ref.id);
+    if (kept && kept !== ref) unique.set(ref.id, { ...kept, name: preferRealCircleName(kept.name, ref.name) } as CircleRef);
+  }
   return [...unique.values()];
 }
 
@@ -435,7 +441,7 @@ export default function ActivityRecords({ network, compact = false }: { network:
               <div className="activity-circle-heading">
                 <div>
                   <span className="section-kicker">{result.ref.kind === "pusd" ? "PUSD" : "BCH"} · {result.ref.network.toUpperCase()}</span>
-                  <h2>{result.ref.name}</h2>
+                  <h2>{circleDisplayName(result.ref.name)}</h2>
                   <small>{result.ref.kind === "classic" ? "Classic BCH savings circle" : result.ref.kind === "fee" ? "BCH savings circle" : "PUSD savings circle"}</small>
                 </div>
                 <span className={"activity-state-pill " + result.status}>

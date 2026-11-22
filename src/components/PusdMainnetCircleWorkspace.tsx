@@ -24,11 +24,12 @@ import { wallet } from "../core/wizard-wallet";
 import type { NetworkId } from "../core/network-config";
 import {
   getCancellationDisabledReason,
+  getCircleFinishedMessage,
   getDepositDisabledReason,
   getPayoutDisabledReason,
   shouldRenderCircleCreation,
 } from "./mainnet-circle-lifecycle-ui";
-import { updateSavedCircleChainStatus } from "../circles/saved-circle-status";
+import { readSavedCircleMetadata, updateSavedCircleChainStatus } from "../circles/saved-circle-status";
 import { useNoticeFade } from "./notice-display";
 import { WorkspaceNotice } from "./WorkspaceNotice";
 import { recallSnapshot, rememberSnapshot } from "./remembered-snapshots";
@@ -241,6 +242,13 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
     cancellationAllowed: Boolean(circleSnapshot && circleSnapshot.round === 0 && !circleSnapshot.completed),
   });
   const depositDisabledReason = getDepositDisabledReason(walletConnected);
+  const activeCircleSavedId = activeCircle ? "pusd:" + activeCircle.stateCategory.toLowerCase() : null;
+  const circleFinishedMessage = getCircleFinishedMessage({
+    snapshotCompleted: circleSnapshot ? circleSnapshot.completed : null,
+    savedStatus: activeCircleSavedId
+      ? readSavedCircleMetadata(window.localStorage).find((item) => item.id === activeCircleSavedId)?.status ?? null
+      : null,
+  });
 
   useEffect(() => {
     onBusyChange?.(busy || lifecycleBusy);
@@ -846,6 +854,9 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
               ))}
             </div>
           )}
+          {circleFinishedMessage ? (
+            <p className="circle-finished-note" role="status">{circleFinishedMessage}</p>
+          ) : (<>
           <label>Deposit amount (PUSD)
             <input value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} inputMode="decimal" />
           </label>
@@ -863,7 +874,8 @@ export default function PusdMainnetCircleWorkspace({ network, walletConnected, s
               {cancellationDisabledReason && <small className="lifecycle-action-reason">{cancellationDisabledReason}</small>}
             </div>
           </div>
-          {actionPreview && (
+          </>)}
+          {actionPreview && !circleFinishedMessage && (
             <div className="pusd-mainnet-breakdown" role="status">
               <b>{actionPreview.title}</b>
               <p>{actionPreview.summary}</p>

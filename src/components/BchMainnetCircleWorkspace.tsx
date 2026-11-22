@@ -21,11 +21,13 @@ import {
 } from "../core/v2-fee-bch";
 import { MAINNET_PROJECT_TREASURY_ADDRESS } from "../core/project-treasury";
 import { getV2FeeCircleRecordIdentity } from "../core/v2-fee-circle-records";
-import { updateSavedCircleChainStatus } from "../circles/saved-circle-status";
+import { readSavedCircleMetadata, updateSavedCircleChainStatus } from "../circles/saved-circle-status";
+import { circleDisplayName } from "../circles/circle-display-name";
 import { wallet } from "../core/wizard-wallet";
 import type { NetworkId } from "../core/network-config";
 import {
   getCancellationDisabledReason,
+  getCircleFinishedMessage,
   getDepositDisabledReason,
   getPayoutDisabledReason,
   shouldRenderCircleCreation,
@@ -197,6 +199,16 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
     cancellationAllowed: Boolean(circleSnapshot && !circleSnapshot.hasPaid && circleSnapshot.round === 0),
   });
   const depositDisabledReason = getDepositDisabledReason(walletConnected);
+  const activeCircleSavedId = activeCircle
+    ? (() => { const identity = getV2FeeCircleRecordIdentity(encodeV2FeeCircleParams(activeCircle)); return identity ? "v2:" + identity.key : null; })()
+    : null;
+  const circleFinishedMessage = getCircleFinishedMessage({
+    snapshotCompleted: circleSnapshot ? circleSnapshot.completed : null,
+    snapshotClosedAs: circleSnapshot?.closedAs ?? null,
+    savedStatus: activeCircleSavedId
+      ? readSavedCircleMetadata(window.localStorage).find((item) => item.id === activeCircleSavedId)?.status ?? null
+      : null,
+  });
 
   useEffect(() => {
     onBusyChange?.(busy || lifecycleBusy);
@@ -916,7 +928,7 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
       {isCircleOpen && activeCircle && (
         <div className="pusd-mainnet-saved">
           <div className="section-heading circle-lifecycle-heading">
-            <div><span className="section-kicker">CIRCLE · BITCOIN CASH MAINNET</span><h3>{activeCircle.name}</h3></div>
+            <div><span className="section-kicker">CIRCLE · BITCOIN CASH MAINNET</span><h3>{circleDisplayName(activeCircle.name)}</h3></div>
             <div className="circle-lifecycle-toolbar">
               <button type="button" className="secondary-button circle-lifecycle-refresh" disabled={lifecycleBusy} onClick={() => void readActiveOnChainState()}>
                 {lifecycleBusy ? "Checking…" : "Refresh status"}
@@ -944,6 +956,9 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
               ))}
             </div>
           )}
+          {circleFinishedMessage ? (
+            <p className="circle-finished-note" role="status">{circleFinishedMessage}</p>
+          ) : (<>
           <label>Deposit amount (BCH)
             <input value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} inputMode="decimal" />
           </label>
@@ -961,7 +976,8 @@ export default function BchMainnetCircleWorkspace({ network, walletConnected, se
               {cancellationDisabledReason && <small className="lifecycle-action-reason">{cancellationDisabledReason}</small>}
             </div>
           </div>
-          {actionPreview && (
+          </>)}
+          {actionPreview && !circleFinishedMessage && (
             <div className="pusd-mainnet-breakdown" role="status">
               <b>{actionPreview.title}</b>
               <p>{actionPreview.summary}</p>

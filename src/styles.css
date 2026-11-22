@@ -2142,6 +2142,56 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
 .create-advanced>summary{font-weight:700;cursor:pointer;color:var(--ink)}
 .create-advanced label{display:grid;gap:6px;font-weight:700;color:var(--ink)}
 
+/* Activity records: label, amount and date each on their own line, clearly spaced. */
+.activity-records-page { display:grid; gap:18px; }
+.activity-summary-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.activity-summary-grid .overview-status-card { min-width:0; }
+.activity-toolbar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); }
+.activity-toolbar > div { display:grid; gap:4px; min-width:0; }
+.activity-toolbar b { color:var(--ink); font-size:14px; font-weight:800; }
+.activity-toolbar small { color:var(--muted); font-size:13px; font-weight:600; }
+.activity-circle-list { display:grid; gap:14px; }
+.activity-circle-card { padding:16px; display:grid; gap:14px; min-width:0; }
+.activity-circle-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+.activity-circle-heading > div { min-width:0; }
+.activity-circle-heading h2 { margin:5px 0 3px; font-size:18px; font-weight:800; color:var(--ink); overflow-wrap:anywhere; }
+.activity-circle-heading small { color:var(--muted); font-size:13px; font-weight:600; }
+.activity-state-pill { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; max-width:100%; padding:5px 10px; border:1px solid var(--line); border-radius:999px; background:var(--surface-raised); color:var(--ink); font-size:13px; font-weight:800; line-height:1.25; white-space:nowrap; }
+.activity-state-pill.ready, .activity-state-pill.confirmed { border-color:var(--primary); }
+.activity-state-pill.loading, .activity-state-pill.pending { border-color:var(--warning); color:var(--warning); background:var(--warning-soft); }
+.activity-state-pill.unavailable, .activity-state-pill.unknown, .activity-state-pill.failed { border-color:var(--danger); color:var(--danger); background:var(--danger-soft); }
+.activity-state-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.activity-state-grid > div { display:grid; align-content:start; gap:6px; padding:11px 12px; border:1px solid var(--line); border-radius:11px; background:var(--surface-raised); min-width:0; }
+.activity-state-grid span { display:block; color:var(--muted); font-size:13px; font-weight:700; }
+.activity-state-grid b { display:block; color:var(--ink); font-size:14px; font-weight:800; overflow-wrap:anywhere; }
+.activity-source-note, .activity-footnote, .activity-truncation { display:block; margin:0; color:var(--muted); font-size:13px; line-height:1.6; }
+.activity-member-records, .activity-history { display:grid; gap:8px; }
+.activity-subheading { display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:4px 12px; }
+.activity-subheading b { color:var(--ink); font-size:14px; font-weight:800; }
+.activity-subheading small { color:var(--muted); font-size:13px; font-weight:600; }
+.activity-member-row { display:flex; justify-content:space-between; gap:14px; padding:11px 12px; background:var(--surface-raised); border:1px solid var(--line); border-radius:10px; }
+.activity-member-row > span { min-width:0; display:grid; align-content:start; gap:5px; }
+.activity-member-row > span:last-child { text-align:right; }
+.activity-member-row b { display:block; color:var(--ink); font-size:14px; font-weight:800; overflow-wrap:anywhere; }
+.activity-member-row small { display:block; color:var(--muted); font-size:13px; font-weight:600; line-height:1.45; overflow-wrap:anywhere; }
+.activity-transaction-row { display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--line); }
+.activity-transaction-icon { width:32px; height:32px; flex:0 0 32px; display:grid; place-items:center; border-radius:10px; background:var(--surface-raised); color:var(--primary); }
+.activity-transaction-main { min-width:0; flex:1 1 auto; display:grid; gap:4px; }
+.activity-transaction-main b { display:block; color:var(--ink); font-size:14px; font-weight:800; }
+.activity-transaction-main code { display:block; color:var(--ink); font-size:13px; overflow-wrap:anywhere; }
+.activity-transaction-main small { display:block; color:var(--muted); font-size:13px; font-weight:600; line-height:1.45; }
+.activity-unavailable { display:grid; gap:6px; padding:12px; border:1px solid var(--danger); border-radius:11px; background:var(--danger-soft); color:var(--danger); font-size:13px; }
+.activity-unavailable b { font-weight:800; }
+@media(max-width:600px){
+  .activity-summary-grid, .activity-state-grid { grid-template-columns:minmax(0,1fr); }
+  .activity-member-row { flex-direction:column; gap:8px; }
+  .activity-member-row > span:last-child { text-align:left; border-top:1px solid var(--line); padding-top:8px; }
+  .activity-transaction-row { flex-wrap:wrap; }
+  .activity-transaction-row .activity-state-pill { margin-left:44px; }
+}
+
+/* Finished circle: one plain line replaces the deposit, payout and cancel actions. */
+.circle-finished-note { margin:12px 0 0; padding:11px 12px; border:1px solid var(--line); border-radius:10px; background:var(--surface-raised); color:var(--ink); font-size:14px; font-weight:800; }
 /* Homepage actions: four equal buttons, Mainnet proof sits with the others. */
 .hero-actions > .hero-cta,
 .hero-actions > .hero-secondary-cta {

@@ -28,9 +28,11 @@ import {
   ensureSavedCircleMetadata,
   filterSavedCirclesByNetwork,
   filterSavedCirclesByStatus,
+  readSavedCircleMetadata,
   updateSavedCircleChainStatus,
   type SavedCircleStatus,
 } from "./circles/saved-circle-status";
+import { circleDisplayName, isFallbackCircleName, preferRealCircleName } from "./circles/circle-display-name";
 import {
   checkCircleStatusesWithLimits,
   countCircleStatuses,
@@ -88,12 +90,26 @@ function decodeMenuCirclePayload(encoded: string): Record<string, unknown> | nul
 function readSavedCircleMenuRecords(): MenuCircle[] {
   const records: MenuCircle[] = [];
   const seen = new Set<string>();
+  // Real names saved earlier on this phone, used when a found circle only has a stand-in name.
+  const savedNames = new Map(readSavedCircleMetadata(window.localStorage)
+    .filter((item) => !isFallbackCircleName(item.name))
+    .map((item) => [item.id, item.name]));
   const add = (
-    id: string, kind: MenuCircleKind, encoded: string, name: string, network: NetworkId,
+    id: string, kind: MenuCircleKind, encoded: string, rawName: string, network: NetworkId,
     asset: "BCH" | "PUSD", contribution: string, memberCount: number, savedAt?: number,
   ) => {
-    if (seen.has(id)) return;
+    if (seen.has(id)) {
+      // Another saved copy (invite or creator's copy) may carry the real name.
+      const index = records.findIndex((record) => record.id === id);
+      const record = records[index];
+      if (record && isFallbackCircleName(record.name) && !isFallbackCircleName(rawName)) {
+        const realName = rawName.trim();
+        records[index] = { ...record, name: realName, label: realName + " · " + record.detail };
+      }
+      return;
+    }
     seen.add(id);
+    const name = circleDisplayName(preferRealCircleName(rawName, savedNames.get(id)));
     let formattedContribution = "";
     let amount = "";
     try {
