@@ -2141,3 +2141,41 @@ label small, .field-hint { color:var(--muted); font-size:13px; }
 .create-advanced[open]>summary{margin-bottom:4px}
 .create-advanced>summary{font-weight:700;cursor:pointer;color:var(--ink)}
 .create-advanced label{display:grid;gap:6px;font-weight:700;color:var(--ink)}
+
+/* Homepage actions: four equal buttons, Mainnet proof sits with the others. */
+.hero-actions > .hero-cta,
+.hero-actions > .hero-secondary-cta {
+  min-height:46px;
+  margin:0;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  white-space:nowrap;
+}
+.hero-proof-link { text-decoration:none; }
+.app-shell .hero-proof-link,
+.app-shell .hero-proof-link:visited { color:var(--ink); text-decoration:none; }
+.app-shell .hero-proof-link:hover { text-decoration:underline; }
+@media (max-width:620px) {
+  .hero-actions {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:10px;
+  }
+  .hero-actions > .hero-cta,
+  .hero-actions > .hero-secondary-cta {
+    width:100%;
+    padding-inline:10px;
+    font-size:14px;
+    white-space:normal;
+    text-align:center;
+  }
+}
+.welcome-hero .find-circles-hint { margin-top:16px; }
+.app-shell details.circle-risk-notice > button.secondary-button { margin-top:12px; }
+.app-shell .welcome-hero .hero-proof-link,
+:root[data-theme="dark"] .app-shell .welcome-hero .hero-proof-link { color:var(--ink); }
+@media (max-width:620px) {
+  .app-footer { flex-direction:column; align-items:center; text-align:center; gap:8px; }
+}
